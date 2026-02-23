@@ -1,0 +1,567 @@
+<style>
+  /* 列表高度調整：讓名單區域最大化，同時保留底部按鈕空間 */
+  .attendance-scroll-area {
+    height: calc(100vh - 260px) !important;
+    background: #f8f9fa;
+    padding: 12px; 
+    overflow-y: auto; 
+    border-radius: 12px;
+    border: 1px solid #dee2e6;
+  }
+
+  /* RWD 網格系統 */
+  #attendanceListBody {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(22%, 70px), 1fr)); 
+    gap: 8px; 
+  }
+
+  /* 卡片樣式 */
+  .att-item {
+    background: white; border: 1px solid #dee2e6; border-radius: 8px; padding: 4px 2px; 
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    cursor: pointer; height: 75px; transition: all 0.1s; position: relative;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+    user-select: none; -webkit-tap-highlight-color: transparent;
+  }
+  .att-item:active { transform: scale(0.96); }
+  
+  .att-name {
+    font-size: 0.85rem; font-weight: bold; text-align: center; line-height: 1.1;
+    word-break: break-all; display: -webkit-box; -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .att-info { font-size: 0.65rem; margin-top: 1px; }
+  
+  .att-item input[type="checkbox"] { width: 16px; height: 16px; margin-bottom: 4px; pointer-events: none; }
+
+  /* --- 狀態顏色樣式 --- */
+  .att-item.selected { background-color: #0d6efd !important; color: white !important; border-color: #0a58ca; }
+  .att-item.selected .att-info, .att-item.selected .gender-text { color: #e9ecef !important; }
+  
+  .att-item.submitted { background-color: #d1e7dd !important; border-color: #badbcc !important; cursor: pointer; }
+  .att-item.submitted .att-name { color: #0f5132 !important; }
+  .att-item.submitted::after { content: "✓"; position: absolute; top: 2px; right: 5px; color: #198754; font-weight: 900; font-size: 14px; }
+  
+  .att-item.locked { background-color: #e9ecef !important; border-color: #ced4da !important; cursor: not-allowed !important; opacity: 0.6; }
+  .att-item.locked::after { content: "🔒"; position: absolute; top: 2px; right: 5px; font-size: 10px; opacity: 0.5; }
+
+  .full-width-msg { grid-column: 1 / -1; text-align: center; padding: 60px 20px; color: #6c757d; width: 100%; }
+
+  #attendanceAddModal {
+    display:none; position:fixed; top:0; left:0; width:100%; height:100%; 
+    background:rgba(0,0,0,0.6); z-index:9999; overflow-y: auto;
+  }
+  .custom-modal-content {
+    background: white; margin: 5% auto; padding: 25px; width: 90%;
+    max-width: 500px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    position: relative; text-align: left;
+  }
+</style>
+
+<div class="mb-3 bg-white p-2 rounded shadow-sm border">
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <span class="fw-bold">📷 QR Code 快速報到</span>
+    <button id="scanBtn" class="btn btn-sm btn-outline-primary" onclick="toggleScanner()">開啟相機</button>
+  </div>
+  <div id="reader" style="display: none; width: 100%; border-radius: 8px; overflow: hidden;"></div>
+</div>
+
+<div class="card p-3 shadow-sm border-0 bg-light">
+  
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0 fw-bold text-dark">🎤 點名系統</h4>
+    <div class="d-flex gap-2">
+      <div id="presentCountBadge" class="badge bg-success text-white p-2 small shadow-sm d-flex align-items-center">
+          ✅ 已出席：<span id="presentCount" class="mx-1">0</span> 人
+      </div>
+      <div id="todayDateDisplay" class="badge bg-white text-primary border p-2 small shadow-sm"></div>
+    </div>
+  </div>
+
+  <ul class="nav nav-pills nav-fill mb-3 bg-white p-1 rounded shadow-sm border">
+    <li class="nav-item"><a class="nav-link active" id="tab-台語" onclick="switchType('台語')">台語</a></li>
+    <li class="nav-item"><a class="nav-link" id="tab-華語" onclick="switchType('華語')">華語</a></li>
+    <li class="nav-item"><a class="nav-link" id="tab-聯合" onclick="switchType('聯合')">聯合</a></li>
+  </ul>
+
+  <div class="row g-2 mb-3">
+    <div class="col-12">
+      <div class="input-group shadow-sm">
+        <span class="input-group-text bg-white border-end-0 text-muted">🔍</span>
+        <input type="text" id="attSearchInput" class="form-control border-start-0" placeholder="搜尋..." oninput="filterAttList()">
+        <button class="btn btn-outline-success fw-bold" onclick="openAttendanceAddModal()">➕ 新增</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="attendance-scroll-area">
+    <div id="attendanceListBody"></div>
+  </div>
+
+  <div class="d-flex align-items-center gap-2 mt-3">
+    <div class="d-flex flex-column gap-2" style="width: 170px; flex-shrink: 0;">
+      <div class="input-group input-group-sm shadow-sm border rounded overflow-hidden">
+        <span class="input-group-text bg-white text-primary border-0 fw-bold small px-2" style="width: 80px;">👦 新(男)</span>
+        <input type="number" id="newFriendsMale" class="form-control border-0 text-center fw-bold px-1" value="0" min="0">
+      </div>
+      <div class="input-group input-group-sm shadow-sm border rounded overflow-hidden">
+        <span class="input-group-text bg-white text-danger border-0 fw-bold small px-2" style="width: 80px;">👧 新(女)</span>
+        <input type="number" id="newFriendsFemale" class="form-control border-0 text-center fw-bold px-1" value="0" min="0">
+      </div>
+    </div>
+
+    <button id="submitBtn" class="btn btn-success btn-lg shadow fw-bold flex-grow-1 py-2 h-100" onclick="submitAttendance()" style="font-size: 1.1rem; min-height: 64px;">
+      確認送出
+    </button>
+  </div>
+</div>
+
+<div id="attendanceAddModal">
+  <div class="custom-modal-content">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h5 class="fw-bold mb-0 text-dark">新增會友資料</h5>
+      <button type="button" class="btn-close" onclick="closeAttendanceAddModal()"></button>
+    </div>
+    <hr>
+    <div class="row g-3">
+      <div class="col-md-8">
+        <label class="form-label fw-bold small text-muted">姓名</label>
+        <input type="text" id="editName_Att" class="form-control form-control-lg" placeholder="請輸入姓名">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label fw-bold small text-muted">性別</label>
+        <select id="editGender_Att" class="form-select form-select-lg">
+          <option value="男">男 👦</option>
+          <option value="女">女 👧</option>
+        </select>
+      </div>
+      <div class="col-12">
+        <label class="form-label fw-bold small text-muted">備註</label>
+        <textarea id="editNote_Att" class="form-control" rows="2" placeholder="電話、地址或其他資訊..."></textarea>
+      </div>
+      <div class="col-12">
+        <div class="form-check form-switch mt-2">
+          <input class="form-check-input" type="checkbox" id="editIsExcluded_Att">
+          <label class="form-check-label fw-bold" for="editIsExcluded_Att">不列入主日出席率統計</label>
+        </div>
+      </div>
+    </div>
+    <div class="text-end mt-4">
+      <button class="btn btn-light px-4 me-2" onclick="closeAttendanceAddModal()">取消</button>
+      <button id="saveNewMemberBtn_Att" class="btn btn-primary px-4 fw-bold" onclick="saveNewMemberFromAttendance()">確認儲存</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/html5-qrcode"></script>
+<script>
+  let localPendingActions = {}; 
+  let attUserId = localStorage.getItem('att_uid') || ('User_' + Math.floor(Math.random() * 1000000));
+  localStorage.setItem('att_uid', attUserId);
+  
+  let attSyncTimer = null;
+  let attIsRendering = false; 
+  let currentAttType = '台語';
+  let html5QrCode = null; 
+  let lastClickTime = 0; 
+  const DOUBLE_CLICK_DELAY = 350; 
+
+  function initAttendancePage(type) {
+    if(!type) type = '台語';
+    const today = new Date();
+    document.getElementById('todayDateDisplay').innerText = `📅 ${today.getFullYear()}/${today.getMonth()+1}/${today.getDate()}`;
+    switchType(type);
+    startAutoSync(); 
+  }
+
+  function switchType(type) {
+    if (attIsRendering) return; 
+    currentAttType = type;
+    attIsRendering = true;
+    
+    document.querySelectorAll('#page-ATTENDANCE .nav-link').forEach(el => el.classList.remove('active'));
+    document.getElementById(`tab-${type}`).classList.add('active');
+    
+    const listBody = document.getElementById('attendanceListBody');
+    listBody.innerHTML = `<div class="full-width-msg"><div class="spinner-border text-primary mb-3"></div><div class="h6">讀取 [${type}] 名單中...</div></div>`;
+
+    google.script.run
+      .withFailureHandler(function(error) {
+        listBody.innerHTML = `<div class="full-width-msg text-danger">❌ 讀取失敗: ${error.message}</div>`;
+        attIsRendering = false;
+      })
+      .withSuccessHandler(function(result) {
+        let list = [];
+        let nfMale = 0;
+        let nfFemale = 0;
+        
+        if (Array.isArray(result)) { 
+           list = result; 
+        } else if (result && result.activeList) {
+           list = result.activeList;
+           nfMale = result.nfMale || 0;
+           nfFemale = result.nfFemale || 0;
+        }
+        
+        renderAttendanceList(list, nfMale, nfFemale);
+        setTimeout(() => { attIsRendering = false; }, 500);
+      })
+      .getSmartAttendanceList(type, attUserId);
+  }
+
+  // --- 2. 渲染名單列表 (✅ 將編號放入 data-uid) ---
+  function renderAttendanceList(data, nfMale = 0, nfFemale = 0) {
+    const container = document.getElementById('attendanceListBody');
+    container.innerHTML = ''; 
+
+    if (!data || data.length === 0) {
+      container.innerHTML = '<div class="full-width-msg p-5 h6">⚠️ 查無名單</div>';
+      document.getElementById('presentCount').innerText = '0';
+      return;
+    }
+
+    const submittedCount = data.filter(m => m.isSubmitted).length;
+    document.getElementById('presentCount').innerText = submittedCount + Number(nfMale) + Number(nfFemale);
+    
+    document.getElementById('newFriendsMale').value = nfMale;
+    document.getElementById('newFriendsFemale').value = nfFemale;
+
+    const now = Date.now();
+
+    data.forEach(m => {
+      const label = document.createElement('label');
+      label.className = "att-item shadow-sm";
+      let isChecked = m.isChecked;
+      let isLocked = (m.isChecked && m.operatorId && m.operatorId !== attUserId);
+      let isSubmitted = m.isSubmitted;
+
+      if (localPendingActions[m.name] && (now - localPendingActions[m.name].time < 5000)) {
+        isChecked = localPendingActions[m.name].state;
+        isLocked = false;
+      }
+
+      let checkState = isChecked ? "checked" : "";
+      let isDisabled = (isSubmitted || isLocked) ? "disabled" : "";
+      let statusColor = m.gender === '男' ? '#007bff' : (m.gender === '女' ? '#e64980' : '#6c757d');
+
+      if (isSubmitted) {
+        label.classList.add('submitted');
+        statusColor = '#198754';
+        label.onclick = function(e) {
+          e.preventDefault();
+          const n = new Date().getTime();
+          if (n - lastClickTime < DOUBLE_CLICK_DELAY) { 
+              confirmRevoke(m.name); 
+              lastClickTime = 0; 
+          } else { 
+              lastClickTime = n; 
+          }
+        };
+      } else if (isLocked) {
+        label.classList.add('locked');
+      } else if (isChecked) {
+        label.classList.add('selected');
+        statusColor = '#e9ecef';
+      } 
+
+      if (!isSubmitted && !isLocked) {
+        label.onclick = function(e) {
+          e.preventDefault();
+          const cb = this.querySelector('input');
+          cb.checked = !cb.checked;
+          toggleCardStyle(cb);
+        };
+      }
+
+      // ✅ 藏入 data-uid
+      label.innerHTML = `
+        <input type="checkbox" value="${m.name}" data-uid="${m.id || ''}" ${checkState} ${isDisabled}>
+        <div class="att-name">${m.name}</div>
+        <div class="att-info"><b class="gender-text" style="color: ${statusColor};">${m.gender || '未知'}</b></div>
+      `;
+      container.appendChild(label);
+    });
+  }
+
+  function toggleCardStyle(checkbox) {
+    const isChecked = checkbox.checked;
+    const name = checkbox.value;
+    
+    if (isChecked) checkbox.parentElement.classList.add('selected');
+    else checkbox.parentElement.classList.remove('selected');
+    
+    localPendingActions[name] = { time: Date.now(), state: isChecked };
+    
+    google.script.run.withFailureHandler(function(err) {
+        checkbox.checked = !isChecked; 
+        checkbox.parentElement.classList.toggle('selected');
+        delete localPendingActions[name];
+    }).syncClickToServer(name, isChecked, currentAttType, attUserId);
+  }
+
+  function openAttendanceAddModal() {
+    document.getElementById('attendanceAddModal').style.display = 'block';
+    document.getElementById('editName_Att').value = "";
+    document.getElementById('editGender_Att').value = "男";
+    document.getElementById('editNote_Att').value = "";
+    document.getElementById('editIsExcluded_Att').checked = false;
+  }
+  
+  function closeAttendanceAddModal() { 
+    document.getElementById('attendanceAddModal').style.display = 'none'; 
+  }
+
+  function saveNewMemberFromAttendance() {
+    const btn = document.getElementById('saveNewMemberBtn_Att');
+    const newData = {
+      name: document.getElementById('editName_Att').value.trim(),
+      gender: document.getElementById('editGender_Att').value,
+      note: document.getElementById('editNote_Att').value.trim(),
+      isExcluded: document.getElementById('editIsExcluded_Att').checked
+    };
+    
+    if (!newData.name) return alert("請輸入姓名！");
+    
+    btn.disabled = true; btn.innerText = "儲存中...";
+    
+    google.script.run.withSuccessHandler(function(msg) {
+          btn.disabled = false; btn.innerText = "確認儲存";
+          if (msg.includes("成功")) { 
+              closeAttendanceAddModal(); 
+              setTimeout(() => silentRefreshList(), 600); 
+          } else { 
+              alert(msg); 
+          }
+      }).addMember(newData); 
+  }
+
+  function silentRefreshList() {
+    if (attIsRendering) return;
+    attIsRendering = true;
+    google.script.run.withSuccessHandler(function(result) {
+        let list = [];
+        let nfMale = 0, nfFemale = 0;
+        if (Array.isArray(result)) list = result;
+        else if (result && result.activeList) {
+           list = result.activeList;
+           nfMale = result.nfMale || 0;
+           nfFemale = result.nfFemale || 0;
+        }
+        renderAttendanceList(list, nfMale, nfFemale);
+        attIsRendering = false;
+    }).getSmartAttendanceList(currentAttType, attUserId);
+  }
+
+  function confirmRevoke(name) {
+    if (navigator.vibrate) navigator.vibrate(50);
+    if (confirm(`確定要撤銷 [${name}] 的送出紀錄嗎？`)) { executeRevoke(name); }
+  }
+
+  function executeRevoke(name) {
+    attIsRendering = true;
+    const btn = document.getElementById('submitBtn');
+    const originalText = "確認送出";
+    btn.disabled = true; btn.innerHTML = '正在撤銷...';
+    
+    google.script.run.withSuccessHandler(function(msg) {
+        if (msg === "OK") { 
+            localPendingActions[name] = { time: Date.now(), state: true }; 
+            alert("✅ 撤銷成功！"); 
+        } else { 
+            alert(msg); 
+        }
+        btn.disabled = false; btn.innerHTML = originalText;
+        attIsRendering = false; 
+        switchType(currentAttType); 
+    }).revokeAttendance(name, currentAttType, attUserId);
+  }
+
+  function fetchRemoteStatus() {
+    if (attIsRendering || document.getElementById('attSearchInput').value) return;
+    
+    google.script.run.withSuccessHandler(function(data) {
+        if (!data || attIsRendering) return;
+        
+        const activeList = Array.isArray(data) ? data : (data.activeList || []);
+        const nfMale = Array.isArray(data) ? 0 : (data.nfMale || 0);
+        const nfFemale = Array.isArray(data) ? 0 : (data.nfFemale || 0);
+        const now = Date.now();
+        const container = document.getElementById('attendanceListBody');
+        
+        activeList.forEach(m => {
+           const checkbox = container.querySelector(`input[value="${m.name}"]`);
+           if (!checkbox) return;
+           const card = checkbox.parentElement;
+           
+           if (localPendingActions[m.name] && (now - localPendingActions[m.name].time < 5000)) return;
+           
+           if (m.isSubmitted) {
+             if (!card.classList.contains('submitted')) {
+                card.className = "att-item shadow-sm submitted";
+                checkbox.checked = true; checkbox.disabled = true;
+                card.onclick = function(e) { e.preventDefault(); 
+                  const n = new Date().getTime();
+                  if (n - lastClickTime < DOUBLE_CLICK_DELAY) { confirmRevoke(m.name); lastClickTime = 0; } else { lastClickTime = n; }
+                };
+             }
+           } else if (m.isChecked) {
+             checkbox.checked = true;
+             if (m.operatorId && m.operatorId !== attUserId) {
+               card.className = "att-item shadow-sm locked"; checkbox.disabled = true; card.onclick = null;
+             } else {
+               card.className = "att-item shadow-sm selected"; checkbox.disabled = false;
+               card.onclick = function(e) { e.preventDefault(); const cb=this.querySelector('input'); cb.checked=!cb.checked; toggleCardStyle(cb); };
+             }
+           } else {
+             card.className = "att-item shadow-sm"; checkbox.checked = false; checkbox.disabled = false;
+             card.onclick = function(e) { e.preventDefault(); const cb = this.querySelector('input'); cb.checked = !cb.checked; toggleCardStyle(cb); };
+           }
+        });
+        
+        const submittedCards = container.querySelectorAll('.att-item.submitted').length;
+        document.getElementById('presentCount').innerText = submittedCards + Number(nfMale) + Number(nfFemale);
+        
+    }).getQuickSyncData(currentAttType, attUserId);
+  }
+
+  function startAutoSync() { stopAutoSync(); attSyncTimer = setInterval(fetchRemoteStatus, 4000); }
+  function stopAutoSync() { if (attSyncTimer) clearInterval(attSyncTimer); }
+
+  function submitAttendance() {
+    const checked = document.querySelectorAll('.att-item.selected input:checked:not([disabled])');
+    const maleCount = parseInt(document.getElementById('newFriendsMale').value) || 0;
+    const femaleCount = parseInt(document.getElementById('newFriendsFemale').value) || 0;
+    const totalNf = maleCount + femaleCount;
+    
+    if (checked.length === 0 && totalNf === 0) {
+        if (!confirm("目前沒有勾選任何新名單，新朋友也是 0 人。\n確定要執行送出嗎？(這將會把新朋友數量更新為 0)")) return;
+    } else {
+        if (!confirm(`確定送出已選名單及 ${totalNf} 位新朋友 (男:${maleCount}, 女:${femaleCount})？`)) return;
+    }
+    
+    const presentList = Array.from(checked).map(cb => `${cb.value}(${cb.parentElement.querySelector('.gender-text').innerText})`);
+    
+    const btn = document.getElementById('submitBtn');
+    const originalText = "確認送出";
+    btn.disabled = true; attIsRendering = true; 
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 處理中...';
+    
+    google.script.run.withSuccessHandler(function(msg) {
+        alert(msg); 
+        btn.disabled = false; btn.innerHTML = originalText; 
+        attIsRendering = false; 
+        switchType(currentAttType); 
+      }).withFailureHandler(function(err) {
+        btn.disabled = false; btn.innerHTML = originalText; attIsRendering = false;
+      }).saveAttendance(
+          document.getElementById('todayDateDisplay').innerText.replace('📅 ',''), 
+          presentList, 
+          currentAttType, 
+          maleCount,  
+          femaleCount 
+      );
+  }
+
+  function filterAttList() {
+    const kw = document.getElementById('attSearchInput').value.trim().toLowerCase();
+    document.querySelectorAll('label.att-item').forEach(item => {
+      const name = item.querySelector('.att-name').innerText.trim().toLowerCase();
+      item.style.display = (kw === "" || name.includes(kw)) ? 'flex' : 'none';
+    });
+  }
+
+  // --- 10. QR Code 掃描 (✅ 升級比對邏輯) ---
+  function toggleScanner() {
+    const readerElem = document.getElementById('reader');
+    const btn = document.getElementById('scanBtn');
+    if (readerElem.style.display === 'none') {
+      readerElem.style.display = 'block'; btn.innerText = '關閉相機';
+      btn.classList.replace('btn-outline-primary', 'btn-outline-danger');
+      startScanning();
+    } else { 
+      stopScanning(); 
+      readerElem.style.display = 'none'; 
+      btn.innerText = '開啟相機'; 
+      btn.classList.replace('btn-outline-danger', 'btn-outline-primary'); 
+    }
+  }
+
+function startScanning() {
+    html5QrCode = new Html5Qrcode("reader");
+    
+    // 1. 先向設備詢問：「你有幾顆鏡頭？」
+    Html5Qrcode.getCameras().then(devices => {
+      if (devices && devices.length > 0) {
+        
+        // 2. 判斷邏輯：
+        // 如果有多顆鏡頭(手機)，通常最後一顆是後鏡頭 -> devices[devices.length - 1]
+        // 如果只有一顆鏡頭(筆電 Webcam) -> devices[0]
+        let cameraId = devices.length > 1 ? devices[devices.length - 1].id : devices[0].id;
+        
+        // 3. 啟動選定的相機
+        html5QrCode.start(
+          cameraId, 
+          { fps: 10, qrbox: { width: 250, height: 250 } }, 
+          (decodedText) => handleQrCodeResult(decodedText.trim())
+        ).catch(err => {
+          alert("相機啟動失敗 (被瀏覽器阻擋)。\n\n👉 在電腦開發時，請直接使用旁邊綠色的【📸 拍照掃描】上傳圖片來測試！\n詳細錯誤: " + err);
+          toggleScanner();
+        });
+        
+      } else {
+        alert("找不到任何攝影機設備！");
+        toggleScanner();
+      }
+    }).catch(err => {
+      alert("無法取得相機列表，權限遭拒。\n錯誤訊息：" + err);
+      toggleScanner();
+    });
+  }
+
+  function stopScanning() { 
+    if (html5QrCode && html5QrCode.isScanning) {
+        html5QrCode.stop().then(() => html5QrCode.clear()); 
+    }
+  }
+
+  // ✅ 新的掃描處理邏輯：先找編號，找不到再找姓名
+  function handleQrCodeResult(scannedText) {
+    let found = false;
+    const checkboxes = document.querySelectorAll('#attendanceListBody input[type="checkbox"]');
+
+    // 1. 優先比對：藏在背後的「編號」(data-uid)
+    for (let cb of checkboxes) {
+      if (cb.dataset.uid === scannedText && !cb.disabled) {
+        if (!cb.checked) {
+          cb.checked = true; 
+          toggleCardStyle(cb);
+          cb.parentElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        if (navigator.vibrate) navigator.vibrate(100); 
+        found = true;
+        break;
+      }
+    }
+    
+    // 2. 向下相容：如果掃出來的不是編號，就當作是「姓名」來比對
+    if (!found) {
+      for (let cb of checkboxes) {
+        if (cb.value === scannedText && !cb.disabled) {
+          if (!cb.checked) {
+            cb.checked = true; 
+            toggleCardStyle(cb);
+            cb.parentElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+          if (navigator.vibrate) navigator.vibrate(100);
+          found = true;
+          break;
+        }
+      }
+    }
+
+    if (!found) {
+      console.log("找不到對應的編號或姓名: " + scannedText);
+    }
+  }
+</script>
