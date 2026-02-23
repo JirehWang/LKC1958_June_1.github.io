@@ -1,24 +1,171 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
+<html>
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>教會主日出席系統</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
   <style>
-    body, html { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; background-color: #f8f9fa; }
-    /* 這是最重要的箱子，我們在這裡手動給予相機權限 */
-    iframe { 
-      width: 100%; 
-      height: 100%; 
-      border: none; 
+    /* --- 全域響應式佈局設定 --- */
+    .app-container {
+      width: 100%;
+      padding: 15px;
+      margin-right: auto;
+      margin-left: auto;
+      transition: max-width 0.3s ease;
     }
+
+    #main-nav {
+      max-width: 550px;
+      margin: 0 auto;
+    }
+
+    /* 導覽卡片的樣式 */
+    .nav-card { 
+      cursor: pointer; 
+      transition: 0.3s; 
+      height: 85px; 
+      display: flex; 
+      align-items: center; 
+      justify-content: center; 
+      font-weight: bold; 
+      border-radius: 12px;
+    }
+    .nav-card:hover { 
+      background-color: #f8f9fa; 
+      transform: translateY(-2px); 
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1); 
+    }
+    .nav-icon { font-size: 1.8rem; margin-right: 15px; }
+    .nav-text { font-size: 1.2rem; }
+
+    /* 彈窗規則 */
+    .custom-modal-backdrop {
+      display: none; 
+      position: fixed; 
+      top: 0; left: 0; 
+      width: 100%; height: 100%; 
+      background: rgba(0,0,0,0.6); 
+      z-index: 9999; 
+      overflow-y: auto;
+    }
+    
+    .custom-modal-content {
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      margin: 20px auto;
+      width: 95%;
+    }
+
+    /* 電腦版優化 */
+    @media (min-width: 768px) {
+      .app-container { max-width: 95%; }
+      .custom-modal-content { width: 70%; max-width: 800px; padding: 40px; }
+      
+      #content-area {
+        background: #fdfdfd;
+        padding: 30px; 
+        border-radius: 15px;
+        box-shadow: 0 0 20px rgba(0,0,0,0.05);
+      }
+    }
+
+    .table-responsive-custom {
+      width: 100%;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      border: 1px solid #eee;
+    }
+    .page-section { display: none; }
   </style>
 </head>
 <body>
-  <iframe 
-    src="https://script.google.com/macros/s/AKfycbyJbzjHIeFFRbqT-Ttk2OAPYfF-qDKYES8dJiu4sJCR4t2Fq9PTtbALwuiJDBxh55kR/exec" 
-    allow="camera; microphone; geolocation" 
-    allowfullscreen>
-  </iframe>
+  <div class="app-container">
+    
+    <div id="main-nav">
+      <div class="d-flex justify-content-center align-items-end mb-4">
+        <h2 class="fw-bold mb-0">⛪ 教會主日出席系統</h2>
+        <a href="https://www.canva.com/design/DAHCGu-ynJs/eI1qlAREHLG-vLxNELzXxg/view?utm_content=DAHCGu-ynJs&utm_campaign=designshare&utm_medium=link2&utm_source=uniquelinks&utlId=h30d97a479b" 
+           target="_blank" 
+           class="text-secondary text-decoration-none ms-2 mb-1 border-bottom border-secondary pb-0" 
+           style="font-size: 0.85rem;" title="查看系統操作說明">
+           📖 操作說明
+        </a>
+      </div>
+      
+      <div class="card nav-card text-primary border-primary shadow-sm mb-3" onclick="loadAttendancePage('台語')">
+        <div class="d-flex align-items-center"><span class="nav-icon">🎤</span><span class="nav-text">主日點名系統</span></div>
+      </div>
+      
+      <div class="card nav-card text-secondary shadow-sm mb-3" onclick="loadPage('MEMBERS')">
+        <div class="d-flex align-items-center"><span class="nav-icon">👥</span><span class="nav-text">會友名單管理</span></div>
+      </div>
+      
+      <div class="card nav-card text-success shadow-sm mb-3" onclick="loadPage('STATS')">
+        <div class="d-flex align-items-center"><span class="nav-icon">📊</span><span class="nav-text">出席統計查詢</span></div>
+      </div>
+    </div>
+
+    <div id="content-area" style="display:none;">
+      <button class="btn btn-outline-secondary mb-3 shadow-sm" onclick="showHome()">← 回主選單</button>
+      
+      <div id="page-ATTENDANCE" class="page-section"> <?!= include('attendance'); ?> </div>
+      <div id="page-MEMBERS" class="page-section"> <?!= include('members'); ?> </div>
+      <div id="page-STATS" class="page-section"> <?!= include('STATS'); ?> </div>
+    </div>
+
+  </div>
+
+  <script>
+    /* --- 核心跳轉邏輯 --- */
+
+    function prepareContentArea() {
+      document.getElementById('main-nav').style.display = 'none';
+      document.getElementById('content-area').style.display = 'block';
+      const sections = document.querySelectorAll('.page-section');
+      sections.forEach(sec => sec.style.display = 'none');
+    }
+
+    function showHome() {
+      // 安全檢查：如果點名系統的停止掃描函式存在，就執行它
+      if (typeof stopScanning === "function") {
+        stopScanning();
+      }
+
+      document.getElementById('main-nav').style.display = 'block';
+      document.getElementById('content-area').style.display = 'none';
+    }
+
+    function loadAttendancePage(type) {
+      prepareContentArea();
+      document.getElementById('page-ATTENDANCE').style.display = 'block';
+      if (typeof initAttendancePage === "function") {
+        initAttendancePage(type);
+      }
+    }
+
+    function loadPage(pageId) {
+      prepareContentArea();
+      const target = document.getElementById('page-' + pageId);
+      if (target) {
+        target.style.display = 'block';
+        if (pageId === 'MEMBERS' && typeof refreshMemberTable === "function") {
+          refreshMemberTable();
+        }
+        if (pageId === 'STATS') {
+          if (typeof initStatsPage === "function") {
+            initStatsPage(); 
+          } else if (typeof fetchStatsData === "function") {
+            fetchStatsData(); 
+          }
+        }
+      }
+    }
+
+    // 確保頁面載入時執行
+    window.onload = function() {
+      if (typeof initializeApp === "function") {
+         initializeApp();
+      }
+    };
+  </script>
 </body>
 </html>
