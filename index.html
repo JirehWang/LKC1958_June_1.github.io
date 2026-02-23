@@ -2,34 +2,46 @@
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
-  <meta name="robots" content="noindex, nofollow"> <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>⛪ 教會管理系統 - GitHub 快速掃描版</title>
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>⛪ 教會管理系統 - GitHub 旗艦版</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
   <style>
-    /* 全域樣式優化 */
+    /* --- 全域樣式 --- */
     body { background-color: #f4f7f6; font-family: -apple-system, "Microsoft JhengHei", sans-serif; }
     .app-container { width: 100%; padding: 15px; margin: 0 auto; max-width: 600px; }
     .nav-card { cursor: pointer; transition: 0.3s; height: 85px; display: flex; align-items: center; justify-content: center; font-weight: bold; border-radius: 12px; border: none; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
     .nav-card:hover { transform: translateY(-3px); box-shadow: 0 8px 15px rgba(0,0,0,0.1); }
     .page-section { display: none; }
-    
-    /* 相機掃描器樣式 */
+    .custom-modal-backdrop { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 9999; overflow-y: auto; }
+    .custom-modal-content { background: white; margin: 5% auto; padding: 25px; width: 90%; max-width: 500px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
+
+    /* --- 點名分頁樣式 --- */
     #reader-wrapper { border-radius: 15px; overflow: hidden; display: none; margin-bottom: 15px; border: 4px solid #0d6efd; background: #000; }
-    .attendance-scroll-area { height: calc(100vh - 350px); overflow-y: auto; background: #fff; border-radius: 12px; padding: 10px; border: 1px solid #ddd; }
-    
-    /* 點名卡片樣式 (與您原本一致) */
+    .attendance-scroll-area { height: calc(100vh - 380px); overflow-y: auto; background: #f8f9fa; border-radius: 12px; padding: 10px; border: 1px solid #ddd; }
     #attendanceListBody { display: grid; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); gap: 8px; }
-    .att-item { background: white; border: 1px solid #eee; border-radius: 8px; padding: 8px 4px; text-align: center; cursor: pointer; font-size: 0.8rem; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
-    .att-item.selected { background-color: #0d6efd; color: white; border-color: #0d6efd; }
-    .att-item.submitted { background-color: #d1e7dd; border-color: #badbcc; color: #0f5132; }
+    .att-item { background: white; border: 1px solid #dee2e6; border-radius: 8px; padding: 6px 2px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; height: 75px; position: relative; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
+    .att-item.selected { background-color: #0d6efd !important; color: white !important; }
+    .att-item.submitted { background-color: #d1e7dd !important; border-color: #badbcc !important; }
+    .att-item.submitted::after { content: "✓"; position: absolute; top: 2px; right: 5px; color: #198754; font-weight: 900; }
+    .att-name { font-size: 0.85rem; font-weight: bold; }
+
+    /* --- 會友分頁樣式 --- */
+    .member-table-container { height: calc(100vh - 250px); overflow: auto; border: 1px solid #dee2e6; border-radius: 8px; background: white; }
+    .member-table-container thead th { position: sticky; top: 0; z-index: 10; background-color: #212529 !important; color: white; }
+    .member-table-container tbody td:first-child { position: sticky; left: 0; z-index: 5; background-color: #f8f9fa; border-right: 1px solid #dee2e6; }
+
+    /* --- 統計分頁樣式 --- */
+    .stat-card { border-radius: 8px; padding: 10px; border: 1px solid #dee2e6; height: 100%; display: flex; flex-direction: column; justify-content: center; }
+    .progress { background-color: #e9ecef; height: 10px; border-radius: 5px; }
   </style>
 </head>
 <body>
 
 <div class="app-container">
   <div id="main-nav">
-    <h2 class="fw-bold text-center mt-4 mb-4">⛪ 教會點名系統</h2>
-    <div class="card nav-card text-primary mb-3" onclick="showPage('ATTENDANCE')">🎤 開始主日點名</div>
+    <h2 class="fw-bold text-center mt-4 mb-4">⛪ 教會管理系統</h2>
+    <div class="card nav-card text-primary mb-3" onclick="showPage('ATTENDANCE')">🎤 主日點名系統</div>
     <div class="card nav-card text-secondary mb-3" onclick="showPage('MEMBERS')">👥 會友名單管理</div>
     <div class="card nav-card text-success mb-3" onclick="showPage('STATS')">📊 出席統計查詢</div>
   </div>
@@ -38,137 +50,251 @@
     <button class="btn btn-sm btn-outline-secondary mb-3" onclick="goHome()">← 回主選單</button>
 
     <div id="page-ATTENDANCE" class="page-section">
-      <div class="card p-3 shadow-sm border-0">
-        <div class="d-flex justify-content-between align-items-center mb-3">
-          <h5 class="fw-bold mb-0">快速報到</h5>
-          <button id="scanBtn" class="btn btn-primary btn-sm" onclick="toggleScanner()">開啟相機掃描</button>
+      <div class="card p-3 shadow-sm border-0 mb-3">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <span class="fw-bold small">📷 QR Code 掃描報到</span>
+          <button id="scanBtn" class="btn btn-sm btn-primary" onclick="toggleScanner()">開啟相機</button>
         </div>
-        
         <div id="reader-wrapper"><div id="reader"></div></div>
-
-        <div class="attendance-scroll-area">
-          <div id="attendanceListBody">
-            <p class="text-center p-5 text-muted">正在連線至 Google 試算表...</p>
-          </div>
+      </div>
+      
+      <div class="card p-3 shadow-sm border-0 bg-light">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h5 class="mb-0 fw-bold">🎤 點名表</h5>
+          <div class="badge bg-success" id="presentCountBadge">✅ 已出席：<span id="presentCount">0</span></div>
         </div>
-        
-        <button class="btn btn-success w-100 mt-3 fw-bold py-2" onclick="submitAttendance()">確認送出紀錄</button>
+        <ul class="nav nav-pills nav-fill mb-3 bg-white p-1 rounded border">
+          <li class="nav-item"><a class="nav-link active" id="tab-台語" onclick="switchType('台語')">台語</a></li>
+          <li class="nav-item"><a class="nav-link" id="tab-華語" onclick="switchType('華語')">華語</a></li>
+          <li class="nav-item"><a class="nav-link" id="tab-聯合" onclick="switchType('聯合')">聯合</a></li>
+        </ul>
+        <div class="attendance-scroll-area mb-3">
+          <div id="attendanceListBody"></div>
+        </div>
+        <div class="row g-2">
+          <div class="col-6"><input type="number" id="newFriendsMale" class="form-control" placeholder="新朋友(男)"></div>
+          <div class="col-6"><input type="number" id="newFriendsFemale" class="form-control" placeholder="新朋友(女)"></div>
+        </div>
+        <button class="btn btn-success w-100 mt-3 fw-bold py-2" onclick="submitAttendance()">確認送出</button>
       </div>
     </div>
 
-    <div id="page-MEMBERS" class="page-section"><h4>會友管理介面 (開發中)</h4></div>
-    <div id="page-STATS" class="page-section"><h4>統計統計介面 (開發中)</h4></div>
+    <div id="page-MEMBERS" class="page-section">
+      <div class="d-flex justify-content-between mb-3">
+        <input type="text" id="memberSearchInput" class="form-control form-control-sm w-50" placeholder="搜尋姓名..." oninput="filterMembers()">
+        <button class="btn btn-primary btn-sm" onclick="openMemberModal()">＋ 新增會友</button>
+      </div>
+      <div class="member-table-container shadow-sm">
+        <table class="table table-sm table-hover mb-0">
+          <thead class="table-dark"><tr><th>姓名</th><th>性別</th><th>備註</th><th>操作</th></tr></thead>
+          <tbody id="memberTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="page-STATS" class="page-section">
+      <div class="bg-white p-3 rounded border mb-3">
+        <div class="btn-group w-100 mb-3">
+          <button class="btn btn-outline-primary btn-sm active" id="btnModeRange" onclick="toggleStatMode('range')">區間統計</button>
+          <button class="btn btn-outline-primary btn-sm" id="btnModeSingle" onclick="toggleStatMode('single')">單日檢視</button>
+        </div>
+        <div id="rangeInputArea" class="row g-2">
+          <div class="col-6"><input type="date" id="statsStart" class="form-control form-control-sm"></div>
+          <div class="col-6"><input type="date" id="statsEnd" class="form-control form-control-sm"></div>
+        </div>
+        <div id="singleInputArea" style="display:none;"><input type="date" id="statsSingleDate" class="form-control form-control-sm"></div>
+        <button class="btn btn-primary btn-sm w-100 mt-3" onclick="fetchStatsData()">🔍 開始查詢</button>
+      </div>
+      <div id="statsResultArea">
+          <div class="row g-2 mb-3">
+             <div class="col-4"><div class="stat-card bg-white text-center"><small>總人數</small><b id="valMainStat">0</b></div></div>
+             <div class="col-4"><div class="stat-card bg-white text-center"><small>名單出席</small><b id="valMemberStat">0</b></div></div>
+             <div class="col-4"><div class="stat-card bg-white text-center"><small>新朋友</small><b id="valNewFriendStat">0</b></div></div>
+          </div>
+          <div class="table-responsive border rounded bg-white">
+            <table class="table table-sm mb-0"><tbody id="statsTableBody"></tbody></table>
+          </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div id="memberListModal" class="custom-modal-backdrop">
+  <div class="custom-modal-content">
+    <h5 id="memModalHeader">會友資料</h5>
+    <input type="hidden" id="editOldName_Mem">
+    <input type="text" id="editName_Mem" class="form-control mb-2" placeholder="姓名">
+    <select id="editGender_Mem" class="form-select mb-2"><option value="男">男</option><option value="女">女</option></select>
+    <textarea id="editNote_Mem" class="form-control mb-2" placeholder="備註"></textarea>
+    <div class="form-check form-switch mb-3"><input class="form-check-input" type="checkbox" id="editIsExcluded_Mem"> 不列入統計</div>
+    <div class="text-end"><button class="btn btn-light me-2" onclick="closeMemberModal()">取消</button><button class="btn btn-primary" onclick="processMemberSave()">儲存</button></div>
   </div>
 </div>
 
 <script src="https://unpkg.com/html5-qrcode"></script>
-
 <script>
-  /* ---------------------------------------------------------
-     核心 API 橋樑：連接 GitHub 到您的 Google 試算表
-     --------------------------------------------------------- */
+  /* --- 🚀 核心 API 橋樑 --- */
   const GAS_URL = "https://script.google.com/macros/s/AKfycbw3Tx8_F5WqHpnA266O0QlbYROj0fY6z34AEWf7xzBpbFu36MDrvAuIRJS84dHhIWs4SQ/exec";
-  
   let attUserId = localStorage.getItem('att_uid') || ('User_' + Math.floor(Math.random() * 1000000));
   localStorage.setItem('att_uid', attUserId);
-  let html5QrCode = null;
 
-  // 封裝 Fetch API：像打電話一樣呼叫 GAS
   async function callGAS(action, params = {}) {
-    const queryParams = new URLSearchParams({ action, ...params }).toString();
+    const query = new URLSearchParams({ action, ...params }).toString();
     try {
-      // 這裡使用了 CORS 模式，讓 GitHub 能跨網域抓取 Google 資料
-      const response = await fetch(`${GAS_URL}?${queryParams}`);
-      return await response.json();
-    } catch (err) {
-      console.error("連線失敗:", err);
-      return { status: "error", message: "無法連線至 Google 伺服器" };
-    }
+      const res = await fetch(`${GAS_URL}?${query}`);
+      return await res.json();
+    } catch (e) { console.error("API Error:", e); return { status: "error", message: "連線失敗" }; }
   }
 
-  /* ---------------------------------------------------------
-     頁面控制邏輯
-     --------------------------------------------------------- */
+  /* --- 導覽控制 --- */
   function showPage(pageId) {
     document.getElementById('main-nav').style.display = 'none';
     document.getElementById('content-area').style.display = 'block';
     document.querySelectorAll('.page-section').forEach(p => p.style.display = 'none');
     document.getElementById('page-' + pageId).style.display = 'block';
-    
-    if (pageId === 'ATTENDANCE') loadAttendanceData();
+    if(pageId === 'ATTENDANCE') initAttendancePage();
+    if(pageId === 'MEMBERS') refreshMemberTable();
+    if(pageId === 'STATS') initStatsPage();
   }
 
   function goHome() {
-    if (html5QrCode) stopScanning();
+    stopScanning();
     document.getElementById('main-nav').style.display = 'block';
     document.getElementById('content-area').style.display = 'none';
   }
 
-  /* ---------------------------------------------------------
-     點名系統邏輯 (API 版)
-     --------------------------------------------------------- */
-  async function loadAttendanceData() {
-    const listBody = document.getElementById('attendanceListBody');
-    listBody.innerHTML = '<p class="text-center p-5">⏳ 名單載入中...</p>';
-    
-    const res = await callGAS('getAttendanceList', { type: '台語', uid: attUserId });
-    
-    if (res.status === "success") {
-      renderList(res.activeList);
-    } else {
-      listBody.innerHTML = `<p class="text-danger p-5">❌ 載入失敗: ${res.message}</p>`;
-    }
+  /* --- 🎤 點名系統邏輯 --- */
+  let currentAttType = '台語';
+  async function initAttendancePage() {
+    const today = new Date();
+    document.getElementById('tab-台語').parentElement.parentElement.previousElementSibling.innerText = `📅 ${today.toLocaleDateString()}`;
+    await switchType('台語');
   }
 
-  function renderList(list) {
+  async function switchType(type) {
+    currentAttType = type;
+    document.querySelectorAll('#page-ATTENDANCE .nav-link').forEach(n => n.classList.remove('active'));
+    document.getElementById(`tab-${type}`).classList.add('active');
+    const res = await callGAS('getAttendanceList', { type, uid: attUserId });
+    if(res.status === "success") renderAttendanceList(res.activeList, res.nfMale, res.nfFemale);
+  }
+
+  function renderAttendanceList(list, nm, nf) {
     const body = document.getElementById('attendanceListBody');
     body.innerHTML = list.map(m => `
-      <div class="att-item ${m.isSubmitted ? 'submitted' : (m.isChecked ? 'selected' : '')}" 
-           onclick="handleItemClick(this, '${m.name}')">
-        <div>${m.name}</div>
-        <small>${m.gender}</small>
+      <div class="att-item ${m.isSubmitted?'submitted':(m.isChecked?'selected':'')}" onclick="handleCheck('${m.name}', ${!m.isChecked})">
+        <div class="att-name">${m.name}</div>
+        <small style="color:${m.gender==='男'?'#0d6efd':'#dc3545'}">${m.gender}</small>
       </div>
+    `).join('');
+    document.getElementById('presentCount').innerText = list.filter(m=>m.isSubmitted).length + nm + nf;
+  }
+
+  async function handleCheck(name, state) {
+    await callGAS('syncClickToServer', { name, isChecked: state, type: currentAttType, userId: attUserId });
+    switchType(currentAttType);
+  }
+
+  async function submitAttendance() {
+    const checked = document.querySelectorAll('.att-item.selected');
+    const list = Array.from(checked).map(c => c.querySelector('.att-name').innerText + "(?)"); // 簡化處理
+    const res = await callGAS('saveAttendance', {
+      date: new Date().toLocaleDateString(),
+      list: JSON.stringify(list),
+      type: currentAttType,
+      male: document.getElementById('newFriendsMale').value || 0,
+      female: document.getElementById('newFriendsFemale').value || 0
+    });
+    alert(res.message);
+    switchType(currentAttType);
+  }
+
+  /* --- 👥 會友管理邏輯 --- */
+  async function refreshMemberTable() {
+    const data = await callGAS('getAllMembers');
+    const tbody = document.getElementById('memberTableBody');
+    tbody.innerHTML = data.map(m => `
+      <tr>
+        <td><b>${m["姓名"]}</b></td>
+        <td>${m["性別"]}</td>
+        <td><small>${m["備註"] || ''}</small></td>
+        <td><button class="btn btn-sm btn-outline-primary" onclick='openMemberModal(${JSON.stringify(m)})'>改</button></td>
+      </tr>
     `).join('');
   }
 
-  async function handleItemClick(element, name) {
-    const isNowChecked = !element.classList.contains('selected');
-    element.classList.toggle('selected');
-    
-    // 即時傳回 GAS 同步 (多人協作)
-    await callGAS('syncClickToServer', { name, isChecked: isNowChecked, type: '台語', userId: attUserId });
+  function openMemberModal(m = null) {
+    document.getElementById('memberListModal').style.display = 'block';
+    if(m) {
+      document.getElementById('editOldName_Mem').value = m["姓名"];
+      document.getElementById('editName_Mem').value = m["姓名"];
+      document.getElementById('editGender_Mem').value = m["性別"];
+    } else {
+      document.getElementById('editOldName_Mem').value = "";
+      document.getElementById('editName_Mem').value = "";
+    }
+  }
+  function closeMemberModal() { document.getElementById('memberListModal').style.display = 'none'; }
+
+  async function processMemberSave() {
+    const oldName = document.getElementById('editOldName_Mem').value;
+    const newData = { name: document.getElementById('editName_Mem').value, gender: document.getElementById('editGender_Mem').value };
+    const action = oldName ? 'updateMember' : 'addMember';
+    const res = await callGAS(action, { oldName, data: JSON.stringify(newData) });
+    alert(res.message); closeMemberModal(); refreshMemberTable();
   }
 
-  /* ---------------------------------------------------------
-     📷 相機掃描邏輯 (在 GitHub 下將 100% 順暢)
-     --------------------------------------------------------- */
-  function toggleScanner() {
-    const wrapper = document.getElementById('reader-wrapper');
-    if (wrapper.style.display === 'none') {
-      wrapper.style.display = 'block';
-      startScanning();
-    } else {
-      stopScanning();
-      wrapper.style.display = 'none';
+  /* --- 📊 統計系統邏輯 --- */
+  let currentStatMode = 'range';
+  function initStatsPage() {
+    const now = new Date().toISOString().split('T')[0];
+    document.getElementById('statsStart').value = now;
+    document.getElementById('statsEnd').value = now;
+    document.getElementById('statsSingleDate').value = now;
+  }
+
+  function toggleStatMode(mode) {
+    currentStatMode = mode;
+    document.getElementById('rangeInputArea').style.display = mode==='range'?'flex':'none';
+    document.getElementById('singleInputArea').style.display = mode==='single'?'block':'none';
+  }
+
+  async function fetchStatsData() {
+    const req = { 
+      type: '台語', // 預設
+      mode: currentStatMode,
+      start: document.getElementById('statsStart').value,
+      end: document.getElementById('statsEnd').value,
+      date: document.getElementById('statsSingleDate').value
+    };
+    const res = await callGAS('getAttendanceStats', req);
+    if(res.status === "success") {
+       document.getElementById('valMainStat').innerText = res.data.avgCount || res.data.presentCount;
+       document.getElementById('valMemberStat').innerText = res.data.presentCount;
+       document.getElementById('valNewFriendStat').innerText = res.data.newFriends;
+       // 渲染表格列表邏輯...
     }
   }
 
+  /* --- 📷 相機核心 --- */
+  let html5QrCode = null;
+  function toggleScanner() {
+    const w = document.getElementById('reader-wrapper');
+    if(w.style.display === 'none') { w.style.display='block'; startScanning(); }
+    else { stopScanning(); w.style.display='none'; }
+  }
   function startScanning() {
     html5QrCode = new Html5Qrcode("reader");
-    Html5Qrcode.getCameras().then(devices => {
-      const cameraId = devices.length > 1 ? devices[devices.length - 1].id : devices[0].id;
-      html5QrCode.start(cameraId, { fps: 10, qrbox: 250 }, (text) => {
-        // 掃描成功後的邏輯
-        console.log("掃到 QR:", text);
-        // 您可以在此呼叫自動勾選邏輯
+    Html5Qrcode.getCameras().then(devs => {
+      const id = devs.length > 1 ? devs[devs.length-1].id : devs[0].id;
+      html5QrCode.start(id, { fps:10, qrbox:250 }, (txt) => {
+        handleCheck(txt.trim(), true);
+        if(navigator.vibrate) navigator.vibrate(100);
       });
-    }).catch(err => alert("相機啟動失敗: " + err));
+    });
   }
-
-  function stopScanning() {
-    if (html5QrCode) html5QrCode.stop().then(() => html5QrCode.clear());
-  }
+  function stopScanning() { if(html5QrCode) html5QrCode.stop().then(()=>html5QrCode.clear()); }
 </script>
-
 </body>
 </html>
