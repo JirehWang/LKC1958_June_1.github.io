@@ -3,22 +3,19 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>教會服事管理系統 - 專業維護版</title>
+  <title>教會服事管理系統</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
   <style>
     body { background-color: #f4f7f6; padding: 20px; font-family: "Microsoft JhengHei", sans-serif; user-select: none; }
-    .card-custom { max-width: 1100px; margin: 0 auto; background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+    .card-custom { max-width: 1000px; margin: 0 auto; background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
     .hidden { display: none; }
     .table-responsive { max-height: 70vh; overflow: auto; border: 1px solid #dee2e6; background: #fff; position: relative; }
     table { border-collapse: separate; border-spacing: 0; width: 100%; }
     thead th { position: sticky; top: 0; background: #212529 !important; color: white; z-index: 10; padding: 10px; text-align: center; border: 1px solid #373b3e; }
     td { border: 1px solid #ddd; padding: 0 !important; height: 38px; min-width: 120px; }
     .grid-input { width: 100%; height: 100%; border: none; background: transparent; padding: 8px; text-align: center; outline: none; font-size: 14px; cursor: cell; }
-    
-    /* 選取視覺效果 */
     .grid-input.selected { background-color: rgba(13, 110, 253, 0.15) !important; }
     .grid-input.active-cell { box-shadow: inset 0 0 0 2px #0d6efd !important; background: white !important; cursor: text; }
-    
     #globalLoading { position: fixed; top: 20px; right: 20px; background: #ffc107; padding: 10px 20px; border-radius: 8px; font-weight: bold; z-index: 1000; box-shadow: 0 2px 10px rgba(0,0,0,0.2); }
     .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
   </style>
@@ -28,20 +25,39 @@
   <div id="globalLoading" class="hidden">⏳ 系統連線中...</div>
 
   <div class="container-fluid">
-    <div id="reportSection" class="card-custom">
+    
+    <div id="adminMain" class="card-custom hidden" style="max-width: 600px;">
+      <h3 class="text-center mb-4 text-primary">教會服事系統管理</h3>
+      <div id="groupButtons" class="d-grid gap-2">
+        </div>
+      <hr>
+      <button class="btn btn-primary w-100" onclick="showSection('createSection')">➕ 建立新分頁</button>
+    </div>
+
+    <div id="createSection" class="card-custom hidden" style="max-width: 600px;">
+      <h4>建立新分頁</h4>
+      <form id="createGroupForm">
+        <div class="mb-3"><input id="newId" class="form-control" placeholder="ID (例: worship)" required></div>
+        <div class="mb-3"><input id="newName" class="form-control" placeholder="名稱" required></div>
+        <div class="mb-3"><select id="templateSelect" class="form-select" required></select></div>
+        <button type="submit" class="btn btn-success w-100">確認建立</button>
+        <button type="button" class="btn btn-link w-100" onclick="showSection('adminMain')">取消</button>
+      </form>
+    </div>
+
+    <div id="reportSection" class="card-custom hidden">
       <div class="toolbar">
         <div>
           <h4 id="groupTitle" class="text-primary m-0 d-inline">載入中...</h4>
-          <span class="ms-3 text-muted small">快捷鍵: Enter(完成並下移) / 方向鍵(移動) / Ctrl+Z(復原)</span>
+          <span class="ms-3 text-muted small">快捷鍵: Enter(完成下移) / 方向鍵(移動) / Ctrl+Z(復原)</span>
         </div>
         <div>
-          <button class="btn btn-sm btn-outline-secondary" onclick="undo()">↶ 復原</button>
-          <button class="btn btn-sm btn-outline-secondary me-3" onclick="redo()">↷ 重做</button>
+          <button class="btn btn-sm btn-outline-secondary" onclick="undo()">↶</button>
+          <button class="btn btn-sm btn-outline-secondary me-3" onclick="redo()">↷</button>
           <button class="btn btn-primary" onclick="saveData()">💾 儲存變更</button>
           <button class="btn btn-outline-secondary ms-2" onclick="goToHome()">回主頁</button>
         </div>
       </div>
-      
       <div class="table-responsive">
         <table>
           <thead id="tableHead"></thead>
@@ -49,14 +65,15 @@
         </table>
       </div>
     </div>
+    
   </div>
 
 <script>
   const GAS_URL = "https://script.google.com/macros/s/AKfycbx4268IkgwQm2Es0gjDHLU_U9nKJrRMR1-xzbbtuaq08lePLgAQ2wnDRrCeHdy9jNhh/exec"; 
-  const currentId = new URLSearchParams(window.location.search).get('id');
+  const urlParams = new URLSearchParams(window.location.search);
+  const currentId = urlParams.get('id');
   let activeGroupName = "";
   
-  // 狀態與歷史
   let isMouseDown = false;
   let startCell = {r: 1, c: 0}, endCell = {r: 1, c: 0};
   let undoStack = [], redoStack = [];
@@ -70,19 +87,48 @@
     for (let key in params) { url.searchParams.append(key, params[key]); }
     const response = await fetch(url);
     const result = await response.json();
+    if (result.status !== 'success') throw new Error(result.message);
     return result.data;
   }
 
+  async function postAPI(action, payload) {
+    const response = await fetch(GAS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: action, data: payload })
+    });
+    const result = await response.json();
+    return result;
+  }
+
   window.onload = async () => {
-    if (!currentId) return;
     showLoading();
     try {
-      const data = await fetchAPI('getPageConfig', { id: currentId });
-      renderMatrix(data);
-      saveSnapshot();
-    } catch (err) { alert("載入失敗"); }
+      if (!currentId) {
+        showSection('adminMain');
+        await loadAdminData(); // 載入主頁按鈕
+      } else {
+        showSection('reportSection');
+        const data = await fetchAPI('getPageConfig', { id: currentId });
+        renderMatrix(data);
+        saveSnapshot();
+      }
+    } catch (err) { alert("系統載入錯誤"); }
     finally { hideLoading(); }
   };
+
+  async function loadAdminData() {
+    try {
+      const [groups, templates] = await Promise.all([
+        fetchAPI('getGroups'),
+        fetchAPI('getTemplates')
+      ]);
+      const div = document.getElementById('groupButtons');
+      const base = window.location.href.split('?')[0];
+      div.innerHTML = groups.map(g => `<a href="${base}?id=${g.id}" class="btn btn-outline-primary text-start">➔ ${g.name}</a>`).join('');
+      document.getElementById('templateSelect').innerHTML = '<option value="" disabled selected>選擇模板</option>' + templates.map(t=>`<option>${t}</option>`).join('');
+    } catch (err) { alert("無法取得選單資料"); }
+  }
 
   function renderMatrix(data) {
     activeGroupName = data.groupName;
@@ -90,7 +136,6 @@
     const thead = document.getElementById('tableHead');
     const tbody = document.getElementById('tableBody');
     thead.innerHTML = `<tr>${data.matrix[0].map(h => `<th>${h}</th>`).join('')}</tr>`;
-    
     tbody.innerHTML = data.matrix.slice(1).map((row, rIdx) => {
       const r = rIdx + 1;
       return `<tr>${row.map((cell, cIdx) => `
@@ -101,28 +146,7 @@
     updateSelection();
   }
 
-  // --- 歷史快照 ---
-  function saveSnapshot() {
-    const currentData = Array.from(document.querySelectorAll('#tableBody tr')).map(tr => 
-      Array.from(tr.querySelectorAll('input')).map(i => i.value)
-    );
-    undoStack.push(JSON.stringify(currentData));
-    if (undoStack.length > 50) undoStack.shift();
-    redoStack = [];
-  }
-
-  function undo() { if (undoStack.length <= 1) return; redoStack.push(undoStack.pop()); applySnapshot(undoStack[undoStack.length - 1]); }
-  function redo() { if (redoStack.length === 0) return; const data = redoStack.pop(); undoStack.push(data); applySnapshot(data); }
-  function applySnapshot(jsonStr) {
-    const data = JSON.parse(jsonStr);
-    const rows = document.querySelectorAll('#tableBody tr');
-    data.forEach((rowData, r) => {
-      const inputs = rows[r].querySelectorAll('input');
-      rowData.forEach((val, c) => { inputs[c].value = val; });
-    });
-  }
-
-  // --- 選取邏輯 ---
+  // --- 選取與編輯邏輯 ---
   function doMouseDown(e) {
     if (!e.target.readOnly) return;
     isMouseDown = true;
@@ -130,15 +154,12 @@
     endCell = { ...startCell };
     updateSelection();
   }
-
   function doMouseEnter(e) {
     if (!isMouseDown) return;
     endCell = { r: parseInt(e.target.dataset.r), c: parseInt(e.target.dataset.c) };
     updateSelection();
   }
-
   window.onmouseup = () => { isMouseDown = false; };
-
   function updateSelection() {
     document.querySelectorAll('.grid-input').forEach(el => {
       el.classList.remove('selected', 'active-cell');
@@ -150,100 +171,91 @@
       }
     });
   }
-
   function startEdit(el) {
     if (!el) return;
-    el.readOnly = false;
-    el.classList.add('active-cell');
-    el.focus();
+    el.readOnly = false; el.classList.add('active-cell'); el.focus();
     el.onblur = () => { el.readOnly = true; saveSnapshot(); };
   }
 
-  // --- 快捷鍵監聽 (已移除 Tab) ---
+  // --- 歷史紀錄 ---
+  function saveSnapshot() {
+    const data = Array.from(document.querySelectorAll('#tableBody tr')).map(tr => Array.from(tr.querySelectorAll('input')).map(i => i.value));
+    undoStack.push(JSON.stringify(data));
+    if (undoStack.length > 50) undoStack.shift();
+    redoStack = [];
+  }
+  function undo() { if (undoStack.length <= 1) return; redoStack.push(undoStack.pop()); applySnapshot(undoStack[undoStack.length - 1]); }
+  function redo() { if (redoStack.length === 0) return; const data = redoStack.pop(); undoStack.push(data); applySnapshot(data); }
+  function applySnapshot(json) {
+    const data = JSON.parse(json);
+    const rows = document.querySelectorAll('#tableBody tr');
+    data.forEach((rowData, r) => { rowData.forEach((val, c) => { rows[r].querySelectorAll('input')[c].value = val; }); });
+  }
+
+  // --- 快捷鍵 ---
   document.addEventListener('keydown', (e) => {
     const active = document.activeElement;
     const isEditing = active.classList.contains('grid-input') && !active.readOnly;
-    
-    // 編輯模式
     if (isEditing) {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        active.readOnly = true; active.blur();
-        moveFocus(1, 0); // 完成編輯，自動下移
-      }
+      if (e.key === 'Enter') { e.preventDefault(); active.readOnly = true; active.blur(); moveFocus(1, 0); }
       return;
     }
-
     if (!active.classList.contains('grid-input')) return;
-
-    // 隨打即入 (任何字母或數字)
-    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-      active.value = ""; 
-      startEdit(active);
-      return; 
-    }
-
-    // Ctrl+Z/Y
-    if (e.ctrlKey && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); return; }
-    if (e.ctrlKey && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
-
-    // Shift 選取
+    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) { active.value = ""; startEdit(active); return; }
+    if (e.ctrlKey && e.key === 'z') { e.preventDefault(); undo(); return; }
+    if (e.ctrlKey && e.key === 'y') { e.preventDefault(); redo(); return; }
     if (e.shiftKey && e.key.startsWith('Arrow')) {
       e.preventDefault();
       const dr = e.key === 'ArrowUp' ? -1 : e.key === 'ArrowDown' ? 1 : 0;
       const dc = e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1 : 0;
       endCell.r = Math.max(1, Math.min(document.querySelectorAll('#tableBody tr').length, endCell.r + dr));
       endCell.c = Math.max(0, Math.min(document.querySelectorAll('#tableHead th').length - 1, endCell.c + dc));
-      updateSelection();
-      return;
+      updateSelection(); return;
     }
-
-    // 方向鍵移動
     if (!e.shiftKey && e.key.startsWith('Arrow')) {
       e.preventDefault();
-      const dr = e.key === 'ArrowUp' ? -1 : e.key === 'ArrowDown' ? 1 : 0;
-      const dc = e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1 : 0;
-      moveFocus(dr, dc);
+      moveFocus(e.key === 'ArrowUp' ? -1 : e.key === 'ArrowDown' ? 1 : 0, e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1 : 0);
       return;
     }
-
-    // 批次刪除
-    if (e.key === 'Delete' || e.key === 'Backspace') {
-      saveSnapshot();
-      document.querySelectorAll('.grid-input.selected').forEach(el => el.value = "");
-      e.preventDefault();
-    }
+    if (e.key === 'Delete' || e.key === 'Backspace') { saveSnapshot(); document.querySelectorAll('.grid-input.selected').forEach(el => el.value = ""); e.preventDefault(); }
   });
 
   function moveFocus(dr, dc) {
-    const newR = Math.max(1, Math.min(document.querySelectorAll('#tableBody tr').length, startCell.r + dr));
-    const newC = Math.max(0, Math.min(document.querySelectorAll('#tableHead th').length - 1, startCell.c + dc));
-    startCell = { r: newR, c: newC };
-    endCell = { ...startCell };
-    updateSelection();
-    const target = document.querySelector(`.grid-input[data-r="${newR}"][data-c="${newC}"]`);
+    startCell.r = Math.max(1, Math.min(document.querySelectorAll('#tableBody tr').length, startCell.r + dr));
+    startCell.c = Math.max(0, Math.min(document.querySelectorAll('#tableHead th').length - 1, startCell.c + dc));
+    endCell = { ...startCell }; updateSelection();
+    const target = document.querySelector(`.grid-input[data-r="${startCell.r}"][data-r="${startCell.r}"][data-c="${startCell.c}"]`);
     if (target) target.focus();
   }
 
   async function saveData() {
     showLoading();
     const matrix = [Array.from(document.querySelectorAll('#tableHead th')).map(th => th.innerText)];
-    document.querySelectorAll('#tableBody tr').forEach(tr => {
-      matrix.push(Array.from(tr.querySelectorAll('input')).map(i => i.value));
-    });
+    document.querySelectorAll('#tableBody tr').forEach(tr => matrix.push(Array.from(tr.querySelectorAll('input')).map(i => i.value)));
     try {
-      const response = await fetch(GAS_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: "saveSheetData", data: { groupName: activeGroupName, matrix: matrix } })
-      });
-      const res = await response.json();
+      const res = await postAPI('saveSheetData', { groupName: activeGroupName, matrix: matrix });
       alert(res.message);
     } catch (e) { alert("儲存失敗"); }
     finally { hideLoading(); }
   }
 
+  function showSection(id) {
+    document.querySelectorAll('.card-custom').forEach(el => el.classList.add('hidden'));
+    document.getElementById(id).classList.remove('hidden');
+  }
   function goToHome() { window.location.href = window.location.href.split('?')[0]; }
+
+  document.getElementById('createGroupForm').onsubmit = async function(e) {
+    e.preventDefault(); showLoading();
+    try {
+      await postAPI('createGroup', {
+        id: document.getElementById('newId').value,
+        name: document.getElementById('newName').value,
+        template: document.getElementById('templateSelect').value
+      });
+      location.reload();
+    } catch (err) { alert("建立失敗"); hideLoading(); }
+  };
 </script>
 </body>
 </html>
