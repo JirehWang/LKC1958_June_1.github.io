@@ -82,11 +82,19 @@
   const showLoading = () => document.getElementById('globalLoading').classList.remove('hidden');
   const hideLoading = () => document.getElementById('globalLoading').classList.add('hidden');
 
+// 建議更新此段 fetchAPI，增加模式設定
   async function fetchAPI(action, params = {}) {
     let url = new URL(GAS_URL);
     url.searchParams.append('action', action);
     for (let key in params) { url.searchParams.append(key, params[key]); }
-    const response = await fetch(url);
+    
+    // 增加 redirect: 'follow' 確保能跟隨 Google 的跳轉
+    const response = await fetch(url, {
+      method: 'GET',
+      mode: 'cors', 
+      redirect: 'follow'
+    });
+    
     const result = await response.json();
     if (result.status !== 'success') throw new Error(result.message);
     return result.data;
