@@ -223,19 +223,66 @@
     if (target) target.focus();
   }
 
+// 1. 修改儲存函式：加入刷新邏輯
   async function saveData() {
+    if (!activeGroupName) return;
+    
+    const btn = document.querySelector('.btn-primary');
+    btn.disabled = true; 
+    btn.innerText = "⏳ 儲存中...";
     showLoading();
+
+    // 打包目前的表格資料
     const matrix = [Array.from(document.querySelectorAll('#tableHead th')).map(th => th.innerText)];
-    document.querySelectorAll('#tableBody tr').forEach(tr => matrix.push(Array.from(tr.querySelectorAll('input')).map(i => i.value)));
+    document.querySelectorAll('#tableBody tr').forEach(tr => {
+      matrix.push(Array.from(tr.querySelectorAll('input')).map(i => i.value));
+    });
+
     try {
-      await fetch(GAS_URL, {
+      const response = await fetch(GAS_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ action: "saveSheetData", data: { groupName: activeGroupName, matrix: matrix } })
       });
-      alert("儲存成功！");
-    } catch (e) { alert("儲存失敗"); }
-    finally { hideLoading(); }
+      
+      const res = await response.json();
+      
+      if (res.status === "success") {
+        alert("✅ " + res.message);
+        
+        // ★ 核心功能：儲存成功後刷新容器
+        await refreshContainer(); 
+      } else {
+        throw new Error(res.message);
+      }
+
+    } catch (e) {
+      alert("❌ 儲存失敗：" + e.message);
+    } finally {
+      btn.disabled = false;
+      btn.innerText = "💾 儲存變更";
+      hideLoading();
+    }
+  }
+
+  // 2. 新增刷新容器函式
+  async function refreshContainer() {
+    try {
+      // 重新從 GAS 抓取最新資料（確保與雲端同步）
+      const data = await fetchAPI('getPageConfig', { id: currentId });
+      
+      // 重新渲染表格
+      renderMatrix(data);
+      
+      // 重置歷史紀錄，以目前的雲端狀態為新起點
+      undoStack = [];
+      redoStack = [];
+      saveSnapshot(); 
+      
+      console.log("容器已重新載入最新雲端資料");
+    } catch (err) {
+      console.error("刷新失敗", err);
+    }
   }
 
   function showSection(id) {
