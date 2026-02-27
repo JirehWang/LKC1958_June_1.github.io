@@ -6,14 +6,22 @@
   <title>教會服事系統管理</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
   <style>
-    body { background-color: #f4f7f6; padding: 20px; font-family: "Microsoft JhengHei", sans-serif; }
+    body { background-color: #f4f7f6; padding: 20px; font-family: "Microsoft JhengHei", sans-serif; user-select: none; }
     .card-custom { max-width: 1000px; margin: 0 auto; background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
     .hidden { display: none; }
-    .grid-input { width: 100%; border: none; background: transparent; padding: 8px; text-align: center; outline: none; font-size: 14px; }
-    .grid-input:focus { background: #e8f0fe; font-weight: bold; }
-    td { border: 1px solid #ddd; padding: 0 !important; }
-    .table-responsive { max-height: 70vh; overflow: auto; border: 1px solid #dee2e6; }
-    thead th { position: sticky; top: 0; background: #212529; color: white; z-index: 5; }
+    
+    /* Excel 網格優化 */
+    .table-responsive { max-height: 70vh; overflow: auto; border: 1px solid #dee2e6; background: #fff; }
+    table { border-collapse: separate; border-spacing: 0; width: 100%; }
+    thead th { position: sticky; top: 0; background: #212529 !important; color: white; z-index: 10; padding: 10px; text-align: center; border: 1px solid #373b3e; }
+    td { border: 1px solid #ddd; padding: 0 !important; height: 38px; min-width: 120px; }
+    
+    .grid-input { width: 100%; height: 100%; border: none; background: transparent; padding: 8px; text-align: center; outline: none; font-size: 14px; cursor: cell; }
+    
+    /* ★ 多格選取視覺效果 */
+    .grid-input.selected { background-color: rgba(13, 110, 253, 0.15) !important; }
+    .grid-input.active-cell { box-shadow: inset 0 0 0 2px #0d6efd !important; background: white !important; cursor: text; }
+    
     #globalLoading { position: fixed; top: 20px; right: 20px; background: #ffc107; padding: 10px 20px; border-radius: 8px; font-weight: bold; z-index: 1000; box-shadow: 0 2px 10px rgba(0,0,0,0.2); }
   </style>
 </head>
@@ -22,6 +30,7 @@
   <div id="globalLoading" class="hidden">⏳ 系統連線中...</div>
 
   <div class="container-fluid">
+    
     <div id="adminMain" class="card-custom hidden" style="max-width: 600px;">
       <h3 class="text-center mb-4 text-primary">教會服事系統管理</h3>
       <div id="groupButtons" class="d-grid gap-2"></div>
@@ -49,21 +58,26 @@
         </div>
       </div>
       <div class="table-responsive">
-        <table class="table table-bordered table-sm mb-0">
+        <table id="mainTable">
           <thead id="tableHead"></thead>
           <tbody id="tableBody"></tbody>
         </table>
       </div>
+      <div class="mt-2 text-muted small">💡 提示：滑鼠拖曳可多選｜Delete 批次刪除｜雙擊進入編輯｜Ctrl+V 範圍貼上</div>
     </div>
+    
   </div>
 
 <script>
-  // ★ 重要：請確認使用您最新的「AKfycbx...」這個網址
-  const GAS_URL = "https://script.google.com/macros/s/AKfycbwVZyD_r_LCawhDwfWNqbiagpiU0GksI_Wm3DcD2SLcYJZ5aO_QpQBiHRUzblJYfkL9/exec"; 
-
+  const GAS_URL = "https://script.google.com/macros/s/AKfycbx4268IkgwQm2Es0gjDHLU_U9nKJrRMR1-xzbbtuaq08lePLgAQ2wnDRrCeHdy9jNhh/exec"; 
   const urlParams = new URLSearchParams(window.location.search);
   const currentId = urlParams.get('id');
   let activeGroupName = "";
+  
+  // 選取管理狀態
+  let isMouseDown = false;
+  let startCell = {r: null, c: null};
+  let endCell = {r: null, c: null};
 
   const showLoading = () => document.getElementById('globalLoading').classList.remove('hidden');
   const hideLoading = () => document.getElementById('globalLoading').classList.add('hidden');
@@ -100,9 +114,8 @@
         const data = await fetchAPI('getPageConfig', { id: currentId });
         renderMatrix(data);
       }
-    } catch (err) {
-      alert("載入錯誤：" + err.message);
-    } finally { hideLoading(); }
+    } catch (err) { alert("載入錯誤：" + err.message); }
+    finally { hideLoading(); }
   };
 
   function renderMatrix(data) {
@@ -110,75 +123,136 @@
     document.getElementById('groupTitle').innerText = data.groupName;
     const thead = document.getElementById('tableHead');
     const tbody = document.getElementById('tableBody');
-    thead.innerHTML = ""; tbody.innerHTML = "";
+    thead.innerHTML = `<tr>${data.matrix[0].map(h => `<th>${h}</th>`).join('')}</tr>`;
+    
+    tbody.innerHTML = data.matrix.slice(1).map((row, rIdx) => {
+      const realR = rIdx + 1;
+      return `<tr>${row.map((cell, cIdx) => `
+        <td>
+          <input class="grid-input" value="${cell}" readonly 
+                 data-r="${realR}" data-c="${cIdx}"
+                 onmousedown="doMouseDown(event)" 
+                 onmouseenter="doMouseEnter(event)"
+                 ondblclick="doDblClick(event)">
+        </td>`).join('')}</tr>`;
+    }).join('');
+  }
 
-    data.matrix.forEach((row, rIdx) => {
-      const tr = document.createElement('tr');
-      row.forEach((cell, cIdx) => {
-        const el = document.createElement(rIdx === 0 ? 'th' : 'td');
-        if (rIdx === 0) {
-          el.innerText = cell;
-          el.style.backgroundColor = '#212529';
-          el.style.color = 'white';
-        } else {
-          const input = document.createElement('input');
-          input.className = "grid-input";
-          input.value = cell;
-          input.dataset.r = rIdx;
-          input.dataset.c = cIdx;
-          el.appendChild(input);
-        }
-        tr.appendChild(el);
-      });
-      rIdx === 0 ? thead.appendChild(tr) : tbody.appendChild(tr);
+  // --- ★ Excel 多格選取核心邏輯 ---
+
+  function doMouseDown(e) {
+    isMouseDown = true;
+    const r = parseInt(e.target.dataset.r);
+    const c = parseInt(e.target.dataset.c);
+    startCell = {r, c};
+    endCell = {r, c};
+    clearSelectionStyles();
+    e.target.classList.add('selected', 'active-cell');
+  }
+
+  function doMouseEnter(e) {
+    if (!isMouseDown) return;
+    const r = parseInt(e.target.dataset.r);
+    const c = parseInt(e.target.dataset.c);
+    endCell = {r, c};
+    updateSelectionRange();
+  }
+
+  window.onmouseup = () => { isMouseDown = false; };
+
+  function updateSelectionRange() {
+    clearSelectionStyles();
+    const minR = Math.min(startCell.r, endCell.r);
+    const maxR = Math.max(startCell.r, endCell.r);
+    const minC = Math.min(startCell.c, endCell.c);
+    const maxC = Math.max(startCell.c, endCell.c);
+
+    document.querySelectorAll('.grid-input').forEach(el => {
+      const r = parseInt(el.dataset.r);
+      const c = parseInt(el.dataset.c);
+      if (r >= minR && r <= maxR && c >= minC && c <= maxC) {
+        el.classList.add('selected');
+      }
     });
   }
 
-  // 方向鍵與貼上邏輯保持...
-  document.addEventListener('keydown', function(e) {
-    if (!e.target.classList.contains('grid-input')) return;
-    let r = parseInt(e.target.dataset.r), c = parseInt(e.target.dataset.c);
-    if (e.key === 'ArrowUp') r--; else if (e.key === 'ArrowDown') r++;
-    else if (e.key === 'ArrowLeft') c--; else if (e.key === 'ArrowRight') c++;
-    else return;
-    let next = document.querySelector(`.grid-input[data-r="${r}"][data-c="${c}"]`);
-    if (next) { next.focus(); if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); next.select(); } }
+  function clearSelectionStyles() {
+    document.querySelectorAll('.grid-input').forEach(el => {
+      el.classList.remove('selected', 'active-cell');
+      el.readOnly = true; // 恢復唯讀以利選取
+    });
+  }
+
+  function doDblClick(e) {
+    e.target.readOnly = false;
+    e.target.focus();
+    e.target.classList.add('active-cell');
+  }
+
+  // 鍵盤操作
+  document.addEventListener('keydown', (e) => {
+    const active = document.activeElement;
+    const isEditing = active.classList.contains('grid-input') && !active.readOnly;
+    if (isEditing) return; // 正在編輯打字時不觸發批次功能
+
+    const selected = document.querySelectorAll('.grid-input.selected');
+    
+    // 批次刪除
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      selected.forEach(el => el.value = "");
+      e.preventDefault();
+    }
+    
+    // 方向鍵移動
+    if (e.key.startsWith('Arrow') && selected.length > 0) {
+      let r = startCell.r, c = startCell.c;
+      if (e.key === 'ArrowUp') r--; else if (e.key === 'ArrowDown') r++;
+      else if (e.key === 'ArrowLeft') c--; else if (e.key === 'ArrowRight') c++;
+      
+      const next = document.querySelector(`.grid-input[data-r="${r}"][data-c="${c}"]`);
+      if (next) {
+        e.preventDefault();
+        startCell = {r, c}; endCell = {r, c};
+        clearSelectionStyles();
+        next.classList.add('selected', 'active-cell');
+        next.focus();
+      }
+    }
   });
 
-  document.addEventListener('paste', function(e) {
-    if (!e.target.classList.contains('grid-input')) return;
-    let pasteData = (e.clipboardData || window.clipboardData).getData('text');
-    if (!pasteData.includes('\t') && !pasteData.includes('\n')) return;
+  // 貼上功能
+  document.addEventListener('paste', (e) => {
+    const active = document.activeElement;
+    if (!active.classList.contains('grid-input')) return;
+    const text = (e.clipboardData || window.clipboardData).getData('text');
+    if (!text.includes('\t') && !text.includes('\n')) return;
+    
     e.preventDefault();
-    let rows = pasteData.split(/\r?\n/);
-    if (rows[rows.length - 1] === "") rows.pop();
-    let startR = parseInt(e.target.dataset.r), startC = parseInt(e.target.dataset.c);
-    rows.forEach((rowStr, i) => {
-      rowStr.split('\t').forEach((cellVal, j) => {
-        let target = document.querySelector(`.grid-input[data-r="${startR + i}"][data-c="${startC + j}"]`);
-        if (target) target.value = cellVal.trim();
+    const rows = text.split(/\r?\n/).filter(line => line.length > 0);
+    const startR = parseInt(active.dataset.r), startC = parseInt(active.dataset.c);
+    
+    rows.forEach((row, i) => {
+      row.split('\t').forEach((val, j) => {
+        const target = document.querySelector(`.grid-input[data-r="${startR + i}"][data-c="${startC + j}"]`);
+        if (target) target.value = val.trim();
       });
     });
   });
 
   async function saveData() {
     const btn = document.querySelector('.btn-primary');
-    btn.disabled = true; btn.innerText = "⏳...";
-    showLoading();
-    const matrix = [];
-    const headRow = [];
-    document.querySelectorAll('#tableHead th').forEach(th => headRow.push(th.innerText));
-    matrix.push(headRow);
+    btn.disabled = true; showLoading();
+    
+    const matrix = [Array.from(document.querySelectorAll('#tableHead th')).map(th => th.innerText)];
     document.querySelectorAll('#tableBody tr').forEach(tr => {
-      const rowData = [];
-      tr.querySelectorAll('input').forEach(i => rowData.push(i.value));
-      matrix.push(rowData);
+      matrix.push(Array.from(tr.querySelectorAll('input')).map(i => i.value));
     });
+    
     try {
       const res = await postAPI('saveSheetData', { groupName: activeGroupName, matrix: matrix });
       alert(res.message);
     } catch (err) { alert("儲存錯誤: " + err.message); }
-    finally { btn.disabled = false; btn.innerText = "💾 儲存變更"; hideLoading(); }
+    finally { btn.disabled = false; hideLoading(); }
   }
 
   function showSection(id) {
@@ -189,12 +263,10 @@
   function goToHome() { window.location.href = window.location.href.split('?')[0]; }
 
   async function loadAdminData() {
-    try {
-      const [groups, templates] = await Promise.all([fetchAPI('getGroups'), fetchAPI('getTemplates')]);
-      const div = document.getElementById('groupButtons');
-      div.innerHTML = groups.map(g => `<a href="${window.location.href.split('?')[0]}?id=${g.id}" class="btn btn-outline-primary text-start">➔ ${g.name}</a>`).join('');
-      document.getElementById('templateSelect').innerHTML = '<option value="" disabled selected>選擇模板</option>' + templates.map(t=>`<option>${t}</option>`).join('');
-    } catch (err) { alert("載入失敗：" + err.message); }
+    const [groups, templates] = await Promise.all([fetchAPI('getGroups'), fetchAPI('getTemplates')]);
+    const div = document.getElementById('groupButtons');
+    div.innerHTML = groups.map(g => `<a href="${window.location.href.split('?')[0]}?id=${g.id}" class="btn btn-outline-primary text-start">➔ ${g.name}</a>`).join('');
+    document.getElementById('templateSelect').innerHTML = '<option value="" disabled selected>選擇模板</option>' + templates.map(t=>`<option>${t}</option>`).join('');
   }
 
   document.getElementById('createGroupForm').onsubmit = async function(e) {
