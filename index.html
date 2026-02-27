@@ -3,26 +3,22 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>教會服事系統管理</title>
+  <title>教會服事管理系統 - 專業版</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
   <style>
     body { background-color: #f4f7f6; padding: 20px; font-family: "Microsoft JhengHei", sans-serif; user-select: none; }
-    .card-custom { max-width: 1000px; margin: 0 auto; background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+    .card-custom { max-width: 1100px; margin: 0 auto; background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
     .hidden { display: none; }
-    
-    /* Excel 網格優化 */
-    .table-responsive { max-height: 70vh; overflow: auto; border: 1px solid #dee2e6; background: #fff; }
+    .table-responsive { max-height: 70vh; overflow: auto; border: 1px solid #dee2e6; background: #fff; position: relative; }
     table { border-collapse: separate; border-spacing: 0; width: 100%; }
     thead th { position: sticky; top: 0; background: #212529 !important; color: white; z-index: 10; padding: 10px; text-align: center; border: 1px solid #373b3e; }
     td { border: 1px solid #ddd; padding: 0 !important; height: 38px; min-width: 120px; }
-    
     .grid-input { width: 100%; height: 100%; border: none; background: transparent; padding: 8px; text-align: center; outline: none; font-size: 14px; cursor: cell; }
-    
-    /* ★ 多格選取視覺效果 */
+    /* 選取視覺效果 */
     .grid-input.selected { background-color: rgba(13, 110, 253, 0.15) !important; }
     .grid-input.active-cell { box-shadow: inset 0 0 0 2px #0d6efd !important; background: white !important; cursor: text; }
-    
     #globalLoading { position: fixed; top: 20px; right: 20px; background: #ffc107; padding: 10px 20px; border-radius: 8px; font-weight: bold; z-index: 1000; box-shadow: 0 2px 10px rgba(0,0,0,0.2); }
+    .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
   </style>
 </head>
 <body>
@@ -30,91 +26,64 @@
   <div id="globalLoading" class="hidden">⏳ 系統連線中...</div>
 
   <div class="container-fluid">
-    
-    <div id="adminMain" class="card-custom hidden" style="max-width: 600px;">
-      <h3 class="text-center mb-4 text-primary">教會服事系統管理</h3>
-      <div id="groupButtons" class="d-grid gap-2"></div>
-      <hr>
-      <button class="btn btn-primary w-100" onclick="showSection('createSection')">➕ 建立新分頁</button>
-    </div>
-
-    <div id="createSection" class="card-custom hidden" style="max-width: 600px;">
-      <h4>建立新分頁</h4>
-      <form id="createGroupForm">
-        <div class="mb-3"><input id="newId" class="form-control" placeholder="ID (例: worship)" required></div>
-        <div class="mb-3"><input id="newName" class="form-control" placeholder="名稱" required></div>
-        <div class="mb-3"><select id="templateSelect" class="form-select" required></select></div>
-        <button type="submit" class="btn btn-success w-100">建立</button>
-        <button type="button" class="btn btn-link w-100" onclick="showSection('adminMain')">取消</button>
-      </form>
-    </div>
-
-    <div id="reportSection" class="card-custom hidden">
-      <div class="d-flex justify-content-between align-items-center mb-3">
-        <h4 id="groupTitle" class="text-primary m-0">載入中...</h4>
+    <div id="reportSection" class="card-custom">
+      <div class="toolbar">
         <div>
+          <h4 id="groupTitle" class="text-primary m-0 d-inline">載入中...</h4>
+          <span class="ms-3 text-muted small">快捷鍵: Ctrl+Z (復原) / Ctrl+Y (重做)</span>
+        </div>
+        <div>
+          <button class="btn btn-sm btn-outline-secondary" onclick="undo()">↶ 復原</button>
+          <button class="btn btn-sm btn-outline-secondary me-3" onclick="redo()">↷ 重做</button>
           <button class="btn btn-primary" onclick="saveData()">💾 儲存變更</button>
           <button class="btn btn-outline-secondary ms-2" onclick="goToHome()">回主頁</button>
         </div>
       </div>
       <div class="table-responsive">
-        <table id="mainTable">
+        <table>
           <thead id="tableHead"></thead>
           <tbody id="tableBody"></tbody>
         </table>
       </div>
-      <div class="mt-2 text-muted small">💡 提示：滑鼠拖曳可多選｜Delete 批次刪除｜雙擊進入編輯｜Ctrl+V 範圍貼上</div>
     </div>
-    
   </div>
 
 <script>
   const GAS_URL = "https://script.google.com/macros/s/AKfycbx4268IkgwQm2Es0gjDHLU_U9nKJrRMR1-xzbbtuaq08lePLgAQ2wnDRrCeHdy9jNhh/exec"; 
-  const urlParams = new URLSearchParams(window.location.search);
-  const currentId = urlParams.get('id');
+  const currentId = new URLSearchParams(window.location.search).get('id');
   let activeGroupName = "";
   
-  // 選取管理狀態
+  // 狀態管理
   let isMouseDown = false;
-  let startCell = {r: null, c: null};
-  let endCell = {r: null, c: null};
+  let startCell = {r: null, c: null}; // 錨點
+  let endCell = {r: null, c: null};   // 移動點
+  
+  // 歷史紀錄 (Undo/Redo)
+  let undoStack = [];
+  let redoStack = [];
+  const MAX_HISTORY = 50;
 
   const showLoading = () => document.getElementById('globalLoading').classList.remove('hidden');
   const hideLoading = () => document.getElementById('globalLoading').classList.add('hidden');
 
+  // --- API 核心 ---
   async function fetchAPI(action, params = {}) {
     let url = new URL(GAS_URL);
     url.searchParams.append('action', action);
     for (let key in params) { url.searchParams.append(key, params[key]); }
     const response = await fetch(url);
     const result = await response.json();
-    if (result.status !== 'success') throw new Error(result.message);
     return result.data;
   }
 
-  async function postAPI(action, payload) {
-    const response = await fetch(GAS_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action: action, data: payload })
-    });
-    const result = await response.json();
-    if (result.status !== 'success') throw new Error(result.message);
-    return result;
-  }
-
   window.onload = async () => {
+    if (!currentId) return;
     showLoading();
     try {
-      if (!currentId) {
-        showSection('adminMain');
-        await loadAdminData();
-      } else {
-        showSection('reportSection');
-        const data = await fetchAPI('getPageConfig', { id: currentId });
-        renderMatrix(data);
-      }
-    } catch (err) { alert("載入錯誤：" + err.message); }
+      const data = await fetchAPI('getPageConfig', { id: currentId });
+      renderMatrix(data);
+      saveSnapshot(); // 初始快照
+    } catch (err) { alert("載入失敗"); }
     finally { hideLoading(); }
   };
 
@@ -126,160 +95,160 @@
     thead.innerHTML = `<tr>${data.matrix[0].map(h => `<th>${h}</th>`).join('')}</tr>`;
     
     tbody.innerHTML = data.matrix.slice(1).map((row, rIdx) => {
-      const realR = rIdx + 1;
+      const r = rIdx + 1;
       return `<tr>${row.map((cell, cIdx) => `
-        <td>
-          <input class="grid-input" value="${cell}" readonly 
-                 data-r="${realR}" data-c="${cIdx}"
-                 onmousedown="doMouseDown(event)" 
-                 onmouseenter="doMouseEnter(event)"
-                 ondblclick="doDblClick(event)">
-        </td>`).join('')}</tr>`;
+        <td><input class="grid-input" value="${cell}" readonly data-r="${r}" data-c="${cIdx}"
+                   onmousedown="doMouseDown(event)" onmouseenter="doMouseEnter(event)" ondblclick="doDblClick(event)"></td>
+      `).join('')}</tr>`;
     }).join('');
   }
 
-  // --- ★ Excel 多格選取核心邏輯 ---
+  // --- 歷史紀錄邏輯 ---
+  function saveSnapshot() {
+    const currentData = Array.from(document.querySelectorAll('#tableBody tr')).map(tr => 
+      Array.from(tr.querySelectorAll('input')).map(i => i.value)
+    );
+    undoStack.push(JSON.stringify(currentData));
+    if (undoStack.length > MAX_HISTORY) undoStack.shift();
+    redoStack = []; // 有新動作時清空重做堆疊
+  }
 
+  function undo() {
+    if (undoStack.length <= 1) return;
+    redoStack.push(undoStack.pop());
+    applySnapshot(undoStack[undoStack.length - 1]);
+  }
+
+  function redo() {
+    if (redoStack.length === 0) return;
+    const data = redoStack.pop();
+    undoStack.push(data);
+    applySnapshot(data);
+  }
+
+  function applySnapshot(jsonStr) {
+    const data = JSON.parse(jsonStr);
+    const rows = document.querySelectorAll('#tableBody tr');
+    data.forEach((rowData, r) => {
+      const inputs = rows[r].querySelectorAll('input');
+      rowData.forEach((val, c) => { inputs[c].value = val; });
+    });
+  }
+
+  // --- 選取邏輯 ---
   function doMouseDown(e) {
     isMouseDown = true;
-    const r = parseInt(e.target.dataset.r);
-    const c = parseInt(e.target.dataset.c);
-    startCell = {r, c};
-    endCell = {r, c};
-    clearSelectionStyles();
-    e.target.classList.add('selected', 'active-cell');
+    startCell = { r: parseInt(e.target.dataset.r), c: parseInt(e.target.dataset.c) };
+    endCell = { ...startCell };
+    updateSelection();
   }
 
   function doMouseEnter(e) {
     if (!isMouseDown) return;
-    const r = parseInt(e.target.dataset.r);
-    const c = parseInt(e.target.dataset.c);
-    endCell = {r, c};
-    updateSelectionRange();
+    endCell = { r: parseInt(e.target.dataset.r), c: parseInt(e.target.dataset.c) };
+    updateSelection();
   }
 
   window.onmouseup = () => { isMouseDown = false; };
 
-  function updateSelectionRange() {
-    clearSelectionStyles();
-    const minR = Math.min(startCell.r, endCell.r);
-    const maxR = Math.max(startCell.r, endCell.r);
-    const minC = Math.min(startCell.c, endCell.c);
-    const maxC = Math.max(startCell.c, endCell.c);
-
-    document.querySelectorAll('.grid-input').forEach(el => {
-      const r = parseInt(el.dataset.r);
-      const c = parseInt(el.dataset.c);
-      if (r >= minR && r <= maxR && c >= minC && c <= maxC) {
-        el.classList.add('selected');
-      }
-    });
-  }
-
-  function clearSelectionStyles() {
+  function updateSelection() {
     document.querySelectorAll('.grid-input').forEach(el => {
       el.classList.remove('selected', 'active-cell');
-      el.readOnly = true; // 恢復唯讀以利選取
+      el.readOnly = true;
+      const r = parseInt(el.dataset.r), c = parseInt(el.dataset.c);
+      if (r >= Math.min(startCell.r, endCell.r) && r <= Math.max(startCell.r, endCell.r) &&
+          c >= Math.min(startCell.c, endCell.c) && c <= Math.max(startCell.c, endCell.c)) {
+        el.classList.add('selected');
+        if (r === startCell.r && c === startCell.c) el.classList.add('active-cell');
+      }
     });
   }
 
   function doDblClick(e) {
-    e.target.readOnly = false;
-    e.target.focus();
-    e.target.classList.add('active-cell');
+    const el = e.target;
+    el.readOnly = false; el.focus();
+    el.onblur = () => { saveSnapshot(); el.readOnly = true; };
   }
 
-  // 鍵盤操作
+  // --- 鍵盤快捷鍵整合 ---
   document.addEventListener('keydown', (e) => {
     const active = document.activeElement;
     const isEditing = active.classList.contains('grid-input') && !active.readOnly;
-    if (isEditing) return; // 正在編輯打字時不觸發批次功能
+    
+    // 1. Undo/Redo (Ctrl+Z / Ctrl+Y)
+    if (e.ctrlKey && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); return; }
+    if (e.ctrlKey && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
 
-    const selected = document.querySelectorAll('.grid-input.selected');
-    
-    // 批次刪除
-    if (e.key === 'Delete' || e.key === 'Backspace') {
-      selected.forEach(el => el.value = "");
+    if (isEditing) return;
+
+    // 2. Shift + 方向鍵 (擴展選取)
+    if (e.shiftKey && e.key.startsWith('Arrow')) {
       e.preventDefault();
+      if (e.key === 'ArrowUp') endCell.r = Math.max(1, endCell.r - 1);
+      else if (e.key === 'ArrowDown') endCell.r = Math.min(document.querySelectorAll('#tableBody tr').length, endCell.r + 1);
+      else if (e.key === 'ArrowLeft') endCell.c = Math.max(0, endCell.c - 1);
+      else if (e.key === 'ArrowRight') endCell.c = Math.min(document.querySelectorAll('#tableHead th').length - 1, endCell.c + 1);
+      updateSelection();
+      return;
     }
-    
-    // 方向鍵移動
-    if (e.key.startsWith('Arrow') && selected.length > 0) {
-      let r = startCell.r, c = startCell.c;
-      if (e.key === 'ArrowUp') r--; else if (e.key === 'ArrowDown') r++;
-      else if (e.key === 'ArrowLeft') c--; else if (e.key === 'ArrowRight') c++;
-      
-      const next = document.querySelector(`.grid-input[data-r="${r}"][data-c="${c}"]`);
-      if (next) {
-        e.preventDefault();
-        startCell = {r, c}; endCell = {r, c};
-        clearSelectionStyles();
-        next.classList.add('selected', 'active-cell');
-        next.focus();
-      }
+
+    // 3. 單純方向鍵 (移動錨點)
+    if (!e.shiftKey && e.key.startsWith('Arrow')) {
+      e.preventDefault();
+      if (e.key === 'ArrowUp') startCell.r = Math.max(1, startCell.r - 1);
+      else if (e.key === 'ArrowDown') startCell.r = Math.min(document.querySelectorAll('#tableBody tr').length, startCell.r + 1);
+      else if (e.key === 'ArrowLeft') startCell.c = Math.max(0, startCell.c - 1);
+      else if (e.key === 'ArrowRight') startCell.c = Math.min(document.querySelectorAll('#tableHead th').length - 1, startCell.c + 1);
+      endCell = { ...startCell };
+      updateSelection();
+      document.querySelector(`.grid-input[data-r="${startCell.r}"][data-c="${startCell.c}"]`).focus();
+      return;
+    }
+
+    // 4. 批次刪除
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      saveSnapshot();
+      document.querySelectorAll('.grid-input.selected').forEach(el => el.value = "");
+      e.preventDefault();
     }
   });
 
-  // 貼上功能
+  // 智慧貼上 (支援 Undo)
   document.addEventListener('paste', (e) => {
     const active = document.activeElement;
     if (!active.classList.contains('grid-input')) return;
+    saveSnapshot();
     const text = (e.clipboardData || window.clipboardData).getData('text');
-    if (!text.includes('\t') && !text.includes('\n')) return;
-    
-    e.preventDefault();
     const rows = text.split(/\r?\n/).filter(line => line.length > 0);
     const startR = parseInt(active.dataset.r), startC = parseInt(active.dataset.c);
-    
     rows.forEach((row, i) => {
       row.split('\t').forEach((val, j) => {
         const target = document.querySelector(`.grid-input[data-r="${startR + i}"][data-c="${startC + j}"]`);
-        if (target) target.value = val.trim();
+        if (target) target.value = val;
       });
     });
+    e.preventDefault();
   });
 
   async function saveData() {
-    const btn = document.querySelector('.btn-primary');
-    btn.disabled = true; showLoading();
-    
+    showLoading();
     const matrix = [Array.from(document.querySelectorAll('#tableHead th')).map(th => th.innerText)];
     document.querySelectorAll('#tableBody tr').forEach(tr => {
       matrix.push(Array.from(tr.querySelectorAll('input')).map(i => i.value));
     });
-    
     try {
-      const res = await postAPI('saveSheetData', { groupName: activeGroupName, matrix: matrix });
+      const response = await fetch(GAS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: "saveSheetData", data: { groupName: activeGroupName, matrix: matrix } })
+      });
+      const res = await response.json();
       alert(res.message);
-    } catch (err) { alert("儲存錯誤: " + err.message); }
-    finally { btn.disabled = false; hideLoading(); }
-  }
-
-  function showSection(id) {
-    document.querySelectorAll('.card-custom').forEach(el => el.classList.add('hidden'));
-    document.getElementById(id).classList.remove('hidden');
+    } catch (e) { alert("儲存失敗"); }
+    finally { hideLoading(); }
   }
 
   function goToHome() { window.location.href = window.location.href.split('?')[0]; }
-
-  async function loadAdminData() {
-    const [groups, templates] = await Promise.all([fetchAPI('getGroups'), fetchAPI('getTemplates')]);
-    const div = document.getElementById('groupButtons');
-    div.innerHTML = groups.map(g => `<a href="${window.location.href.split('?')[0]}?id=${g.id}" class="btn btn-outline-primary text-start">➔ ${g.name}</a>`).join('');
-    document.getElementById('templateSelect').innerHTML = '<option value="" disabled selected>選擇模板</option>' + templates.map(t=>`<option>${t}</option>`).join('');
-  }
-
-  document.getElementById('createGroupForm').onsubmit = async function(e) {
-    e.preventDefault(); showLoading();
-    try {
-      await postAPI('createGroup', {
-        id: document.getElementById('newId').value,
-        name: document.getElementById('newName').value,
-        template: document.getElementById('templateSelect').value
-      });
-      location.reload();
-    } catch (err) { alert(err.message); hideLoading(); }
-  };
 </script>
 </body>
 </html>
