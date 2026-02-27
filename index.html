@@ -65,11 +65,10 @@
   // ==========================================
   const GAS_URL = "https://script.google.com/macros/s/AKfycbwVZyD_r_LCawhDwfWNqbiagpiU0GksI_Wm3DcD2SLcYJZ5aO_QpQBiHRUzblJYfkL9/exec"; 
   
-  const urlParams = new URLSearchParams(window.location.search);
+const urlParams = new URLSearchParams(window.location.search);
   const currentId = urlParams.get('id');
   let activeGroupName = "";
 
-  // 控制載入提示
   const showLoading = () => document.getElementById('globalLoading').classList.remove('hidden');
   const hideLoading = () => document.getElementById('globalLoading').classList.add('hidden');
 
@@ -87,7 +86,6 @@
   }
 
   async function postAPI(action, payload) {
-    // 這裡使用 text/plain 以避免觸發 CORS Preflight (OPTIONS 請求) 導致 GAS 報錯
     const response = await fetch(GAS_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -97,7 +95,6 @@
     if (result.status !== 'success') throw new Error(result.message);
     return result;
   }
-  // ------------------
 
   window.onload = async () => {
     showLoading();
@@ -127,21 +124,90 @@
 
     data.matrix.forEach((row, rIdx) => {
       const tr = document.createElement('tr');
-      row.forEach((cell) => {
+      row.forEach((cell, cIdx) => {
         const el = document.createElement(rIdx === 0 ? 'th' : 'td');
-        const input = document.createElement('input');
-        input.className = "grid-input";
-        input.value = cell;
+        
+        // ★ 強化 1: 第一列直接變純文字標題，不給編輯
         if (rIdx === 0) {
-          input.style.fontWeight = "bold";
-          input.style.color = "white";
+          el.innerText = cell;
+          el.style.backgroundColor = '#212529'; // 確保深色背景
+          el.style.color = 'white';
+        } else {
+          // 其他列產生輸入框
+          const input = document.createElement('input');
+          input.className = "grid-input";
+          input.value = cell;
+          
+          // 紀錄座標，為了方向鍵與貼上功能做準備
+          input.dataset.r = rIdx;
+          input.dataset.c = cIdx;
+          
+          el.appendChild(input);
         }
-        el.appendChild(input);
         tr.appendChild(el);
       });
       rIdx === 0 ? thead.appendChild(tr) : tbody.appendChild(tr);
     });
   }
+
+  // ★ 強化 2: 方向鍵導航功能
+  document.addEventListener('keydown', function(e) {
+    if (!e.target.classList.contains('grid-input')) return;
+    
+    let r = parseInt(e.target.dataset.r);
+    let c = parseInt(e.target.dataset.c);
+    
+    if (e.key === 'ArrowUp') r--;
+    else if (e.key === 'ArrowDown') r++;
+    else if (e.key === 'ArrowLeft') c--;
+    else if (e.key === 'ArrowRight') c++;
+    else return; // 非方向鍵則不處理
+
+    // 尋找目標輸入框並轉移焦點
+    let nextInput = document.querySelector(`.grid-input[data-r="${r}"][data-c="${c}"]`);
+    if (nextInput) {
+      nextInput.focus();
+      // 在格子內左右移動時，如果有文字，可以選擇不阻止預設行為讓游標可以移動
+      // 但如果是上下移動，我們強迫選取整格，體驗更像 Excel
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        e.preventDefault(); 
+        nextInput.select();
+      }
+    }
+  });
+
+  // ★ 強化 3: 智慧批量貼上功能
+  document.addEventListener('paste', function(e) {
+    if (!e.target.classList.contains('grid-input')) return;
+    
+    // 取得剪貼簿裡的文字
+    let pasteData = (e.clipboardData || window.clipboardData).getData('text');
+    
+    // 如果只有單純一個詞（沒有換行也沒有 Tab），就用預設貼上就好
+    if (!pasteData.includes('\t') && !pasteData.includes('\n')) return;
+
+    e.preventDefault(); // 阻止原本只貼在同一格的行為
+
+    // Excel 複製出來的資料，列與列用 \n 分隔，欄與欄用 \t 分隔
+    let rows = pasteData.split(/\r?\n/);
+    if (rows[rows.length - 1] === "") rows.pop(); // 移除 Excel 結尾多餘的空行
+
+    let startR = parseInt(e.target.dataset.r);
+    let startC = parseInt(e.target.dataset.c);
+
+    // 依序填入儲存格
+    rows.forEach((rowStr, i) => {
+      let cells = rowStr.split('\t');
+      cells.forEach((cellVal, j) => {
+        let targetInput = document.querySelector(`.grid-input[data-r="${startR + i}"][data-c="${startC + j}"]`);
+        if (targetInput) {
+          targetInput.value = cellVal.trim();
+          targetInput.style.backgroundColor = "#e8f0fe"; // 給個貼上成功的小提示色
+          setTimeout(() => targetInput.style.backgroundColor = "transparent", 1000);
+        }
+      });
+    });
+  });
 
   async function saveData() {
     const btn = document.querySelector('.btn-primary');
@@ -149,8 +215,14 @@
     showLoading();
     
     const matrix = [];
-    const rows = document.querySelectorAll('#reportSection tr');
-    rows.forEach(tr => {
+    
+    // 抓取標題列
+    const headRow = [];
+    document.querySelectorAll('#tableHead th').forEach(th => headRow.push(th.innerText));
+    matrix.push(headRow);
+
+    // 抓取內容列
+    document.querySelectorAll('#tableBody tr').forEach(tr => {
       const rowData = [];
       tr.querySelectorAll('input').forEach(i => rowData.push(i.value));
       matrix.push(rowData);
@@ -178,7 +250,6 @@
 
   async function loadAdminData() {
     try {
-      // 平行抓取群組與模板，提升速度
       const [groups, templates] = await Promise.all([
         fetchAPI('getGroups'),
         fetchAPI('getTemplates')
