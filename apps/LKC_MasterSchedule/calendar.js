@@ -311,6 +311,7 @@ async function loadEventsForRange(startDate, endDate) {
 
     if (!isCustomFilter) {
       _eventsCache.set(cacheKey, events);
+      try { localStorage.setItem('churchEvents', JSON.stringify(events)); } catch (e) {}
     }
     renderCalendarEvents(events);
   } catch (err) {
@@ -440,9 +441,17 @@ async function renderFieldsForType(typeId, existingValues) {
     return;
   }
 
-  // existingValues: array of {fieldId, value}
+  // existingValues: array of {fieldId, value} or object of { [fieldId]: value }
   const valMap = {};
-  (existingValues || []).forEach(v => valMap[v.fieldId] = v.value);
+  if (Array.isArray(existingValues)) {
+    existingValues.forEach(v => {
+      if (v && v.fieldId) valMap[v.fieldId] = (v.value !== undefined ? v.value : v['值']) || '';
+    });
+  } else if (existingValues && typeof existingValues === 'object') {
+    Object.entries(existingValues).forEach(([fid, v]) => {
+      valMap[fid] = (typeof v === 'object' && v !== null && v.value !== undefined ? v.value : v) || '';
+    });
+  }
 
   container.innerHTML = fields.map(f => _renderFieldInput(f, valMap[f.fieldId] || '')).join('');
 }

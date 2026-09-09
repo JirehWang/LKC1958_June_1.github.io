@@ -32,6 +32,44 @@
     return (prefix || 'id') + '_' + Math.random().toString(36).substring(2, 10) + '_' + Date.now().toString(36);
   }
 
+  function normalizeValuesInput(valuesInput, eventId) {
+    const fieldValuesMap = {};
+    const valueRows = [];
+    if (!valuesInput) return { fieldValuesMap, valueRows };
+
+    if (Array.isArray(valuesInput)) {
+      valuesInput.forEach(v => {
+        if (v) {
+          const fid = v.fieldId || v.field_id;
+          if (fid) {
+            const val = v.value !== undefined ? v.value : v['值'];
+            const strVal = String(val != null ? val : '');
+            fieldValuesMap[fid] = strVal;
+            if (eventId) {
+              valueRows.push({ event_id: eventId, field_id: fid, value: strVal });
+            }
+          }
+        }
+      });
+    } else if (typeof valuesInput === 'object') {
+      Object.entries(valuesInput).forEach(([fid, val]) => {
+        if (fid && val !== undefined && val !== null) {
+          let strVal;
+          if (typeof val === 'object' && val !== null && (val.value !== undefined || val['值'] !== undefined)) {
+            strVal = String(val.value !== undefined ? val.value : (val['值'] != null ? val['值'] : ''));
+          } else {
+            strVal = String(val);
+          }
+          fieldValuesMap[fid] = strVal;
+          if (eventId) {
+            valueRows.push({ event_id: eventId, field_id: fid, value: strVal });
+          }
+        }
+      });
+    }
+    return { fieldValuesMap, valueRows };
+  }
+
   const CalendarSupabaseService = {
     // ── 1. 事項類型 (Types) ──────────────────────────────────
     async cal_getTypes() {
@@ -186,6 +224,7 @@
         fieldType: f.field_type || 'text',
         '欄位類型': f.field_type || 'text',
         isRequired: Boolean(f.is_required),
+        required: Boolean(f.is_required),
         '是否必填': Boolean(f.is_required),
         options: Array.isArray(f.options) ? f.options : [],
         '下拉選項': Array.isArray(f.options) ? f.options : [],
@@ -350,7 +389,7 @@
           rootType = typeById[type.parent_type_id];
         }
 
-        const evValues = (valuesByEvent[e.event_id] || []).map(v => {
+        let evValues = (valuesByEvent[e.event_id] || []).map(v => {
           const f = fieldById[v.field_id];
           return f ? {
             fieldId: v.field_id,
@@ -364,13 +403,36 @@
           } : null;
         }).filter(Boolean);
 
+        // Fallback: If no values from calendar_event_values, try e.field_values
+        if (evValues.length === 0 && e.field_values && typeof e.field_values === 'object') {
+          evValues = Object.entries(e.field_values).map(([fid, val]) => {
+            const f = fieldById[fid];
+            return f ? {
+              fieldId: fid,
+              fieldName: f.name,
+              name: f.name,
+              '顯示名稱': f.name,
+              fieldType: f.field_type,
+              '欄位類型': f.field_type,
+              value: String(val != null ? val : ''),
+              '值': String(val != null ? val : '')
+            } : null;
+          }).filter(Boolean);
+        }
+
         const isSermon = rootType && (rootType.name === '講道資訊' || rootType.sync_to_worship);
+        const sermonTopic = (evValues.find(v => v.fieldName === '講題' || v.fieldName === '題目') || {}).value || '';
         const sermonObj = isSermon ? {
+          id: e.event_id,
+          type: type.name || '',
           speaker: (evValues.find(v => v.fieldName === '講員' || v['顯示名稱'] === '講員') || {}).value || '',
-          topic: (evValues.find(v => v.fieldName === '講題' || v.fieldName === '題目') || {}).value || '',
+          topic: sermonTopic,
+          title: sermonTopic,
           scripture: (evValues.find(v => v.fieldName === '經文' || v['顯示名稱'] === '經文') || {}).value || '',
           callToWorship: (evValues.find(v => v.fieldName === '宣召' || v['顯示名稱'] === '宣召') || {}).value || '',
-          goldenVerse: (evValues.find(v => v.fieldName === '金句' || v['顯示名稱'] === '金句') || {}).value || ''
+          goldenVerse: (evValues.find(v => v.fieldName === '金句' || v['顯示名稱'] === '金句') || {}).value || '',
+          hymns: (evValues.find(v => v.fieldName === '聖詩一' || v.fieldName === '詩歌') || {}).value || '',
+          description: (evValues.find(v => v.fieldName === '備註') || {}).value || ''
         } : null;
 
         const eventIcon = (type && type.icon) || (rootType && rootType.icon) || '📌';
@@ -428,22 +490,17 @@
       const eventId = data.eventId || generateId('ev');
       const typeId = data.typeId;
       const date = data.date || data['日期'];
-      const title = data.title || data.name || data['顯示標題'] || data['聚會名稱'] || '聚會事項';
-
       if (!typeId || !date) throw new Error('typeId 與 date 必填');
 
-      const fieldValuesMap = {};
-      const valueRows = [];
-      const valuesList = data.values || data.fields || [];
-      if (Array.isArray(valuesList)) {
-        valuesList.forEach(v => {
-          if (v && v.fieldId) {
-            const val = v.value !== undefined ? v.value : v['值'];
-            fieldValuesMap[v.fieldId] = val || '';
-            valueRows.push({ event_id: eventId, field_id: v.fieldId, value: String(val || '') });
-          }
-        });
+      const rawValues = data.values !== undefined ? data.values : data.fields;
+      const { fieldValuesMap, valueRows } = normalizeValuesInput(rawValues, eventId);
+
+      let title = (data.title || data.name || data['顯示標題'] || data['聚會名稱'] || '').toString().trim();
+      if (!title && Object.keys(fieldValuesMap).length > 0) {
+        const firstVal = Object.values(fieldValuesMap).find(v => v && String(v).trim());
+        if (firstVal) title = String(firstVal).trim().substring(0, 60);
       }
+      if (!title) title = '聚會事項';
 
       const { error: evErr } = await sb.from('calendar_events').insert({
         event_id: eventId,
@@ -477,17 +534,9 @@
         updates.title = data.title || data.name || data['顯示標題'] || data['聚會名稱'];
       }
 
-      const valuesList = data.values || data.fields || [];
-      if (Array.isArray(valuesList)) {
-        const fieldValuesMap = {};
-        const valueRows = [];
-        valuesList.forEach(v => {
-          if (v && v.fieldId) {
-            const val = v.value !== undefined ? v.value : v['值'];
-            fieldValuesMap[v.fieldId] = val || '';
-            valueRows.push({ event_id: eventId, field_id: v.fieldId, value: String(val || '') });
-          }
-        });
+      const rawValues = data.values !== undefined ? data.values : data.fields;
+      if (rawValues !== undefined && rawValues !== null) {
+        const { fieldValuesMap, valueRows } = normalizeValuesInput(rawValues, eventId);
         updates.field_values = fieldValuesMap;
 
         await sb.from('calendar_event_values').delete().eq('event_id', eventId);
@@ -530,21 +579,19 @@
         const eventId = ev.eventId || generateId('ev');
         const typeId = ev.typeId;
         const date = ev.date || ev['日期'];
-        const title = ev.title || ev.name || ev['顯示標題'] || ev['聚會名稱'] || '聚會事項';
         if (!typeId || !date) return;
 
-        const fieldValuesMap = {};
-        const valuesList = ev.values || ev.fields || [];
-        if (Array.isArray(valuesList)) {
-          valuesList.forEach(v => {
-            if (v && v.fieldId) {
-              const val = v.value !== undefined ? v.value : v['值'];
-              fieldValuesMap[v.fieldId] = val || '';
-              allValueRows.push({ event_id: eventId, field_id: v.fieldId, value: String(val || '') });
-            }
-          });
-        }
+        const rawValues = ev.values !== undefined ? ev.values : ev.fields;
+        const { fieldValuesMap, valueRows } = normalizeValuesInput(rawValues, eventId);
 
+        let title = (ev.title || ev.name || ev['顯示標題'] || ev['聚會名稱'] || '').toString().trim();
+        if (!title && Object.keys(fieldValuesMap).length > 0) {
+          const firstVal = Object.values(fieldValuesMap).find(v => v && String(v).trim());
+          if (firstVal) title = String(firstVal).trim().substring(0, 60);
+        }
+        if (!title) title = '聚會事項';
+
+        allValueRows.push(...valueRows);
         eventRows.push({
           event_id: eventId,
           type_id: typeId,
