@@ -263,7 +263,8 @@
             const dateStr = event["日期"] || (dateObj ? formatDate(dateObj) : '');
             const weekDay = dateObj ? ` (星期${['日', '一', '二', '三', '四', '五', '六'][dateObj.getDay()]})` : '';
             const groupName = event["分頁名稱"] || '小組';
-            const topic = event["主題"] || event["聚會名稱"] || (event["模板類型"] === '團契聚會表模板' ? '團契聚會' : '小組聚會');
+            const isFellowship = groupName.includes('團契');
+            const topic = event["主題"] || event["聚會名稱"] || (isFellowship ? '團契聚會' : '小組聚會');
             const location = event["地點"] || '';
             const scripture = event["經文"] || '';
 
@@ -352,11 +353,11 @@
 
                 const smData = matrixToObjects(smRes.data);
                 const othData = (othRes && othRes.status === 'success')
-                    ? matrixToObjects(othRes.data).filter(r => r['模板類型'] === '團契聚會表模板')
+                    ? matrixToObjects(othRes.data).filter(r => r['模板類型'] === '聚會型模板' || r['模板類型'] === 'gathering')
                     : [];
                 // 🛡️ 雙重防護：嚴格限定僅保留小組與團契聚會型模板，杜絕事工服事排班混入
                 const allRawData = [...smData, ...othData].filter(r => 
-                    r['模板類型'] === '小組聚會表模板' || r['模板類型'] === '團契聚會表模板' || r['模板類型'] === '聚會型模板'
+                    r['模板類型'] === '小組聚會表模板' || r['模板類型'] === '團契聚會表模板' || r['模板類型'] === '聚會型模板' || r['模板類型'] === 'gathering'
                 );
 
                 // 🌟 針對每筆小組聚會，若設定了「套用講道」且主題/經文為空白或為「待定」，在前端動態連動最新講道資訊
@@ -408,13 +409,13 @@
                             </div>
                             <div class="card-body">
                                 <div class="card-header-flex">
-                                    <span class="group-tag ${event["模板類型"] === '團契聚會表模板' ? 'fellowship' : ''}">${event["分頁名稱"]}${event["模板類型"] === '團契聚會表模板' ? ' · 團契' : ''}</span>
+                                    <span class="group-tag ${String(event["分頁名稱"] || '').includes('團契') ? 'fellowship' : ''}">${event["分頁名稱"]}${String(event["分頁名稱"] || '').includes('團契') ? ' · 團契' : ''}</span>
                                     <button type="button" class="btn-copy-card" onclick="copyGroupEvent(${idx}, this)" title="一鍵複製此日聚會資訊">
                                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                                         <span>複製資訊</span>
                                     </button>
                                 </div>
-                                <div class="event-name">${event["主題"] || event["聚會名稱"] || (event["模板類型"] === '團契聚會表模板' ? '團契聚會' : '小組聚會')}</div>
+                                <div class="event-name">${event["主題"] || event["聚會名稱"] || (String(event["分頁名稱"] || '').includes('團契') ? '團契聚會' : '小組聚會')}</div>
                                 
                                 <div class="duty-section">
                                     ${duties || '<div class="text-center text-muted small">一般聚會，無需特別服事</div>'}

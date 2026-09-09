@@ -208,7 +208,12 @@
       const coreMembers = groupMembers.filter(m => m.role === '核心同工' || m.role === '福長').map(m => m.name);
       const generalMembers = groupMembers.map(m => m.name);
 
-      const templateName = page.template_type || '小組聚會表模板';
+      let templateName = page.template_type || '聚會型模板';
+      if (templateName === 'gathering' || templateName === '小組聚會表模板' || templateName === '團契聚會表模板') {
+        templateName = '聚會型模板';
+      } else if (templateName === 'ministry') {
+        templateName = '事工型模板';
+      }
 
       return {
         status: 'success',
@@ -480,10 +485,9 @@
 
         if (page) {
           if (page.status === '隱藏') return;
-          const isFellowship = page.page_name.includes('團契');
-          if (page.template_type === 'gathering' || page.template_type === '小組聚會表模板' || page.template_type === '團契聚會表模板' || page.template_type === '聚會型模板') {
+          if (page.template_type === 'gathering' || page.template_type === '聚會型模板' || page.template_type === '小組聚會表模板' || page.template_type === '團契聚會表模板') {
             isGathering = true;
-            tType = isFellowship ? '團契聚會表模板' : '小組聚會表模板';
+            tType = '聚會型模板';
           }
         }
 

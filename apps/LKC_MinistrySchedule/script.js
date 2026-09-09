@@ -103,7 +103,7 @@ const initialFieldTemplates = {
 };
 
 const fieldTemplateBackendMap = {
-  "聚會型模板": "小組聚會表模板",
+  "聚會型模板": "聚會型模板",
   "事工型模板": "事工型模板"
 };
 
@@ -111,16 +111,28 @@ function getBackendTemplateForFieldType(fieldTemplateType) {
   const preferred = fieldTemplateBackendMap[fieldTemplateType] || fieldTemplateType;
   if (!availableMinistryTemplates.length || availableMinistryTemplates.includes(preferred)) return preferred;
   if (fieldTemplateType === "聚會型模板") {
-    return availableMinistryTemplates.find(t => t.includes("小組") || t.includes("團契")) || availableMinistryTemplates[0];
+    return availableMinistryTemplates.find(t => t.includes("聚會") || t.includes("小組") || t.includes("團契")) || "聚會型模板";
   }
-  return availableMinistryTemplates.find(t => !t.includes("小組") && !t.includes("團契")) || availableMinistryTemplates[0];
+  return availableMinistryTemplates.find(t => !t.includes("聚會") && !t.includes("小組") && !t.includes("團契")) || "事工型模板";
 }
 
 function getFieldTemplateType(templateName) {
-  if (templateName === "小組聚會表模板" || templateName === "團契聚會表模板" || templateName === "聚會型模板") {
+  if (!templateName) return "聚會型模板";
+  const t = String(templateName).trim();
+  if (t === "小組聚會表模板" || t === "團契聚會表模板" || t === "聚會型模板" || t === "gathering") {
+    return "聚會型模板";
+  }
+  if (t === "事工型模板" || t === "ministry" || t.includes("事工")) {
+    return "事工型模板";
+  }
+  if (t.includes("小組") || t.includes("團契") || t.includes("聚會")) {
     return "聚會型模板";
   }
   return "事工型模板";
+}
+
+function isMeetingTemplate(templateName = currentTemplate) {
+  return getFieldTemplateType(templateName) === "聚會型模板";
 }
 
 function getFieldConfigStorageKey(pageId = currentId) {
@@ -154,7 +166,7 @@ function isFieldMemberListEnabled(fieldName) {
 function getFieldMemberListId(fieldName, templateName = currentTemplate) {
   if (!isFieldMemberListEnabled(fieldName)) return "";
 
-  if (templateName === "小組聚會表模板" || templateName === "團契聚會表模板") {
+  if (isMeetingTemplate(templateName)) {
     return "generalMembersList";
   }
   if (templateName === "新家人服事表模板" && fieldName.includes("小家長")) {
@@ -745,7 +757,7 @@ function renderTable(data) {
 
   const memberBtn = document.getElementById('manageMembersBtn');
   const groupRoleBtn = document.getElementById('manageGroupRolesBtn');
-  const isGroupOrFellowship = (currentTemplate === "小組聚會表模板" || currentTemplate === "團契聚會表模板");
+  const isGroupOrFellowship = isMeetingTemplate(currentTemplate);
 
   // 聚會型模板的 members 來自小組主名單（核心＋一般同工）；不可被
   // 事工自訂名單覆蓋，否則破冰／敬拜欄位會遺失一般同工。
@@ -834,7 +846,7 @@ function renderTable(data) {
   if (currentGeneralMembers.length > 0)
     datalistHTML += `<datalist id="generalMembersList">` + currentGeneralMembers.map(m => `<option value="${m}">`).join('') + `</datalist>`;
 
-  if (currentTemplate !== "小組聚會表模板") {
+  if (!isMeetingTemplate(currentTemplate)) {
     if (currentTemplate === "新家人服事表模板") {
       const normalNames = localCustomMembers.filter(m => m.role === "一般同工").map(m => m.name);
       const parentNames = localCustomMembers.filter(m => m.role === "小家長").map(m => m.name);
@@ -877,8 +889,8 @@ function renderTable(data) {
   const nameColIdx = currentTableHeaders.findIndex(h => h.includes("聚會名稱"));
   const catColIdx = currentTableHeaders.findIndex(h => h.includes("聚會類別"));
 
-  // 1. 若為非小組模板，先將 eventData 中缺少的日期補入
-  if (dateColIdx !== -1 && currentTemplate !== "小組聚會表模板" && currentTemplate !== "團契聚會表模板" && currentEventData.length > 0) {
+  // 1. 若為非小組/聚會型模板（事工型模板），先將 eventData 中缺少的日期補入
+  if (dateColIdx !== -1 && !isMeetingTemplate(currentTemplate) && currentEventData.length > 0) {
     const existingDates = validRows.map(r => r[dateColIdx]);
     currentEventData.forEach(event => {
       if (!existingDates.includes(event.date)) {
@@ -955,7 +967,7 @@ function createRowHTML(rowData, gridTemplate) {
 
   currentTableHeaders.forEach((header, cIdx) => {
     let val = rowData[cIdx] || "";
-    if (header === "經文" && (currentTemplate === "小組聚會表模板" || currentTemplate === "團契聚會表模板") && window.BibleFormatter) {
+    if (header === "經文" && isMeetingTemplate(currentTemplate) && window.BibleFormatter) {
       val = window.BibleFormatter.format(val);
     }
     if (header === "套用講道") {
@@ -1113,8 +1125,8 @@ function rerenderWithMatrix(matrix) {
   });
 }
 
-function isMeetingTemplate() {
-  return currentTemplate === "小組聚會表模板" || currentTemplate === "團契聚會表模板";
+function isMeetingTemplate(templateName = currentTemplate) {
+  return getFieldTemplateType(templateName) === "聚會型模板";
 }
 
 function updateTemplateSpecificLabels() {
@@ -1471,7 +1483,7 @@ function initGridInteraction() {
             target.focus();
           }
         }
-      } else if (header && header === "經文" && (currentTemplate === "小組聚會表模板" || currentTemplate === "團契聚會表模板") && window.BibleFormatter) {
+      } else if (header && header === "經文" && isMeetingTemplate(currentTemplate) && window.BibleFormatter) {
         const val = target.value.trim();
         if (val !== "") {
           const formatted = window.BibleFormatter.format(val);
@@ -1523,7 +1535,7 @@ function initGridInteraction() {
               onSermonLinkChange(input);
             } else {
               let val = cols[j];
-              if (currentTableHeaders[c] === "經文" && (currentTemplate === "小組聚會表模板" || currentTemplate === "團契聚會表模板") && window.BibleFormatter) {
+              if (currentTableHeaders[c] === "經文" && isMeetingTemplate(currentTemplate) && window.BibleFormatter) {
                 val = window.BibleFormatter.format(val);
               }
               input.value = val;
@@ -1834,7 +1846,7 @@ function fillTableWithData(parsedRows, isPaste = false) {
             onSermonLinkChange(input);
           } else {
             let finalVal = val;
-            if (header === "經文" && (currentTemplate === "小組聚會表模板" || currentTemplate === "團契聚會表模板") && window.BibleFormatter) {
+            if (header === "經文" && isMeetingTemplate(currentTemplate) && window.BibleFormatter) {
               finalVal = window.BibleFormatter.format(val);
             }
             input.value = finalVal;
@@ -2046,7 +2058,7 @@ async function saveGroupPrompt() {
 const _MS_FILTER_QUARTERS = [1, 2, 3, 4];
 
 // 應該被視為「小組類聚會」的模板（小組總表 / 各小組佈告欄會包含這些）
-const _MS_FELLOWSHIP_TEMPLATES = ['小組聚會表模板', '團契聚會表模板'];
+const _MS_FELLOWSHIP_TEMPLATES = ['小組聚會表模板', '團契聚會表模板', '聚會型模板', 'gathering'];
 // 各項服事總表合併同日期時，要丟掉的「來源」欄位
 const _MS_META_COLS = ['分頁名稱', '模板類型', '聚會名稱', '聚會類別'];
 
@@ -2391,7 +2403,7 @@ function _ms_buildCardsHtml(matrix) {
         </div>
         <div class="glass-content">
           <div class="glass-topic-line d-flex justify-content-between align-items-center mb-2">
-            <h3 class="glass-topic m-0">${topic || (currentTemplate === '團契聚會表模板' ? '團契聚會' : '小組聚會')}</h3>
+            <h3 class="glass-topic m-0">${topic || ((activeGroupName && activeGroupName.includes('團契')) ? '團契聚會' : '小組聚會')}</h3>
             <button type="button" class="btn-copy-glass-card" onclick="_ms_copyCardEvent(${i}, this)" title="一鍵複製此日聚會資訊">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
               <span>複製</span>
@@ -2478,7 +2490,7 @@ function _ms_copyCardEvent(rowIdx, btn) {
     let lines = [
       `🌿【${groupName} 聚會資訊】`,
       `📅 日期：${dateFormatted}`,
-      `🏷️ 主題：${topic || (currentTemplate === '團契聚會表模板' ? '團契聚會' : '小組聚會')}`
+      `🏷️ 主題：${topic || ((activeGroupName && activeGroupName.includes('團契')) ? '團契聚會' : '小組聚會')}`
     ];
     if (location) lines.push(`📍 地點：${location}`);
     if (verse) {
@@ -3081,8 +3093,11 @@ async function showAggregatedReport(type) {
         const excludeHeaders = ['套用講道', '模板類型'];
         const finalHeaders = smRaw[0].filter(h => !excludeHeaders.includes(h));
 
-        // 僅撈取模板類型為「小組聚會表模板」的群組
-        const objs = _ms_matrixToObjects(smRaw).filter(obj => obj['模板類型'] === '小組聚會表模板');
+        // 僅撈取小組聚會（排除團契）
+        const objs = _ms_matrixToObjects(smRaw).filter(obj => 
+          (obj['模板類型'] === '小組聚會表模板' || obj['模板類型'] === '聚會型模板' || obj['模板類型'] === 'gathering') &&
+          !String(obj['分頁名稱'] || '').includes('團契')
+        );
 
         // 先依「分頁名稱（組）」排序，相同組別再依「日期」升冪排序，統一用本地日期解析
         objs.sort((a, b) => {
@@ -3105,8 +3120,8 @@ async function showAggregatedReport(type) {
         matrix = smRaw;
       }
     } else {
-      // 各項服事總表 = others 排除團契後，依「分頁名稱（組）」及「日期」排列，不再做跨組的全域日期合併
-      const withoutFellowship = _ms_filterMatrix(othRaw, obj => obj['模板類型'] !== '團契聚會表模板');
+      // 各項服事總表 = others 排除聚會型模板，依「分頁名稱（組）」及「日期」排列，不再做跨組的全域日期合併
+      const withoutFellowship = _ms_filterMatrix(othRaw, obj => !isMeetingTemplate(obj['模板類型']));
       if (withoutFellowship.length > 1) {
         const objs = _ms_matrixToObjects(withoutFellowship);
         
