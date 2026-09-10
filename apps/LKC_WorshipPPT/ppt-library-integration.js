@@ -2,6 +2,43 @@
   const library = window.TaiwaneseWorshipPptxLibrary;
   const fileCache = new Map();
   let indexPromise = null;
+  let fileLoadQueue = Promise.resolve();
+  const PPT_MAX_ATTEMPTS = 2;
+  const PPT_RETRY_DELAY_MS = 1500;
+
+  function isRetryablePptError(error) {
+    if (!error) return false;
+    if (['TIMEOUT', 'GAS_TIMEOUT', 'INVALID_RESPONSE'].includes(error.type)) return true;
+    const message = String(error.message || error).toLowerCase();
+    return /逾時|timeout|timed out|failed to fetch|network|(?:^|[^a-z])load failed|無法連線|not valid json|gas/.test(message);
+  }
+
+  function waitForPptRetry() {
+    const configuredDelay = Number(window.LKC_PPT_RETRY_DELAY_MS);
+    const delay = Number.isFinite(configuredDelay) && configuredDelay >= 0
+      ? configuredDelay
+      : PPT_RETRY_DELAY_MS;
+    if (!delay) return Promise.resolve();
+    return new Promise(resolve => setTimeout(resolve, delay));
+  }
+
+  async function downloadAndRasterize(entry) {
+    let lastError;
+    for (let attempt = 1; attempt <= PPT_MAX_ATTEMPTS; attempt += 1) {
+      try {
+        const pages = await library.downloadAndParse(entry, window.JSZip, window.worshipReadAPI);
+        return await library.rasterizeImportedPages(
+          pages,
+          entry.kind === 'response' ? { titleVerticalAlign: 'center' } : {}
+        );
+      } catch (error) {
+        lastError = error;
+        if (attempt >= PPT_MAX_ATTEMPTS || !isRetryablePptError(error)) throw error;
+        await waitForPptRetry();
+      }
+    }
+    throw lastError;
+  }
 
   async function getIndex() {
     if (!indexPromise) {
@@ -19,13 +56,12 @@
 
   function pagesForEntry(entry) {
     if (!fileCache.has(entry.fileId)) {
-      fileCache.set(entry.fileId, library.downloadAndParse(entry, window.JSZip, window.worshipReadAPI).then(pages => library.rasterizeImportedPages(
-        pages,
-        entry.kind === 'response' ? { titleVerticalAlign: 'center' } : {}
-      )).catch(error => {
+      const loadPromise = fileLoadQueue.then(() => downloadAndRasterize(entry)).catch(error => {
         fileCache.delete(entry.fileId);
         throw error;
-      }));
+      });
+      fileLoadQueue = loadPromise.catch(() => undefined);
+      fileCache.set(entry.fileId, loadPromise);
     }
     return fileCache.get(entry.fileId);
   }
@@ -85,7 +121,13 @@
     if (item.libraryFileId === entry.fileId && Array.isArray(item.pptPages) && item.pptPages.length) {
       return { sectionId, state: 'cached', pageCount: item.pptPages.length };
     }
-    const pages = await pagesForEntry(entry);
+    let pages;
+    try {
+      pages = await pagesForEntry(entry);
+    } catch (error) {
+      item.libraryError = 'PPTX 載入失敗：' + String(error && error.message || error);
+      return { sectionId, state: 'error', message: item.libraryError };
+    }
     item.pptPages = pages.map((page, index) => ({ ...page, id: `${sectionId}:${index + 1}` }));
     item.libraryFileId = entry.fileId;
     item.libraryEntry = { kind: entry.kind, number: entry.number, title: entry.title, fileName: entry.fileName };
@@ -128,7 +170,11 @@
       .filter(([sectionId]) => !sectionIds || sectionIds.includes(sectionId));
     if (!targets.length) return [];
     const entries = await getIndex();
-    return Promise.all(targets.map(([sectionId, kind]) => loadSection(sectionId, kind, entries)));
+    const results = [];
+    for (const [sectionId, kind] of targets) {
+      results.push(await loadSection(sectionId, kind, entries));
+    }
+    return results;
   };
 
   window.loadExternalPresentationSources = async function(sourceIds) {

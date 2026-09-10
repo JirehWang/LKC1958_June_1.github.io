@@ -55,6 +55,7 @@
 
   const _AUTH_TOKEN = "ChurchApp-2026";
   const _SESSION_TTL_MS = 3600000; // 1 小時
+  const _GAS_REQUEST_TIMEOUT_MS = 45000;
   const _APP_VERSION = window.LKC_APP_VERSION || '2026-06-14-observability-v2';
 
   // 🌟 路由判斷：_GAS_KEY 優先，其次 pathname / hostname
@@ -404,30 +405,60 @@
 
   async function _doDirectCall(realAction, data) {
     const requestBody = { action: realAction, token: window.AUTH_TOKEN, data: data };
-    const resp = await fetch(window.GAS_URL, {
+    const configuredTimeout = Number(window.LKC_GAS_REQUEST_TIMEOUT_MS);
+    const timeoutMs = Number.isFinite(configuredTimeout) && configuredTimeout > 0
+      ? configuredTimeout
+      : _GAS_REQUEST_TIMEOUT_MS;
+    const controller = typeof AbortController === 'function' ? new AbortController() : null;
+    const requestOptions = {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify(requestBody)
-    });
-    let result;
-    if (typeof resp.text === 'function') {
-      const text = await resp.text();
-      try {
-        result = JSON.parse(text);
-      } catch (e) {
-        if (text && (text.includes('<!DOCTYPE') || text.includes('<html'))) {
-          throw new APIError(`後端服務 (GAS) 回傳 HTML 頁面，可能是權限不足或後端執行逾時`, null, 'GAS_HTML_ERROR');
-        }
-        throw e;
-      }
-    } else {
-      result = await resp.json();
-    }
-    return {
-      result,
-      payload: _payloadMeta(requestBody, result),
-      httpStatus: resp.status
     };
+    if (controller) requestOptions.signal = controller.signal;
+    let timerId = null;
+    if (controller) timerId = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const resp = await fetch(window.GAS_URL, requestOptions);
+      let result;
+      if (typeof resp.text === 'function') {
+        const text = await resp.text();
+        const normalizedText = String(text || '').trim();
+        try {
+          result = JSON.parse(normalizedText);
+        } catch (e) {
+          if (normalizedText && (normalizedText.includes('<!DOCTYPE') || normalizedText.includes('<html'))) {
+            throw new APIError('後端服務 (GAS) 回傳 HTML 頁面，可能是權限不足或後端執行逾時', resp.status, 'GAS_HTML_ERROR');
+          }
+          if (/^ *✅|行事曆系統 API/.test(normalizedText)) {
+            throw new APIError('後端服務回傳健康檢查文字，可能使用了錯誤的 GAS 路由或後端尚未部署', resp.status, 'INVALID_RESPONSE');
+          }
+          throw new APIError('後端服務回傳非 JSON 格式', resp.status, 'INVALID_RESPONSE');
+        }
+      } else {
+        try {
+          result = await resp.json();
+        } catch (error) {
+          if (error && error.name === 'SyntaxError') {
+            throw new APIError('後端服務回傳非 JSON 格式', resp.status, 'INVALID_RESPONSE');
+          }
+          throw error;
+        }
+      }
+      return {
+        result,
+        payload: _payloadMeta(requestBody, result),
+        httpStatus: resp.status
+      };
+    } catch (error) {
+      if (error && error.name === 'AbortError') {
+        throw new APIError('後端服務 (GAS) 回應逾時，請稍後再試', null, 'GAS_TIMEOUT');
+      }
+      throw error;
+    } finally {
+      if (timerId !== null) clearTimeout(timerId);
+    }
   }
 
   window.churchAPI = async function(action, data = {}) {

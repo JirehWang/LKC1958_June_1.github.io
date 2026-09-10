@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { buildJsonpUrl, read } = require('./read-api.js');
+const { buildJsonpUrl, jsonp, read } = require('./read-api.js');
 
 test('builds a JSONP URL for read-only GAS actions from file pages', () => {
   const url = new URL(buildJsonpUrl(
@@ -16,6 +16,91 @@ test('builds a JSONP URL for read-only GAS actions from file pages', () => {
   assert.deepEqual(JSON.parse(url.searchParams.get('data')), {
     startDate: '2026-07-12', endDate: '2026-07-12'
   });
+});
+
+test('keeps a no-op JSONP callback after timeout for late GAS responses', async () => {
+  const previous = {
+    GAS_URL: global.GAS_URL,
+    AUTH_TOKEN: global.AUTH_TOKEN,
+    document: global.document,
+    LKC_JSONP_TIMEOUT_MS: global.LKC_JSONP_TIMEOUT_MS,
+    LKC_JSONP_LATE_CALLBACK_GRACE_MS: global.LKC_JSONP_LATE_CALLBACK_GRACE_MS
+  };
+  let callbackName = '';
+  global.GAS_URL = 'https://script.google.com/macros/s/example/exec';
+  global.AUTH_TOKEN = 'ChurchApp-2026';
+  global.LKC_JSONP_TIMEOUT_MS = 5;
+  global.LKC_JSONP_LATE_CALLBACK_GRACE_MS = 50;
+  global.document = {
+    createElement() {
+      return { remove() {} };
+    },
+    head: {
+      appendChild(script) {
+        callbackName = new URL(script.src).searchParams.get('callback');
+      }
+    }
+  };
+
+  try {
+    await assert.rejects(
+      jsonp(global.GAS_URL, 'cal_getPptLibraryFile', { fileId: 'late-file' }, global.AUTH_TOKEN),
+      error => error.type === 'TIMEOUT' && /逾時/.test(error.message)
+    );
+    assert.equal(typeof global[callbackName], 'function');
+    assert.doesNotThrow(() => global[callbackName]({ success: true, data: [] }));
+  } finally {
+    delete global[callbackName];
+    Object.assign(global, previous);
+  }
+});
+
+test('does not fall back to direct POST after a JSONP timeout', async () => {
+  const previous = {
+    WorshipPptSupabaseService: global.WorshipPptSupabaseService,
+    ensureAPIReady: global.ensureAPIReady,
+    churchAPI: global.churchAPI,
+    GAS_URL: global.GAS_URL,
+    AUTH_TOKEN: global.AUTH_TOKEN,
+    location: global.location,
+    document: global.document,
+    LKC_JSONP_TIMEOUT_MS: global.LKC_JSONP_TIMEOUT_MS,
+    LKC_JSONP_LATE_CALLBACK_GRACE_MS: global.LKC_JSONP_LATE_CALLBACK_GRACE_MS
+  };
+  let directCalls = 0;
+  let callbackName = '';
+  global.WorshipPptSupabaseService = undefined;
+  global.ensureAPIReady = async () => {};
+  global.churchAPI = async () => {
+    directCalls += 1;
+    return { success: true, data: [{ fileId: 'wrong-fallback' }] };
+  };
+  global.GAS_URL = 'https://script.google.com/macros/s/example/exec';
+  global.AUTH_TOKEN = 'ChurchApp-2026';
+  global.location = { protocol: 'https:', hostname: 'jirehwang.github.io' };
+  global.LKC_JSONP_TIMEOUT_MS = 5;
+  global.LKC_JSONP_LATE_CALLBACK_GRACE_MS = 50;
+  global.document = {
+    createElement() {
+      return { remove() {} };
+    },
+    head: {
+      appendChild(script) {
+        callbackName = new URL(script.src).searchParams.get('callback');
+      }
+    }
+  };
+
+  try {
+    await assert.rejects(
+      read('cal_getPptLibraryFile', { fileId: 'timed-out-file' }),
+      error => error.type === 'TIMEOUT' && /逾時/.test(error.message)
+    );
+    assert.equal(directCalls, 0);
+  } finally {
+    delete global[callbackName];
+    Object.assign(global, previous);
+  }
 });
 
 test('falls back to JSONP when API readiness fails with a network error', async () => {

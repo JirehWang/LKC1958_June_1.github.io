@@ -11,7 +11,7 @@ const gasSyncSource = fs.readFileSync(path.join(repoRoot, 'scratch_gas_sunday', 
 const coreSource = fs.readFileSync(path.join(repoRoot, 'scratch_gas_sunday', 'Core.js'), 'utf8');
 const groupCoreSource = fs.readFileSync(path.join(repoRoot, 'scratch_gas_sunday', 'GroupCore.js'), 'utf8');
 
-function loadChurchApiWithFirebaseCache(firebaseCache, fetchImpl) {
+function loadChurchApiWithFirebaseCache(firebaseCache, fetchImpl, windowOverrides = {}) {
   const source = configSource
     .replace(
       "import('https://jirehwang.github.io/LKC1958_June_1.github.io/firebase/firebase-cache.js')",
@@ -36,6 +36,7 @@ function loadChurchApiWithFirebaseCache(firebaseCache, fetchImpl) {
     localStorage: storage,
     addEventListener: () => {}
   };
+  Object.assign(window, windowOverrides);
   const document = {
     getElementById: () => null,
     createElement: () => ({ style: {}, appendChild: () => {}, remove: () => {} }),
@@ -69,6 +70,7 @@ function loadChurchApiWithFirebaseCache(firebaseCache, fetchImpl) {
     encodeURIComponent,
     unescape,
     btoa: value => Buffer.from(value, 'binary').toString('base64'),
+    AbortController,
     setTimeout,
     clearTimeout
   }, { filename: 'config.js' });
@@ -116,6 +118,43 @@ test('churchAPI calls GAS once when a Firebase cache read fails and its loader r
   await assert.rejects(churchAPI('getGroups'), /GAS JSON failure/);
   assert.equal(firebaseReads, 1);
   assert.equal(gasCalls, 1);
+});
+
+test('churchAPI classifies a non-JSON GAS health response as an invalid API response', async () => {
+  const churchAPI = loadChurchApiWithFirebaseCache(null, async () => ({
+    status: 200,
+    text: async () => '✅ 行事曆系統 API 運作中...'
+  }));
+
+  await assert.rejects(
+    churchAPI('getGroups'),
+    error => error.name === 'APIError'
+      && error.type === 'INVALID_RESPONSE'
+      && /健康檢查|JSON/.test(error.message)
+  );
+});
+
+test('churchAPI aborts a hanging GAS request with a typed timeout error', async () => {
+  let receivedSignal = false;
+  const churchAPI = loadChurchApiWithFirebaseCache(null, async (_url, options) => {
+    if (!options || !options.signal) throw new Error('fetch signal was not provided');
+    receivedSignal = true;
+    return new Promise((_resolve, reject) => {
+      options.signal.addEventListener('abort', () => {
+        const error = new Error('The operation was aborted');
+        error.name = 'AbortError';
+        reject(error);
+      }, { once: true });
+    });
+  }, { LKC_GAS_REQUEST_TIMEOUT_MS: 5 });
+
+  await assert.rejects(
+    churchAPI('getGroups'),
+    error => error.name === 'APIError'
+      && error.type === 'GAS_TIMEOUT'
+      && /逾時/.test(error.message)
+  );
+  assert.equal(receivedSignal, true);
 });
 
 test('GAS owns cache write-through and preserves successful responses when Firebase write-back fails', () => {
