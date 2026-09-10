@@ -374,8 +374,8 @@
         <button class="btn btn-success btn-sm" onclick="openAddEventModal(); toggleActionMenu(event)">➕ 新增事項</button>
         <button class="btn btn-info btn-sm" onclick="openBatchModal(); toggleActionMenu(event)">📅 批量新增</button>
         <button class="btn btn-warning btn-sm" onclick="openAiModal(); toggleActionMenu(event)">🤖 AI 解析</button>
-        <button class="btn btn-dark btn-sm" onclick="document.getElementById('excelUploadInput').click(); toggleActionMenu(event)">📤 講道資訊上傳</button>
-        <button class="btn btn-secondary btn-sm text-white" onclick="openSermonTemplateModal(); toggleActionMenu(event)" style="background:#6366f1; border-color:#6366f1;">📥 講道模板下載</button>
+        <button class="btn btn-dark btn-sm" onclick="document.getElementById('excelUploadInput').click(); toggleActionMenu(event)">📤 上傳 Excel 行程</button>
+        <button class="btn btn-secondary btn-sm text-white" onclick="openTemplateDownloadModal(); toggleActionMenu(event)" style="background:#6366f1; border-color:#6366f1;">📥 下載行程模板</button>
       </div>
       <input type="file" id="excelUploadInput" accept=".xlsx,.xls,.csv" style="display:none;" onchange="handleExcelUpload(event)">
     </div>
@@ -575,25 +575,49 @@
   </div>
 </div>
 
-<!-- 講道模板下載 Modal -->
-<div class="modal fade" id="sermonTemplateModal" tabindex="-1">
-  <div class="modal-dialog modal-dialog-centered">
+<!-- 行程模板下載 Modal -->
+<div class="modal fade" id="templateDownloadModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content border-0 shadow-lg">
-      <div class="modal-header" style="background:#f5f7fb;">
-        <h5 class="modal-title fw-bold">📥 講道模板下載</h5>
+      <div class="modal-header" style="background:#f0f4ff;">
+        <h5 class="modal-title fw-bold">📥 下載行程 Excel 模板</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body py-4">
-        <p class="text-muted small mb-4 text-center">請選擇您要下載的講道排程範本，填寫後即可點選「講道資訊上傳」進行批量建立。</p>
-        <div class="d-flex flex-column gap-3">
-          <button class="btn btn-outline-primary py-3 fw-bold justify-content-center" onclick="downloadSermonTemplate('台語')">🌾 台語講道模板 (.xlsx)</button>
-          <button class="btn btn-outline-success py-3 fw-bold justify-content-center" onclick="downloadSermonTemplate('華語')">🌏 華語講道模板 (.xlsx)</button>
-          <button class="btn btn-outline-warning py-3 fw-bold text-dark justify-content-center" onclick="downloadSermonTemplate('聯合-台語')">🤝 聯合-台語講道模板 (.xlsx)</button>
-          <button class="btn btn-outline-warning py-3 fw-bold text-dark justify-content-center" onclick="downloadSermonTemplate('聯合-華語')">🤝 聯合-華語講道模板 (.xlsx)</button>
+        <p class="text-muted small mb-3">請選擇您要下載的行程種類範本。填寫完成後，點選「<b>📤 上傳 Excel 行程</b>」，系統將依檔案名稱自動辨識種類並批次建立事項：</p>
+        <div id="templateDownloadList" class="d-flex flex-column gap-3">
+          <div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>載入行程種類中...</div>
         </div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-light border" data-bs-dismiss="modal">關閉</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Excel 類型確認 Modal (當無法由檔名或工作表自動辨識時使用) -->
+<div class="modal fade" id="excelTypeSelectModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow-lg">
+      <div class="modal-header" style="background:#fff7ed;">
+        <h5 class="modal-title fw-bold">🔍 確認 Excel 行程種類</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body py-3">
+        <div class="alert alert-warning small mb-3">
+          系統無法從檔案名稱或工作表自動確定行程種類，請手動選擇此檔案對應的行程種類：
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-bold small">上傳檔案：<span id="excelTypeSelectFileName" class="text-primary fw-bold"></span></label>
+          <select id="excelTypeSelectDropdown" class="form-select">
+            <option value="">-- 請選擇行程種類 --</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light border" data-bs-dismiss="modal">取消</button>
+        <button type="button" class="btn btn-primary" onclick="confirmExcelManualType()">確定並解析</button>
       </div>
     </div>
   </div>
@@ -622,11 +646,11 @@
 <script src="../../config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="../../supabase/supabase-config.js"></script>
-<script src="calendar-supabase.js?v=20260910"></script>
-<script src="calendar.js?v=20260910"></script>
+<script src="calendar-supabase.js?v=20260910_2"></script>
+<script src="calendar.js?v=20260910_2"></script>
 <script>
   function openSermonTemplateModal() {
-    bootstrap.Modal.getOrCreateInstance(document.getElementById('sermonTemplateModal')).show();
+    openTemplateDownloadModal();
   }
 
   function toggleActionMenu(event) {

@@ -1018,7 +1018,109 @@ function ensureXLSXReady() {
 // 📤 Excel 上傳 → 預覽 → 建立
 // ═════════════════════════════════════════════════════════════
 let _excelImportRows = null; // [{typeId, date, title, values, errors}]
+let _pendingExcelData = null; // { file, wb }
 
+// ─── 智慧辨識上傳 Excel 檔案所屬的行程種類 ───
+function detectEventTypeFromExcel(fileName, wb, sampleCols) {
+  if (!_types || !_types.flat || _types.flat.length === 0) return null;
+  const types = _types.flat;
+  const baseName = (fileName || '').replace(/\.[^/.]+$/, '').trim();
+
+  // 1. 正規前綴比對：行事曆模板_XXX_YYYY-MM-DD 或 講道資訊模板_XXX_...
+  const prefixMatch = baseName.match(/^(?:行事曆模板|講道資訊模板|模板)_(.+?)(?:_\d{4}[-_]\d{2}[-_]\d{2})?$/);
+  if (prefixMatch) {
+    const targetName = prefixMatch[1].trim();
+    const found = types.find(t => t['名稱'] === targetName);
+    if (found) return { matchedType: found, detectSource: `依模板檔名格式識別「${found['名稱']}」` };
+  }
+
+  // 2. 檔名包含比對（按類型名稱長度由長至短排序，避免短名稱如「台語」先於「聯合-台語」搶先匹配）
+  const sortedTypes = [...types].sort((a, b) => b['名稱'].length - a['名稱'].length);
+  for (const t of sortedTypes) {
+    if (t['名稱'] && baseName.includes(t['名稱'])) {
+      return { matchedType: t, detectSource: `依檔案名稱關鍵字識別「${t['名稱']}」` };
+    }
+  }
+
+  // 3. 工作表標籤 (Sheet Name) 精確比對
+  const ignoreSheets = ['使用說明', '說明', 'sheet1', 'sheet2', '工作表1', '工作表2'];
+  const sheetNames = (wb && wb.SheetNames) ? wb.SheetNames : [];
+  for (const s of sheetNames) {
+    const cleanS = s.trim();
+    if (ignoreSheets.includes(cleanS.toLowerCase())) continue;
+    const found = types.find(t => t['名稱'] === cleanS);
+    if (found) return { matchedType: found, detectSource: `依工作表標籤識別「${found['名稱']}」`, sheetName: s };
+  }
+
+  // 4. 工作表標籤包含比對
+  for (const s of sheetNames) {
+    const cleanS = s.trim();
+    if (ignoreSheets.includes(cleanS.toLowerCase())) continue;
+    for (const t of sortedTypes) {
+      if (t['名稱'] && cleanS.includes(t['名稱'])) {
+        return { matchedType: t, detectSource: `依工作表標籤關鍵字識別「${t['名稱']}」`, sheetName: s };
+      }
+    }
+  }
+
+  // 5. 欄位特徵反向推估 (若有傳入 header 欄位)
+  if (Array.isArray(sampleCols) && sampleCols.length > 0) {
+    let bestMatch = null;
+    let maxOverlap = 0;
+    for (const t of types) {
+      const typeFields = _fieldsByType[t.typeId] || [];
+      const fieldNames = typeFields.map(f => f['顯示名稱']);
+      const overlap = sampleCols.filter(col => fieldNames.includes(col)).length;
+      if (overlap > maxOverlap && overlap >= 2) {
+        maxOverlap = overlap;
+        bestMatch = t;
+      }
+    }
+    if (bestMatch) {
+      return { matchedType: bestMatch, detectSource: `依表頭欄位特徵推估「${bestMatch['名稱']}」` };
+    }
+  }
+
+  return null;
+}
+
+// ─── 手動選擇行程種類（當無法由檔名/Sheet自動判斷時） ───
+function openExcelTypeSelectModal(fileName) {
+  const fileNameEl = document.getElementById('excelTypeSelectFileName');
+  if (fileNameEl) fileNameEl.innerText = fileName || '';
+  const sel = document.getElementById('excelTypeSelectDropdown');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">-- 請選擇行程種類 --</option>';
+
+  const roots = (_types && (_types.types || _types.tree)) ||
+                ((_types && _types.flat) ? _types.flat.filter(t => !t.parentTypeId) : []);
+
+  roots.forEach(r => {
+    sel.innerHTML += `<option value="${r.typeId}" class="fw-bold">📁 ${r.icon || ''} ${escapeHtml(r['名稱'])} (頂層)</option>`;
+    if (Array.isArray(r.children) && r.children.length > 0) {
+      r.children.forEach(c => {
+        sel.innerHTML += `<option value="${c.typeId}">　↳ 📄 ${c.icon || ''} ${escapeHtml(c['名稱'])}</option>`;
+      });
+    }
+  });
+
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('excelTypeSelectModal')).show();
+}
+
+async function confirmExcelManualType() {
+  const sel = document.getElementById('excelTypeSelectDropdown');
+  const typeId = sel ? sel.value : '';
+  if (!typeId) { alert('請先選擇行程種類'); return; }
+  const matchedType = (_types.flat || []).find(t => t.typeId === typeId);
+  if (!matchedType) { alert('找不到選取的類型'); return; }
+
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('excelTypeSelectModal')).hide();
+  if (_pendingExcelData && _pendingExcelData.wb) {
+    await processExcelWithMatchedType(matchedType, '手動指定行程種類', _pendingExcelData.wb);
+  }
+}
+
+// ─── Excel 上傳入口 ───
 async function handleExcelUpload(ev) {
   const file = ev.target.files[0];
   if (!file) return;
@@ -1027,131 +1129,187 @@ async function handleExcelUpload(ev) {
     await ensureXLSXReady();
     const data = await file.arrayBuffer();
     const wb = XLSX.read(data);
-    const sheetName = wb.SheetNames[0];
-    const ws = wb.Sheets[sheetName];
-    const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
     ev.target.value = ''; // reset，方便重傳同一檔
 
-    if (rows.length === 0) { alert('Excel 沒有資料'); return; }
-
-    // 找對應類型（sheet 名稱可能是頂層或子類型）
-    const matchedType = _types.flat.find(t => t['名稱'] === sheetName);
-    if (!matchedType) {
-      alert(`❌ 找不到對應的類型「${sheetName}」\n請確認 Excel sheet 名稱與某個類型（頂層或子類型）完全相符\n（建議使用「欄位管理」→「匯出模板」下載的範本）`);
+    if (!wb.SheetNames || wb.SheetNames.length === 0) {
+      alert('Excel 活頁簿中沒有任何工作表');
       return;
     }
-    const isSubTypeSheet = !!matchedType.parentTypeId;
-    const rootType = isSubTypeSheet
-      ? _types.flat.find(t => t.typeId === matchedType.parentTypeId)
-      : matchedType;
 
-    // 用「sheet 對應的那個類型」拉有效欄位（會自動包含繼承+專屬-排除）
-    let fields;
-    if (_fieldsByType[matchedType.typeId]) fields = _fieldsByType[matchedType.typeId];
-    else {
-      const res = await callAPI('cal_getFields', { typeId: matchedType.typeId });
-      if (!res.success) throw new Error(res.message);
-      fields = res.data.fields;
-      _fieldsByType[matchedType.typeId] = fields;
-    }
-    // 子類型對應（只有頂層 sheet 才需要看「子類型」欄）
-    const subTypesByName = {};
-    if (!isSubTypeSheet) {
-      _types.flat.filter(t => t.parentTypeId === rootType.typeId).forEach(t => subTypesByName[t['名稱']] = t.typeId);
+    // 確保行程種類已載入
+    if (!_types || !_types.flat || _types.flat.length === 0) {
+      const res = await callAPI('cal_getTypes');
+      if (res.success && res.data) _types = res.data;
     }
 
-    // 欄位名 → fieldId
-    const fieldByName = {};
-    fields.forEach(f => fieldByName[f['顯示名稱']] = f);
-    const requiredFieldNames = fields.filter(f => f.required).map(f => f['顯示名稱']);
-
-    // 逐列轉換
-    _excelImportRows = rows.map((row, idx) => {
-      const errors = [];
-      // 日期
-      let date = row['日期'] || row['date'];
-      if (date instanceof Date) {
-        date = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
-      } else if (typeof date === 'number') {
-        // Excel 序列日期
-        const d = XLSX.SSF.parse_date_code(date);
-        if (d) date = `${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`;
-      } else {
-        date = String(date || '').trim();
+    // 擷取第一張非說明工作表之表頭以供欄位特徵識別
+    let sampleCols = [];
+    const firstDataSheet = wb.SheetNames.find(s => s !== '使用說明' && s !== '說明') || wb.SheetNames[0];
+    const sampleWs = wb.Sheets[firstDataSheet];
+    if (sampleWs) {
+      const sampleJson = XLSX.utils.sheet_to_json(sampleWs, { header: 1 });
+      if (sampleJson.length > 0 && Array.isArray(sampleJson[0])) {
+        sampleCols = sampleJson[0].map(c => String(c).trim());
       }
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) errors.push('日期格式錯');
+    }
 
-      // 子類型
-      let typeId;
-      let subTypeName = '';
-      if (isSubTypeSheet) {
-        // 子類型 sheet：所有列都用該子類型
-        typeId = matchedType.typeId;
-        subTypeName = matchedType['名稱'];
-      } else {
-        // 頂層 sheet：每列「子類型」欄決定
-        typeId = rootType.typeId;
-        subTypeName = String(row['子類型'] || '').trim();
-        if (subTypeName) {
-          if (subTypesByName[subTypeName]) typeId = subTypesByName[subTypeName];
-          else if (Object.keys(subTypesByName).length > 0) errors.push(`子類型「${subTypeName}」不存在`);
-        }
-      }
-
-      // 標題（新版用「行程標題」，舊版相容「顯示標題」/「標題」）
-      const title = String(row['行程標題'] || row['顯示標題'] || row['標題'] || '').trim();
-
-      // 欄位值
-      const values = {};
-      Object.entries(row).forEach(([col, v]) => {
-        if (['日期', 'date', '子類型', '行程標題', '顯示標題', '標題'].indexOf(col) !== -1) return;
-        const f = fieldByName[col];
-        if (f && v !== '' && v !== null && v !== undefined) {
-          let val = (v instanceof Date) ? v.toISOString().substring(0,10) : String(v);
-          val = formatCalendarFieldValue(col, val);
-          values[f.fieldId] = val;
-        }
-      });
-
-      // 必填檢查
-      requiredFieldNames.forEach(fn => {
-        const f = fieldByName[fn];
-        if (f && !values[f.fieldId]) errors.push(`欠必填「${fn}」`);
-      });
-
-      return { idx: idx + 2, typeId, date, title, values, errors, subTypeName };
-    });
-
-    renderExcelPreview(matchedType, isSubTypeSheet);
-    bootstrap.Modal.getOrCreateInstance(document.getElementById('excelPreviewModal')).show();
+    // 執行智慧識別
+    const detectResult = detectEventTypeFromExcel(file.name, wb, sampleCols);
+    if (detectResult) {
+      await processExcelWithMatchedType(detectResult.matchedType, detectResult.detectSource, wb, detectResult.sheetName);
+    } else {
+      // 若無法自動判定，開啟手動選擇彈窗
+      _pendingExcelData = { file, wb };
+      openExcelTypeSelectModal(file.name);
+    }
   } catch (err) {
     alert('❌ Excel 解析失敗：' + err.message);
   }
 }
 
-function renderExcelPreview(matchedType, isSubTypeSheet) {
+// ─── 核心解析邏輯（根據匹配出的類型讀取欄位並轉換資料） ───
+async function processExcelWithMatchedType(matchedType, detectSource, wb, preferredSheetName) {
+  const isSubTypeSheet = !!matchedType.parentTypeId;
+  const rootType = isSubTypeSheet
+    ? _types.flat.find(t => t.typeId === matchedType.parentTypeId)
+    : matchedType;
+
+  // 決定讀取哪個工作表
+  let sheetName = preferredSheetName;
+  if (!sheetName || !wb.Sheets[sheetName]) {
+    if (wb.Sheets[matchedType['名稱']]) {
+      sheetName = matchedType['名稱'];
+    } else {
+      sheetName = wb.SheetNames.find(s => s !== '使用說明' && s !== '說明') || wb.SheetNames[0];
+    }
+  }
+
+  const ws = wb.Sheets[sheetName];
+  if (!ws) {
+    alert(`❌ 找不到工作表「${sheetName}」`);
+    return;
+  }
+
+  const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+  if (rows.length === 0) {
+    alert(`工作表「${sheetName}」沒有資料列`);
+    return;
+  }
+
+  // 取得該類型之有效欄位（包含繼承與排除處理）
+  let fields;
+  if (_fieldsByType[matchedType.typeId]) {
+    fields = _fieldsByType[matchedType.typeId];
+  } else {
+    const res = await callAPI('cal_getFields', { typeId: matchedType.typeId });
+    if (!res.success) throw new Error(res.message);
+    fields = res.data.fields;
+    _fieldsByType[matchedType.typeId] = fields;
+  }
+
+  // 子類型字典（頂層類型時用）
+  const subTypesByName = {};
+  if (!isSubTypeSheet) {
+    _types.flat.filter(t => t.parentTypeId === rootType.typeId).forEach(t => {
+      subTypesByName[t['名稱']] = t.typeId;
+    });
+  }
+
+  const fieldByName = {};
+  fields.forEach(f => fieldByName[f['顯示名稱']] = f);
+  const requiredFieldNames = fields.filter(f => f.required).map(f => f['顯示名稱']);
+
+  // 逐列轉換
+  _excelImportRows = rows.map((row, idx) => {
+    const errors = [];
+    // 日期
+    let date = row['日期'] || row['date'];
+    if (date instanceof Date) {
+      date = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+    } else if (typeof date === 'number') {
+      const d = XLSX.SSF.parse_date_code(date);
+      if (d) date = `${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`;
+    } else {
+      date = String(date || '').trim();
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) errors.push('日期格式錯誤 (須為 YYYY-MM-DD)');
+
+    // 子類型
+    let typeId;
+    let subTypeName = '';
+    if (isSubTypeSheet) {
+      typeId = matchedType.typeId;
+      subTypeName = matchedType['名稱'];
+    } else {
+      typeId = rootType.typeId;
+      subTypeName = String(row['子類型'] || '').trim();
+      if (subTypeName) {
+        if (subTypesByName[subTypeName]) {
+          typeId = subTypesByName[subTypeName];
+        } else if (Object.keys(subTypesByName).length > 0) {
+          errors.push(`子類型「${subTypeName}」不存在`);
+        }
+      }
+    }
+
+    // 標題（過濾範本說明文字）
+    let title = String(row['行程標題'] || row['顯示標題'] || row['標題'] || '').trim();
+    if (title.includes('留空') || title === '（留空 = 自動取第一個欄位）') {
+      title = '';
+    }
+
+    // 欄位值
+    const values = {};
+    Object.entries(row).forEach(([col, v]) => {
+      if (['日期', 'date', '子類型', '行程標題', '顯示標題', '標題'].indexOf(col) !== -1) return;
+      const f = fieldByName[col];
+      if (f && v !== '' && v !== null && v !== undefined) {
+        let val = (v instanceof Date) ? v.toISOString().substring(0,10) : String(v);
+        val = formatCalendarFieldValue(col, val);
+        values[f.fieldId] = val;
+      }
+    });
+
+    // 必填檢查
+    requiredFieldNames.forEach(fn => {
+      const f = fieldByName[fn];
+      if (f && !values[f.fieldId]) errors.push(`缺少必填「${fn}」`);
+    });
+
+    return { idx: idx + 2, typeId, date, title, values, errors, subTypeName };
+  });
+
+  renderExcelPreview(matchedType, isSubTypeSheet, detectSource);
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('excelPreviewModal')).show();
+}
+
+function renderExcelPreview(matchedType, isSubTypeSheet, detectSource) {
   const ok = _excelImportRows.filter(r => r.errors.length === 0).length;
   const bad = _excelImportRows.length - ok;
-  document.getElementById('excelPreviewSummary').innerText = `共 ${_excelImportRows.length} 列：可建立 ${ok}，問題 ${bad}`;
+  document.getElementById('excelPreviewSummary').innerText = `共 ${_excelImportRows.length} 列：可建立 ${ok}，格式異常 ${bad}`;
   const typeBadge = isSubTypeSheet
-    ? `<b>${escapeHtml(matchedType['名稱'])}</b> <span class="badge bg-info">子類型專用</span>`
+    ? `<b>${escapeHtml(matchedType['名稱'])}</b> <span class="badge bg-info">子類型專屬</span>`
     : `<b>${escapeHtml(matchedType['名稱'])}</b> <span class="badge bg-secondary">頂層（每列依「子類型」欄分配）</span>`;
-  let html = `<div class="alert alert-info py-2 mb-2">📂 對應類型：${typeBadge}　🟢 可建立 ${ok} 筆，🟡 問題 ${bad} 筆（有問題的列不會建立）</div>`;
-  html += '<div class="table-responsive"><table class="table table-sm table-bordered"><thead class="table-light"><tr>';
-  html += '<th>Excel 列</th><th>日期</th><th>子類型</th><th>標題</th><th>欄位值（前 3 個）</th><th>檢查</th></tr></thead><tbody>';
+  const detectBadge = detectSource ? `<span class="badge bg-success ms-2">✓ ${escapeHtml(detectSource)}</span>` : '';
+  let html = `<div class="alert alert-info py-2 mb-2 d-flex align-items-center flex-wrap gap-2">
+    <div>📂 辨識行程種類：${typeBadge}${detectBadge}</div>
+    <div class="ms-auto">🟢 可建立 <b>${ok}</b> 筆　${bad > 0 ? `<span class="text-danger">🟡 格式異常 <b>${bad}</b> 筆（不會建立）</span>` : ''}</div>
+  </div>`;
+  html += '<div class="table-responsive" style="max-height:450px;"><table class="table table-sm table-bordered"><thead class="table-light position-sticky top-0"><tr>';
+  html += '<th style="width:70px;">Excel 列</th><th style="width:110px;">日期</th><th>子類型</th><th>行程標題</th><th>自訂欄位內容（前 3 項）</th><th style="width:130px;">檢查結果</th></tr></thead><tbody>';
   _excelImportRows.forEach(r => {
     const valuesPreview = Object.entries(r.values).slice(0, 3)
       .map(([fid, v]) => escapeHtml(String(v).substring(0,30))).join(' / ');
     const cls = r.errors.length > 0 ? 'table-warning' : '';
     const errs = r.errors.length > 0
-      ? `<span class="text-danger small">⚠ ${r.errors.join('，')}</span>`
-      : '<span class="text-success small">✓</span>';
+      ? `<span class="text-danger small fw-bold">⚠ ${r.errors.join('，')}</span>`
+      : '<span class="text-success small fw-bold">✓ 格式正常</span>';
     html += `<tr class="${cls}">
-      <td class="text-center">${r.idx}</td>
-      <td>${escapeHtml(r.date)}</td>
-      <td>${escapeHtml(r.subTypeName || '(root)')}</td>
-      <td>${escapeHtml(r.title)}</td>
-      <td><small>${valuesPreview}</small></td>
+      <td class="text-center text-muted">${r.idx}</td>
+      <td class="fw-bold">${escapeHtml(r.date)}</td>
+      <td>${escapeHtml(r.subTypeName || '(頂層)')}</td>
+      <td>${escapeHtml(r.title || '<span class="text-muted small">(自動依欄位)</span>')}</td>
+      <td><small class="text-secondary">${valuesPreview || '(無填寫)'}</small></td>
       <td>${errs}</td>
     </tr>`;
   });
@@ -1192,27 +1350,82 @@ function escapeAttr(s) {
   return String(s == null ? '' : s).replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
-async function downloadSermonTemplate(typeName) {
-  // 關閉 Modal
-  const modalEl = document.getElementById('sermonTemplateModal');
-  if (modalEl) {
-    bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+// ═════════════════════════════════════════════════════════════
+// 📥 通用行程模板下載（支援所有自定義頂層類型與子類型）
+// ═════════════════════════════════════════════════════════════
+async function openTemplateDownloadModal() {
+  const modalEl = document.getElementById('templateDownloadModal');
+  if (!modalEl) return;
+  const listEl = document.getElementById('templateDownloadList');
+  listEl.innerHTML = '<div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>載入行程種類中...</div>';
+  bootstrap.Modal.getOrCreateInstance(modalEl).show();
+
+  if (!_types || !_types.flat || _types.flat.length === 0) {
+    try {
+      const res = await callAPI('cal_getTypes');
+      if (res.success && res.data) _types = res.data;
+    } catch (e) {
+      listEl.innerHTML = `<div class="alert alert-danger">載入類型失敗：${e.message}</div>`;
+      return;
+    }
   }
 
+  const roots = (_types && (_types.types || _types.tree)) ||
+                ((_types && _types.flat) ? _types.flat.filter(t => !t.parentTypeId) : []);
+
+  if (roots.length === 0) {
+    listEl.innerHTML = '<div class="alert alert-warning text-center">目前尚無任何行程種類</div>';
+    return;
+  }
+
+  let html = '';
+  roots.forEach(root => {
+    const hasChildren = Array.isArray(root.children) && root.children.length > 0;
+    html += `
+      <div class="card border shadow-sm">
+        <div class="card-header bg-light py-2 d-flex align-items-center justify-content-between flex-wrap gap-2">
+          <span class="fw-bold">${root.icon || '📌'} ${escapeHtml(root['名稱'])}</span>
+          <button class="btn btn-sm btn-primary py-1 px-2" onclick="downloadCalendarTemplate('${root.typeId}')">
+            📥 下載「${escapeHtml(root['名稱'])}」${hasChildren ? '通用模板 (含子類型欄)' : '模板'} (.xlsx)
+          </button>
+        </div>
+        ${hasChildren ? `
+          <div class="card-body py-2 px-3">
+            <div class="small text-muted mb-2">或下載特定子類型的專屬模板：</div>
+            <div class="d-flex flex-wrap gap-2">
+              ${root.children.map(c => `
+                <button class="btn btn-sm btn-outline-secondary py-1 px-2" onclick="downloadCalendarTemplate('${c.typeId}')">
+                  📥 ${c.icon || ''} ${escapeHtml(c['名稱'])} 專屬模板
+                </button>
+              `).join('')}
+            </div>
+          </div>
+        ` : ''}
+      </div>
+    `;
+  });
+
+  listEl.innerHTML = html;
+}
+
+async function downloadCalendarTemplate(typeId) {
   await ensureXLSXReady();
 
-  // 找對應類型
   if (!_types || !_types.flat) {
-    alert('正在載入類型資料，請稍候重試');
+    alert('正在載入行程種類，請稍候重試');
     return;
   }
-  const matchedType = _types.flat.find(t => t['名稱'] === typeName);
+  const matchedType = _types.flat.find(t => t.typeId === typeId);
   if (!matchedType) {
-    alert(`找不到「${typeName}」類型，請確認系統中是否存在。`);
+    alert('查無此行程種類');
     return;
   }
 
-  // 取得欄位
+  const isSubType = !!matchedType.parentTypeId;
+  const rootType = isSubType ? _types.flat.find(t => t.typeId === matchedType.parentTypeId) : matchedType;
+  const subTypes = isSubType ? [] : _types.flat.filter(t => t.parentTypeId === matchedType.typeId);
+
+  // 取得有效欄位
   let fields;
   if (_fieldsByType[matchedType.typeId]) {
     fields = _fieldsByType[matchedType.typeId];
@@ -1229,44 +1442,75 @@ async function downloadSermonTemplate(typeName) {
   }
 
   // 構造 Sheet 1: 資料填寫
-  const headers = ['日期', '行程標題'].concat(fields.map(f => f['顯示名稱']));
-  
+  // 頂層含子類型：日期 + 子類型 + 行程標題 + 各欄位
+  // 子類型或無子類型頂層：日期 + 行程標題 + 各欄位
+  const needSubTypeCol = !isSubType && subTypes.length > 0;
+  const headers = needSubTypeCol
+    ? ['日期', '子類型', '行程標題'].concat(fields.map(f => f['顯示名稱']))
+    : ['日期', '行程標題'].concat(fields.map(f => f['顯示名稱']));
+
   const fieldExample = f => {
+    if (f['欄位類型'] === 'select' || f['欄位類型'] === 'multiselect') {
+      const opts = Array.isArray(f['下拉選項']) ? f['下拉選項'] : [];
+      return opts.length > 0 ? opts[0] : '（範例選項）';
+    }
+    if (f['欄位類型'] === 'date') return '2026-01-05';
+    if (f['欄位類型'] === 'number') return '1';
     if (f['顯示名稱'] === '講員') return '張三牧師';
     if (f['顯示名稱'] === '講題') return '和平的福音';
     if (f['顯示名稱'] === '經文') return '約翰福音 3:16';
     if (f['顯示名稱'] === '宣召') return '詩篇 23:1-6';
-    if (f['顯示名稱'] === '金句') return '神愛世人...';
-    if (f['顯示名稱'] === '啟應文') return '第 3 篇';
-    if (f['顯示名稱'] === '詩歌') return '讚美詩 101 首';
-    if (f['顯示名稱'] === '備註') return '無';
+    if (f['顯示名稱'] === '地點') return '二樓副堂';
+    if (f['顯示名稱'] === '講者') return '李同工';
+    if (f['顯示名稱'] === '聚會名稱') return '週五青年團契';
     return f.required ? '（必填）' : '（選填）';
   };
-  
-  const exampleRow = ['2026-06-07', '（留空 = 自動取第一個欄位的值）', ...fields.map(fieldExample)];
-  
+
+  const titleExample = '（留空 = 自動取第一個欄位）';
+  const exampleRow = needSubTypeCol
+    ? ['2026-01-05', subTypes.length > 0 ? subTypes[0]['名稱'] : '', titleExample, ...fields.map(fieldExample)]
+    : ['2026-01-05', titleExample, ...fields.map(fieldExample)];
+
   const dataSheet = XLSX.utils.aoa_to_sheet([headers, exampleRow]);
   dataSheet['!cols'] = headers.map(h => ({ wch: Math.max(12, h.length * 2 + 2) }));
 
   // Sheet 2: 使用說明
+  const titlePrefix = isSubType
+    ? `${matchedType.icon || ''} ${matchedType['名稱']}（子類型，所屬：${rootType['名稱']}）`
+    : `${matchedType.icon || ''} ${matchedType['名稱']}`;
+
   const instructions = [
-    [`📖 教會行事曆 - ${typeName}講道匯入模板使用說明`],
+    [`📖 教會行事曆 - ${matchedType['名稱']} Excel 模板使用說明`],
+    [''],
+    [`行程種類：${titlePrefix}`],
     [''],
     ['【填寫規則】'],
-    ['1. 「資料填寫」分頁的第 1 列為欄位標題，請勿修改其內容或順序'],
-    ['2. 第 2 列是範例，填寫前請先將其刪除'],
-    ['3. 從第 2 列起填入您的講道排程，每列代表一次聚會'],
-    ['4. 日期格式：YYYY-MM-DD（例 2026-06-07）；或直接設為 Excel 的日期格式'],
+    ['1. 第一個分頁「' + matchedType['名稱'] + '」的第 1 列為標題列，請勿修改其欄位名稱與順序'],
+    ['2. 第 2 列是範例格式，填寫前請先刪除或覆蓋'],
+    ['3. 從第 2 列起填入您的排程資料，每一列代表一筆行程'],
+    ['4. 日期格式：請填寫 YYYY-MM-DD（例如 2026-01-05）或直接使用 Excel 日期格式'],
+    ['5. 匯入方式：至行事曆月曆頁面，點選右上角「📤 上傳 Excel 行程」，系統會自動依照檔案名稱識別行程並建立'],
     [''],
     ['【欄位說明】'],
-    ['欄位名稱', '型別', '是否必填', '說明'],
-    ['日期', 'date', '必填', '講道日期（如：2026-06-07）'],
-    ['行程標題', 'text', '選填', '月曆上顯示的文字；留空 = 自動取第一個欄位（講題）的值']
+    ['欄位名稱', '型別', '是否必填', '填寫說明'],
+    ['日期', 'date', '必填', '行程日期（格式 YYYY-MM-DD）']
   ];
-  
+
+  if (needSubTypeCol) {
+    instructions.push(['子類型', 'text', '選填', `可填寫：${subTypes.map(s => s['名稱']).join(' / ')}；留空則歸於頂層`]);
+  }
+  instructions.push(['行程標題', 'text', '選填', '月曆上顯示的文字；留空 = 自動取第一個欄位的值']);
+
   fields.forEach(f => {
+    let desc = '';
+    if (f['欄位類型'] === 'select' || f['欄位類型'] === 'multiselect') {
+      const opts = Array.isArray(f['下拉選項']) ? f['下拉選項'] : [];
+      desc = '可選項目：' + opts.join(' / ');
+      if (f['欄位類型'] === 'multiselect') desc += '（多選請用逗號分隔）';
+    } else if (f['欄位類型'] === 'longtext') desc = '長文字內容，支援換行';
+    else if (f['欄位類型'] === 'url') desc = '網址連結';
     instructions.push([
-      f['顯示名稱'], f['欄位類型'], f.required ? '必填' : '選填', ''
+      f['顯示名稱'], f['欄位類型'] || 'text', f.required ? '必填' : '選填', desc
     ]);
   });
 
@@ -1274,11 +1518,33 @@ async function downloadSermonTemplate(typeName) {
   guideSheet['!cols'] = [{wch:20},{wch:12},{wch:10},{wch:50}];
 
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, dataSheet, typeName); // Sheet 名稱為 "台語" / "華語" / "聯合"
+  XLSX.utils.book_append_sheet(wb, dataSheet, matchedType['名稱']);
   XLSX.utils.book_append_sheet(wb, guideSheet, '使用說明');
 
-  const fileName = `講道資訊模板_${typeName}_${new Date().toISOString().substring(0,10)}.xlsx`;
+  const todayStr = (window.formatYMD ? window.formatYMD(new Date()) : new Date().toISOString().substring(0,10));
+  const fileName = `行事曆模板_${matchedType['名稱']}_${todayStr}.xlsx`;
   XLSX.writeFile(wb, fileName);
+
+  const modalEl = document.getElementById('templateDownloadModal');
+  if (modalEl) bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+}
+
+// 向後相容別名
+function openSermonTemplateModal() {
+  openTemplateDownloadModal();
+}
+
+function downloadSermonTemplate(typeName) {
+  if (!_types || !_types.flat) {
+    alert('正在載入行程種類，請稍候重試');
+    return;
+  }
+  const matched = _types.flat.find(t => t['名稱'] === typeName);
+  if (matched) {
+    downloadCalendarTemplate(matched.typeId);
+  } else {
+    alert(`找不到「${typeName}」行程種類`);
+  }
 }
 
 if (typeof module !== 'undefined' && module.exports) {

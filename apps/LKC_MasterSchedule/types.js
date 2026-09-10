@@ -372,6 +372,7 @@ async function toggleInheritedField(fieldId, enabled) {
 function _renderFieldRow(f) {
   const fid = f.fieldId;
   const opts = Array.isArray(f['下拉選項']) ? f['下拉選項'].join('，') : '';
+  const isReq = Boolean(f.required || f.isRequired || f.is_required || String(f['是否必填']).toUpperCase() === 'TRUE');
   return `
     <div class="field-row" data-fid="${fid}">
       <div class="row g-2 align-items-center">
@@ -389,7 +390,7 @@ function _renderFieldRow(f) {
         </div>
         <div class="col-md-1">
           <div class="form-check pt-1">
-            <input type="checkbox" class="form-check-input" ${f.required ? 'checked' : ''} data-k="required" title="必填">
+            <input type="checkbox" class="form-check-input" ${isReq ? 'checked' : ''} data-k="required" title="必填">
             <label class="form-check-label small">必</label>
           </div>
         </div>
@@ -432,10 +433,17 @@ async function saveFieldRow(fid) {
   const row = document.querySelector(`.field-row[data-fid="${fid}"]`);
   if (!row) return;
   const get = k => row.querySelector(`[data-k="${k}"]`);
+  const isReq = Boolean(get('required')?.checked);
   const data = {
     name: get('name').value.trim(),
     type: get('type').value,
-    required: get('required').checked,
+    fieldType: get('type').value,
+    field_type: get('type').value,
+    '欄位類型': get('type').value,
+    required: isReq,
+    isRequired: isReq,
+    is_required: isReq,
+    '是否必填': isReq,
     options: get('options').value.trim()
   };
   if (!data.name) { alert('請輸入欄位名稱'); return; }
@@ -453,20 +461,24 @@ async function saveFieldRow(fid) {
       res = await callAPI('cal_addField', data);
       if (!res.success) throw new Error(res.message);
       // 替換臨時 ID 為真 ID（不 reload）
+      const realFieldId = res.fieldId || (res.data && res.data.fieldId) || fid;
       const idx = ctx.ownFields.findIndex(f => f.fieldId === fid);
       if (idx !== -1) {
         Object.assign(ctx.ownFields[idx], {
-          fieldId: res.fieldId,
+          fieldId: realFieldId,
           '顯示名稱': data.name,
           '欄位類型': data.type,
-          required: data.required,
+          required: isReq,
+          isRequired: isReq,
+          is_required: isReq,
+          '是否必填': isReq,
           '下拉選項': (data.options || '').split(/[,，]/).map(s => s.trim()).filter(Boolean)
         });
       }
-      row.dataset.fid = res.fieldId;
+      row.dataset.fid = realFieldId;
       const delBtn = row.querySelector('.btn-outline-danger');
-      if (delBtn) delBtn.setAttribute('onclick', `deleteFieldRow('${res.fieldId}', ${JSON.stringify(data.name)})`);
-      if (saveBtn) saveBtn.setAttribute('onclick', `saveFieldRow('${res.fieldId}')`);
+      if (delBtn) delBtn.setAttribute('onclick', `deleteFieldRow('${realFieldId}', ${JSON.stringify(data.name)})`);
+      if (saveBtn) saveBtn.setAttribute('onclick', `saveFieldRow('${realFieldId}')`);
       showToast(`✅ 已新增「${data.name}」`, 'success', 1500);
     } else {
       data.fieldId = fid;
@@ -478,7 +490,10 @@ async function saveFieldRow(fid) {
       if (arr) Object.assign(arr, {
         '顯示名稱': data.name,
         '欄位類型': data.type,
-        required: data.required,
+        required: isReq,
+        isRequired: isReq,
+        is_required: isReq,
+        '是否必填': isReq,
         '下拉選項': (data.options || '').split(/[,，]/).map(s => s.trim()).filter(Boolean)
       });
       showToast(`✅ 已更新「${data.name}」`, 'success', 1500);

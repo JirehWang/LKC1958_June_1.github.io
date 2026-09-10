@@ -39,8 +39,8 @@
   * **自訂欄位動態渲染**：切換事件類型時，呼叫 `cal_getFields` 並執行 `_renderFieldInput(f, value)`，根據欄位型態（文字、多行文字、日期、選項等）生成 DOM 輸入項。
   * **批次事件建立**：實作 `confirmBatchAdd`，收集多個選取日期、行程標題與欄位內容，傳送 `cal_addEventsBatch`。
   * **AI 語意解析**：同工將文字（如週報內容）貼入，點擊「開始 AI 解析」，發送 `cal_aiParseForType`。解析成功後將回傳的結構化事件數組生成預覽卡片，支援編輯並呼叫 `cal_addEventsBatch` 存檔。
-  * **Excel 匯入**：使用 SheetJS 載入 Excel 檔案（.xlsx），自動比對標題列，檢驗日期格式與欄位對照，批次提交 `cal_addEventsBatch`。
-  * **範本下載**：透過 `downloadSermonTemplate` 動態產生包含指定類型欄位（Header）的 CSV/Excel 範本供使用者下載。
+  * **Excel 匯入**：使用 SheetJS 載入 Excel 檔案（.xlsx），具備多層級智慧識別引擎（依檔案名稱格式/關鍵字、Sheet 標籤、表頭欄位特徵），支援自動判定任意頂層或子類型行程，若無法判定提供手動選取彈窗。檢驗日期格式與自訂欄位對照，支援行程標題，批次提交 `cal_addEventsBatch`。
+  * **範本下載**：透過 `openTemplateDownloadModal` / `downloadCalendarTemplate` 動態列出並產生系統中所有頂層與子類型行程的標準 Excel 範本（含資料填寫頁、欄位清單與完整使用說明）。
 
 ### 3. 分類與欄位設定
 * `types.html`：事項類別與欄位設定的管理頁面。

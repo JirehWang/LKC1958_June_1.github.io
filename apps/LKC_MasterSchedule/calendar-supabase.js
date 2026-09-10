@@ -265,20 +265,33 @@
       const { data: targetType } = await sb.from('calendar_types').select('parent_type_id').eq('type_id', typeId).single();
       const rootId = (targetType && targetType.parent_type_id) ? targetType.parent_type_id : typeId;
 
+      const rawOptions = data.options !== undefined ? data.options : data['下拉選項'];
+      const parsedOptions = Array.isArray(rawOptions)
+        ? rawOptions
+        : (typeof rawOptions === 'string'
+            ? rawOptions.split(/[,，]/).map(s => s.trim()).filter(Boolean)
+            : []);
+
+      const isReq = (data.is_required !== undefined) ? Boolean(data.is_required)
+        : (data.isRequired !== undefined) ? Boolean(data.isRequired)
+        : (data.required !== undefined) ? Boolean(data.required)
+        : (data['是否必填'] !== undefined) ? Boolean(data['是否必填'])
+        : false;
+
       const row = {
         field_id: fieldId,
         type_id: rootId,
         name: String(data.name || data.fieldName || data['顯示名稱'] || '').trim(),
-        field_type: data.fieldType || data['欄位類型'] || 'text',
-        is_required: Boolean(data.isRequired || data['是否必填']),
-        options: Array.isArray(data.options || data['下拉選項']) ? (data.options || data['下拉選項']) : [],
+        field_type: data.field_type || data.fieldType || data.type || data['欄位類型'] || 'text',
+        is_required: isReq,
+        options: parsedOptions,
         sort_order: parseFloat(data.sortOrder) || 1
       };
 
       const { error } = await sb.from('calendar_fields').insert(row);
       if (error) throw error;
 
-      return { success: true, message: '欄位已新增', data: { fieldId } };
+      return { success: true, message: '欄位已新增', fieldId, data: { fieldId } };
     },
 
     async cal_updateField(data) {
@@ -292,14 +305,23 @@
       if (data.name !== undefined || data.fieldName !== undefined || data['顯示名稱'] !== undefined) {
         updates.name = String(data.name || data.fieldName || data['顯示名稱']).trim();
       }
-      if (data.fieldType !== undefined || data['欄位類型'] !== undefined) {
-        updates.field_type = data.fieldType || data['欄位類型'];
+      if (data.field_type !== undefined || data.fieldType !== undefined || data.type !== undefined || data['欄位類型'] !== undefined) {
+        updates.field_type = data.field_type || data.fieldType || data.type || data['欄位類型'];
       }
-      if (data.isRequired !== undefined || data['是否必填'] !== undefined) {
-        updates.is_required = Boolean(data.isRequired || data['是否必填']);
+      if (data.is_required !== undefined || data.isRequired !== undefined || data.required !== undefined || data['是否必填'] !== undefined) {
+        const isReq = (data.is_required !== undefined) ? Boolean(data.is_required)
+          : (data.isRequired !== undefined) ? Boolean(data.isRequired)
+          : (data.required !== undefined) ? Boolean(data.required)
+          : Boolean(data['是否必填']);
+        updates.is_required = isReq;
       }
       if (data.options !== undefined || data['下拉選項'] !== undefined) {
-        updates.options = data.options || data['下拉選項'];
+        const rawOpts = data.options !== undefined ? data.options : data['下拉選項'];
+        updates.options = Array.isArray(rawOpts)
+          ? rawOpts
+          : (typeof rawOpts === 'string'
+              ? rawOpts.split(/[,，]/).map(s => s.trim()).filter(Boolean)
+              : []);
       }
       if (data.sortOrder !== undefined) updates.sort_order = parseFloat(data.sortOrder) || 0;
 
