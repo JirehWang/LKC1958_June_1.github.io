@@ -69,6 +69,7 @@ const App = {
     this.initServiceTypeSelector();
     this.updateDateDisplay();
     this.syncFormFromModel();
+    this.updateSupabaseBadge();
     DraftManager.startAutoSave(() => BulletinModel.get());
     this.showToast('系統已就緒，歡迎使用教會週報管理系統', 'success');
   },
@@ -84,6 +85,25 @@ const App = {
       nextD.setDate(d.getDate() + 7);
       BulletinModel.set('ministry.thisWeek.date', date);
       BulletinModel.set('ministry.nextWeek.date', formatYMD(nextD));
+    }
+  },
+
+  updateSupabaseBadge() {
+    const badge = document.getElementById('supabaseStatusBadge');
+    if (!badge) return;
+    const sb = (typeof window !== 'undefined' && window.SundayBulletinSupabaseService && window.SundayBulletinSupabaseService.getClient());
+    if (sb) {
+      badge.textContent = '⚡ Supabase 已連線';
+      badge.style.background = 'rgba(39, 174, 96, 0.2)';
+      badge.style.borderColor = '#27ae60';
+      badge.style.color = '#dcfce7';
+      badge.title = 'Supabase 雲端資料庫已就緒 (<50ms)';
+    } else {
+      badge.textContent = '☁️ 本地/GAS 模式';
+      badge.style.background = 'rgba(234, 179, 8, 0.2)';
+      badge.style.borderColor = '#eab308';
+      badge.style.color = '#fef08a';
+      badge.title = '尚未載入 Supabase 設定，使用本地快取與 GAS';
     }
   },
 
@@ -632,7 +652,26 @@ const App = {
       this.showLoading(true);
       this.showToast('正在載入上傳的讚美詩名與歌詞...', 'info');
     }
+
+    // 1. 優先自 Supabase 載入 (<50ms 熱響應)
+    const sbService = (typeof window !== 'undefined' && window.SundayBulletinSupabaseService) || (typeof SundayBulletinSupabaseService !== 'undefined' && SundayBulletinSupabaseService);
+    if (sbService && typeof sbService.loadPraise === 'function') {
+      try {
+        const sbRes = await sbService.loadPraise(date);
+        if (sbRes && (sbRes.title || sbRes.lyrics)) {
+          const praise = normalizeUploadedPraise(sbRes);
+          BulletinModel.set('taiwanese.choirSong', praise.title);
+          BulletinModel.set('taiwanese.choirLyrics', praise.lyrics);
+          this.syncFormFromModel();
+          if (!silent) this.showToast('🎉 成功載入上傳的讚美詩名與歌詞！', 'success');
+          return { failed: [] };
+        }
+      } catch (sbErr) {
+        console.warn('[App] Supabase loadPraise 失敗，嘗試 GAS 備援:', sbErr.message);
+      }
+    }
     
+    // 2. GAS 備援查詢
     const key = `praise_songs_${date}`;
     const url = `${CONFIG.GAS_SYNC_URL}?action=load&key=${encodeURIComponent(key)}`;
     
@@ -677,7 +716,31 @@ const App = {
       this.showLoading(true);
       this.showToast('正在載入上傳的消息與代禱...', 'info');
     }
+
+    // 1. 優先自 Supabase 載入 (<50ms 熱響應)
+    const sbService = (typeof window !== 'undefined' && window.SundayBulletinSupabaseService) || (typeof SundayBulletinSupabaseService !== 'undefined' && SundayBulletinSupabaseService);
+    if (sbService && typeof sbService.loadReports === 'function') {
+      try {
+        const sbRes = await sbService.loadReports(date);
+        const hasAnn = Array.isArray(sbRes?.announcements) && sbRes.announcements.some(Boolean);
+        const hasNews = Array.isArray(sbRes?.churchNews) && sbRes.churchNews.some(Boolean);
+        const hasPrayer = sbRes?.prayer && (sbRes.prayer.homeRest || sbRes.prayer.hospital || sbRes.prayer.other);
+        if (sbRes && (hasAnn || hasNews || hasPrayer)) {
+          const reports = normalizeUploadedReports(sbRes);
+          BulletinModel.set('announcements', reports.announcements);
+          BulletinModel.set('churchNews', reports.churchNews);
+          BulletinModel.set('prayer', reports.prayer);
+
+          this.syncFormFromModel();
+          if (!silent) this.showToast('🎉 成功載入上傳的消息與代禱事項！', 'success');
+          return { failed: [] };
+        }
+      } catch (sbErr) {
+        console.warn('[App] Supabase loadReports 失敗，嘗試 GAS 備援:', sbErr.message);
+      }
+    }
     
+    // 2. GAS 備援查詢
     const key = `reports_${date}`;
     const url = `${CONFIG.GAS_SYNC_URL}?action=load&key=${encodeURIComponent(key)}`;
     

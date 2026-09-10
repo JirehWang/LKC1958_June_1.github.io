@@ -8,7 +8,7 @@ const DraftManager = {
   // 公開 API
   // ============================================================
 
-  // 儲存草稿（雲端優先，失敗則僅存本地）
+  // 儲存草稿（Supabase 優先，GAS 為雲端備援，localStorage 為本地快取）
   async save(data) {
     if (!data.date) {
       console.warn('[Draft] 無日期，無法儲存');
@@ -21,7 +21,25 @@ const DraftManager = {
     // 先存本地快取（確保離線也有備份）
     this._saveLocal(key, payload);
 
-    // 若有雲端 URL，以雲端為主
+    // 1. 優先寫入 Supabase
+    const sbService = (typeof window !== 'undefined' && window.SundayBulletinSupabaseService) || (typeof SundayBulletinSupabaseService !== 'undefined' && SundayBulletinSupabaseService);
+    if (sbService && typeof sbService.saveBulletin === 'function') {
+      try {
+        const res = await sbService.saveBulletin(payload);
+        if (res && res.success) {
+          debug('[Draft] Supabase 儲存成功:', key);
+          // 背景雙寫 GAS 備援
+          if (CONFIG.GAS_SYNC_URL) {
+            this._saveCloud(key, payload).catch(e => console.warn('[Draft] GAS 備援同步失敗:', e.message));
+          }
+          return { success: true, location: 'supabase', key, updatedAt: payload.updatedAt };
+        }
+      } catch (err) {
+        console.warn('[Draft] Supabase 儲存失敗，嘗試 GAS 備援:', err.message);
+      }
+    }
+
+    // 2. 若 Supabase 無法使用，以 GAS 為備援
     if (CONFIG.GAS_SYNC_URL) {
       try {
         const result = await this._saveCloud(key, payload);
@@ -36,10 +54,26 @@ const DraftManager = {
     return { success: true, location: 'local', key };
   },
 
-  // 載入草稿（雲端優先，失敗則從本地快取取）
+  // 載入草稿（Supabase 優先，GAS 備援，本地快取兜底）
   async load(date) {
     const key = CONFIG.DRAFT_KEY_PREFIX + date;
 
+    // 1. 優先從 Supabase 讀取 (<50ms 熱響應)
+    const sbService = (typeof window !== 'undefined' && window.SundayBulletinSupabaseService) || (typeof SundayBulletinSupabaseService !== 'undefined' && SundayBulletinSupabaseService);
+    if (sbService && typeof sbService.loadBulletin === 'function') {
+      try {
+        const sbData = await sbService.loadBulletin(date);
+        if (sbData) {
+          this._saveLocal(key, sbData);
+          debug('[Draft] 從 Supabase 載入成功:', date);
+          return { success: true, location: 'supabase', data: sbData };
+        }
+      } catch (err) {
+        console.warn('[Draft] Supabase 載入失敗，嘗試 GAS 備援:', err.message);
+      }
+    }
+
+    // 2. GAS 備援
     if (CONFIG.GAS_SYNC_URL) {
       try {
         const cloudData = await this._loadCloud(key);
@@ -54,7 +88,7 @@ const DraftManager = {
       }
     }
 
-    // 從本地快取取
+    // 3. 從本地快取取
     const localData = this._loadLocal(key);
     if (localData) {
       debug('[Draft] 從本地快取載入:', key);
@@ -64,8 +98,23 @@ const DraftManager = {
     return { success: false, error: '找不到此日期的草稿' };
   },
 
-  // 列出草稿（雲端優先）
+  // 列出草稿（Supabase 優先，GAS 備援，本地快取兜底）
   async list() {
+    // 1. 優先從 Supabase 列出
+    const sbService = (typeof window !== 'undefined' && window.SundayBulletinSupabaseService) || (typeof SundayBulletinSupabaseService !== 'undefined' && SundayBulletinSupabaseService);
+    if (sbService && typeof sbService.listBulletins === 'function') {
+      try {
+        const list = await sbService.listBulletins();
+        if (Array.isArray(list) && list.length > 0) {
+          debug('[Draft] 從 Supabase 取得草稿列表:', list.length);
+          return { success: true, location: 'supabase', drafts: list };
+        }
+      } catch (err) {
+        console.warn('[Draft] Supabase 列表失敗，嘗試 GAS 備援:', err.message);
+      }
+    }
+
+    // 2. GAS 備援
     if (CONFIG.GAS_SYNC_URL) {
       try {
         const cloudList = await this._listCloud();
@@ -80,10 +129,20 @@ const DraftManager = {
     return { success: true, location: 'local', drafts: localList };
   },
 
-  // 刪除草稿（同時刪除雲端與本地）
+  // 刪除草稿（同時刪除 Supabase、GAS 雲端與本地）
   async delete(date) {
     const key = CONFIG.DRAFT_KEY_PREFIX + date;
     this._deleteLocal(key);
+
+    const sbService = (typeof window !== 'undefined' && window.SundayBulletinSupabaseService) || (typeof SundayBulletinSupabaseService !== 'undefined' && SundayBulletinSupabaseService);
+    if (sbService && typeof sbService.deleteBulletin === 'function') {
+      try {
+        await sbService.deleteBulletin(date);
+        debug('[Draft] Supabase 刪除成功:', date);
+      } catch (err) {
+        console.warn('[Draft] Supabase 刪除失敗:', err.message);
+      }
+    }
 
     if (CONFIG.GAS_SYNC_URL) {
       try {
@@ -242,3 +301,7 @@ const DraftManager = {
     }
   }
 };
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = DraftManager;
+}

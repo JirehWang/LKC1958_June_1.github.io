@@ -18,7 +18,7 @@
 - 產生固定禮文、標題頁、讚美歌詞、講道頁、報告頁及其他原生文字頁。
 - 提供整份投影片順序預覽、具名版面群組、背景、文字／圖片縮放與樂譜白底透明度設定。
 - 匯出真正的 `.pptx`，不是螢幕截圖集合。
-- 直接連接既有的行事曆、週報、PPT Library 與聖經唯讀 API；GAS POST 被 CORS 阻擋或由 `file://` 開啟時提供安全的 JSONP 回退。
+- 直接連接既有的行事曆、週報、PPT Library 與聖經唯讀來源；週報優先讀取 Supabase，缺資料或讀取失敗時回退既有 GAS `load`，其他 GAS POST 被 CORS 阻擋或由 `file://` 開啟時提供安全的 JSONP 回退。
 
 目前不負責的範圍：
 
@@ -97,6 +97,7 @@ flowchart LR
 ### 4.2 資料來源與轉接層
 
 - `read-api.js`：連接既有 `churchAPI` 唯讀入口，並在 GitHub Pages／POST 傳輸失敗時使用 JSONP。
+- `bulletin-supabase.js`：重用週報系統的 Supabase client、日期查詢及 `reports`／`praise` 欄位映射。
 - `calendar-adapter.js`：將 Master Schedule 的 `values[]` 映射到 model，隔離欄位別名與台語事件條件。
 - `calendar-integration.js`：協調行事曆、週報、經文與 PPT Library 的整批載入。
 - `bulletin-content.js`：正規化報告／讚美資料與報告動態分頁。
@@ -124,16 +125,17 @@ flowchart LR
 目前沒有 bundler，腳本順序就是模組初始化順序：
 
 1. `config.js` 建立 `GAS_URL`、`churchAPI`、API readiness 與 action routing。
-2. `../../firebase/firebase-config-values.js` 以傳統 script 建立版面共用的 Firebase 設定與 App bootstrap。
-3. `read-api.js` 建立既有來源 API 的統一唯讀入口。
-4. `vendor-jszip.min.js` 與 PptxGenJS 提供 ZIP、OOXML 與 PPTX 匯出能力。
-5. `bible-service.js` 提供經文範圍解析。
-6. 純資料模組：`calendar-adapter.js`、`pptx-library.js`、`slide-production.js`、`template-profiles.js`、`bulletin-content.js`。
-7. `app.js` 解析 `?template=`，由 profile 建立全域 `sections`、`model`、`editor`、`preview`、`render`。
-8. 整合模組依序包裝或替換 editor／preview：內容產生、Library、行事曆、格式預覽、固定頁 editor、production editor、週報 editor。
-9. `layout-cloud-store.js` 建立版面雲端介面。
-10. `layout-groups.js` 將單章 preview 升級為整份 deck 與共用版面。
-11. `ppt-export.js` 最後載入，使用已完成的 deck 與 layout API。
+2. Supabase SDK、`../../supabase/supabase-config.js` 與 `bulletin-supabase.js` 建立週報共用 client 及資料服務。
+3. `../../firebase/firebase-config-values.js` 以傳統 script 建立版面共用的 Firebase 設定與 App bootstrap。
+4. `read-api.js` 建立既有來源 API 的統一唯讀入口。
+5. `vendor-jszip.min.js` 與 PptxGenJS 提供 ZIP、OOXML 與 PPTX 匯出能力。
+6. `bible-service.js` 提供經文範圍解析。
+7. 純資料模組：`calendar-adapter.js`、`pptx-library.js`、`slide-production.js`、`template-profiles.js`、`bulletin-content.js`。
+8. `app.js` 解析 `?template=`，由 profile 建立全域 `sections`、`model`、`editor`、`preview`、`render`。
+9. 整合模組依序包裝或替換 editor／preview：內容產生、Library、行事曆、格式預覽、固定頁 editor、production editor、週報 editor。
+10. `layout-cloud-store.js` 建立版面雲端介面。
+11. `layout-groups.js` 將單章 preview 升級為整份 deck 與共用版面。
+12. `ppt-export.js` 最後載入，使用已完成的 deck 與 layout API。
 
 因此，若未來改為 ES modules 或 bundler，必須保留這些依賴關係；不能只按字母排序載入。
 
@@ -247,9 +249,15 @@ sequenceDiagram
 WorshipPPT 不複製行事曆與週報內容到 Firebase；資料直接由既有唯讀入口取得：
 
 - 行事曆、PPT Library、聖經：`LKC_MasterSchedule` 的 `churchAPI` action。
-- 週報報告與讚美：`bulletin-integration.js` 的 Sunday Bulletin `load` action。
+- 週報報告與讚美：`SundayBulletinSupabaseService.loadReports/loadPraise` 讀取 Supabase；`bulletin-content.js` 將服務結果交給 PPT model。
 
-### 8.2 `read-api.js` 回退順序
+### 8.2 週報回退順序
+
+1. `bulletin-supabase.js` 依日期讀取 `sunday_bulletin_reports` 與 `sunday_bulletin_praise`。
+2. Supabase 沒有資料、client 不可用或讀取失敗時，回退 Sunday Bulletin GAS `action=load`，沿用 `reports_YYYY-MM-DD` 與 `praise_songs_YYYY-MM-DD` key。
+3. 兩個來源都沒有資料時回報 `missing`，不阻止其他投影片產生。
+
+### 8.3 `read-api.js` 回退順序
 
 1. GitHub Pages／`file://` 的四個唯讀 action 優先使用 JSONP，避開 GAS POST 重導到 `script.googleusercontent.com` 時偶發的 404。
 2. 其他 HTTP(S) 頁面等待 `config.js` API ready，再呼叫 `churchAPI(action, data)`。
@@ -372,10 +380,19 @@ PowerPoint 在不同電腦可能缺字型、重算行高、移動文字框或替
 
 ### 12.1 資料來源
 
-Sunday Bulletin 使用日期 key：
+週報系統的 Supabase 資料表與 PPT model 對應如下：
+
+| 週報服務 | Supabase table／欄位 | PPT model 欄位 |
+| --- | --- | --- |
+| `loadReports(date)` | `sunday_bulletin_reports.date`、`announcements`、`church_news`、`prayer` | `model.announcements.announcements`、`churchNews`、`prayer` |
+| `loadPraise(date)` | `sunday_bulletin_praise.date`、`title`、`kicker`、`lyrics` | `model.praise.title`、`kicker`、`body` |
+
+`sunday_bulletins` 是週報主檔／草稿的完整資料表；PPT 報告與讚美目前使用上面兩張專用表，因為 `reports.html` 與 `praise.html` 就是寫入這兩張表。GAS 回退仍使用日期 key：
 
 - `reports_YYYY-MM-DD`
 - `praise_songs_YYYY-MM-DD`
+
+GAS 歷史資料回填使用 `scripts/sync_sunday_bulletin_gas_to_supabase.js`。工具先以 `action=list` 取得 key，再逐筆 `action=load`；預設為 dry-run，加入 `--write` 才會對三張表執行以 `date` 為衝突鍵的 upsert。它只處理 `bulletin_draft_`、`reports_`、`praise_songs_` 三種 key，不執行刪除，並保留來源的 `updatedAt`。
 
 報告資料正規化成：
 
@@ -591,6 +608,7 @@ PptxGenJS 產生 blob 後，若 JSZip 可用，系統會再次打開輸出 PPTX�
 | 情況 | 行為 |
 | --- | --- |
 | 來源 API 回傳 404／非 JSON | 回退 GAS／JSONP 或顯示來源錯誤 |
+| 週報 Supabase 讀取失敗或沒有資料 | 回退 Sunday Bulletin GAS `action=load`；兩者皆無資料才顯示來源提醒 |
 | 版面 Firebase SDK 載入失敗 | 清除 promise，下一次可重試 |
 | GAS POST network/CORS 失敗 | 回退 JSONP |
 | JSONP 逾時／載入失敗 | 清理 script/callback，回報可讀訊息 |

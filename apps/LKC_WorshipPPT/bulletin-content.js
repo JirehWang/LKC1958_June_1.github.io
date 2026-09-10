@@ -2,10 +2,10 @@
   const production = typeof module === 'object' && module.exports
     ? require('./slide-production.js')
     : root.TaiwaneseWorshipSlideProduction;
-  const api = factory(production || {});
+  const api = factory(production || {}, root);
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.TaiwaneseWorshipBulletinContent = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function(production) {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function(production, root) {
   const clean = value => String(value == null ? '' : value).trim();
   const DEFAULT_REPORT_LAYOUT = Object.freeze({
     contentSize: 48,
@@ -211,6 +211,40 @@
   }
 
   async function loadCloudRecord(endpoint, kind, date, fetchImpl) {
+    const bulletinService = (typeof root !== 'undefined' && root && root.SundayBulletinSupabaseService) ||
+                             (typeof window !== 'undefined' && window && window.SundayBulletinSupabaseService);
+    const loaderName = kind === 'praise' ? 'loadPraise' : 'loadReports';
+    if (bulletinService && typeof bulletinService[loaderName] === 'function') {
+      try {
+        const data = await bulletinService[loaderName](date);
+        if (data) {
+          const mappedData = kind === 'praise'
+            ? { title: data.title, kicker: data.kicker, lyrics: data.lyrics }
+            : { announcements: data.announcements, churchNews: data.churchNews, prayer: data.prayer };
+          return { state: 'loaded', data: mappedData };
+        }
+      } catch (e) {
+        // Fallback to the existing GAS endpoint
+      }
+    }
+
+    const sb = (typeof root !== 'undefined' && root && root._supabase) ||
+               (typeof window !== 'undefined' && window && window._supabase) ||
+               (typeof globalThis !== 'undefined' && globalThis && globalThis._supabase);
+    if (!bulletinService && sb && typeof sb.from === 'function') {
+      try {
+        const table = kind === 'praise' ? 'sunday_bulletin_praise' : 'sunday_bulletin_reports';
+        const { data, error } = await sb.from(table).select('*').eq('date', clean(date)).maybeSingle();
+        if (!error && data) {
+          const mappedData = kind === 'praise'
+            ? { title: data.title, kicker: data.kicker, lyrics: data.lyrics }
+            : { announcements: data.announcements, churchNews: data.church_news, prayer: data.prayer };
+          return { state: 'loaded', data: mappedData };
+        }
+      } catch (e) {
+        // Fallback to fetchImpl
+      }
+    }
     const response = await fetchImpl(buildBulletinCloudUrl(endpoint, kind, date));
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const json = await response.json();

@@ -315,6 +315,10 @@
 <script>window._GAS_KEY = 'LKC_MinistrySchedule';</script>
 <script src="../../config.js"></script>
 <script src="js/config.js"></script>
+<!-- ⚡ Supabase 本地熱響應服務 (<50ms) -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../../supabase/supabase-config.js"></script>
+<script src="js/bulletin-supabase.js"></script>
 <script src="js/reports-ai.js"></script>
 <script>
   const state = {
@@ -510,9 +514,7 @@
     if (window.SundayBulletinAI) SundayBulletinAI.clearSuggestions(document);
   }
 
-
-
-  // 雲端同步
+  // 雲端同步 (Supabase 優先 + GAS 備援)
   async function saveToCloud() {
     collectState();
     if (!state.date) {
@@ -532,6 +534,20 @@
       updatedAt: new Date().toISOString()
     };
 
+    let supabaseSaved = false;
+    const sbService = window.SundayBulletinSupabaseService;
+    if (sbService && typeof sbService.saveReports === 'function') {
+      try {
+        const sbRes = await sbService.saveReports(state.date, payload);
+        if (sbRes && sbRes.success) {
+          supabaseSaved = true;
+          document.getElementById('syncStatus').textContent = '狀態：已儲存至 Supabase';
+        }
+      } catch (sbErr) {
+        console.warn('[reports.html] Supabase saveReports 失敗:', sbErr.message);
+      }
+    }
+
     try {
       const res = await fetch(CONFIG.GAS_SYNC_URL, {
         method: 'POST',
@@ -541,15 +557,21 @@
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
       if (json.success) {
-        document.getElementById('syncStatus').textContent = '狀態：已儲存至雲端';
+        document.getElementById('syncStatus').textContent = supabaseSaved ? '狀態：已儲存至 Supabase 與雲端備援' : '狀態：已儲存至雲端';
         showToast('🎉 消息報告與代禱事項已成功上傳至雲端！', 'success');
       } else {
-        throw new Error(json.error || '後端儲存失敗');
+        if (!supabaseSaved) throw new Error(json.error || '後端儲存失敗');
+        showToast('🎉 消息報告與代禱事項已成功儲存至 Supabase（GAS 備援異常）', 'success');
       }
     } catch (err) {
       console.error(err);
-      document.getElementById('syncStatus').textContent = '狀態：上傳失敗';
-      showToast(`❌ 上傳失敗：${err.message}`, 'error');
+      if (supabaseSaved) {
+        document.getElementById('syncStatus').textContent = '狀態：已儲存至 Supabase (GAS 離線)';
+        showToast('🎉 消息報告與代禱事項已儲存至 Supabase！', 'success');
+      } else {
+        document.getElementById('syncStatus').textContent = '狀態：上傳失敗';
+        showToast(`❌ 上傳失敗：${err.message}`, 'error');
+      }
     }
   }
 
@@ -563,6 +585,29 @@
     document.getElementById('syncStatus').textContent = '狀態：正在下載...';
     showToast('正在下載雲端暫存...', 'info');
 
+    // 1. 優先從 Supabase 讀取 (<50ms)
+    const sbService = window.SundayBulletinSupabaseService;
+    if (sbService && typeof sbService.loadReports === 'function') {
+      try {
+        const sbData = await sbService.loadReports(state.date);
+        const hasAnn = Array.isArray(sbData?.announcements) && sbData.announcements.some(Boolean);
+        const hasNews = Array.isArray(sbData?.churchNews) && sbData.churchNews.some(Boolean);
+        const hasPrayer = sbData?.prayer && (sbData.prayer.homeRest || sbData.prayer.hospital || sbData.prayer.other);
+        if (sbData && (hasAnn || hasNews || hasPrayer)) {
+          state.announcements = sbData.announcements || ['', '', '', '', '', '', '', '', '', ''];
+          state.churchNews = sbData.churchNews || ['', '', '', '', '', '', '', '', '', ''];
+          state.prayer = sbData.prayer || { homeRest: '', hospital: '', other: '' };
+          renderState();
+          document.getElementById('syncStatus').textContent = '狀態：已載入 Supabase 資料';
+          showToast('📂 成功載入 Supabase 雲端資料！', 'success');
+          return;
+        }
+      } catch (sbErr) {
+        console.warn('[reports.html] Supabase loadReports 失敗，嘗試 GAS 備援:', sbErr.message);
+      }
+    }
+
+    // 2. GAS 備援
     const key = `reports_${state.date}`;
     const url = `${CONFIG.GAS_SYNC_URL}?action=load&key=${encodeURIComponent(key)}`;
 
@@ -603,6 +648,32 @@
     document.getElementById('syncStatus').textContent = `狀態：載入 ${targetDate}...`;
     showToast(`正在下載 ${targetDate} 雲端暫存...`, 'info');
 
+    // 1. 優先從 Supabase 讀取
+    const sbService = window.SundayBulletinSupabaseService;
+    if (sbService && typeof sbService.loadReports === 'function') {
+      try {
+        const sbData = await sbService.loadReports(targetDate);
+        const hasAnn = Array.isArray(sbData?.announcements) && sbData.announcements.some(Boolean);
+        const hasNews = Array.isArray(sbData?.churchNews) && sbData.churchNews.some(Boolean);
+        const hasPrayer = sbData?.prayer && (sbData.prayer.homeRest || sbData.prayer.hospital || sbData.prayer.other);
+        if (sbData && (hasAnn || hasNews || hasPrayer)) {
+          state.announcements = sbData.announcements || ['', '', '', '', '', '', '', '', '', ''];
+          state.churchNews = sbData.churchNews || ['', '', '', '', '', '', '', '', '', ''];
+          state.prayer = sbData.prayer || { homeRest: '', hospital: '', other: '' };
+          renderState();
+          document.getElementById('syncStatus').textContent = `狀態：已套用 ${targetDate} 資料 (Supabase)`;
+          showToast(`🎉 成功套用 ${targetDate} 的 Supabase 資料！`, 'success');
+
+          document.getElementById('otherDaySelectWrap').style.display = 'none';
+          document.getElementById('btnShowLoadOther').style.display = 'inline-block';
+          return;
+        }
+      } catch (sbErr) {
+        console.warn('[reports.html] Supabase loadReports 失敗，嘗試 GAS 備援:', sbErr.message);
+      }
+    }
+
+    // 2. GAS 備援
     const key = `reports_${targetDate}`;
     const url = `${CONFIG.GAS_SYNC_URL}?action=load&key=${encodeURIComponent(key)}`;
 

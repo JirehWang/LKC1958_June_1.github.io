@@ -8,7 +8,8 @@ const {
   reportLines,
   reflowReportPages,
   applyReportsToModel,
-  applyPraiseToModel
+  applyPraiseToModel,
+  loadCloudRecord
 } = require('./bulletin-content.js');
 
 const june28Announcements = [
@@ -22,6 +23,67 @@ const june28Announcements = [
 test('uses the Sunday bulletin cloud keys for the selected service date', () => {
   assert.match(buildBulletinCloudUrl('https://example.test/exec', 'reports', '2026-07-12'), /key=reports_2026-07-12/);
   assert.match(buildBulletinCloudUrl('https://example.test/exec', 'praise', '2026-07-12'), /key=praise_songs_2026-07-12/);
+});
+
+test('prefers the shared Sunday Bulletin Supabase service and preserves its field mapping', async () => {
+  const previousService = globalThis.SundayBulletinSupabaseService;
+  const previousClient = globalThis._supabase;
+  const calls = [];
+  let fetchCalls = 0;
+
+  globalThis._supabase = null;
+  globalThis.SundayBulletinSupabaseService = {
+    async loadReports(date) {
+      calls.push(['reports', date]);
+      return {
+        date,
+        announcements: ['本會消息'],
+        churchNews: ['教界消息'],
+        prayer: { homeRest: '在家調養', hospital: '住院', other: '其他' },
+        updatedAt: '2026-10-04T00:00:00.000Z'
+      };
+    },
+    async loadPraise(date) {
+      calls.push(['praise', date]);
+      return {
+        date,
+        title: '主恩典',
+        kicker: '聖歌隊',
+        lyrics: '第一節',
+        updatedAt: '2026-10-04T00:00:00.000Z'
+      };
+    }
+  };
+
+  const fetchImpl = async () => {
+    fetchCalls += 1;
+    throw new Error('GAS fallback should not be used when Supabase returns data');
+  };
+
+  try {
+    const reports = await loadCloudRecord('https://example.test/gas', 'reports', '2026-10-04', fetchImpl);
+    const praise = await loadCloudRecord('https://example.test/gas', 'praise', '2026-10-04', fetchImpl);
+
+    assert.deepEqual(reports, {
+      state: 'loaded',
+      data: {
+        announcements: ['本會消息'],
+        churchNews: ['教界消息'],
+        prayer: { homeRest: '在家調養', hospital: '住院', other: '其他' }
+      }
+    });
+    assert.deepEqual(praise, {
+      state: 'loaded',
+      data: { title: '主恩典', kicker: '聖歌隊', lyrics: '第一節' }
+    });
+    assert.deepEqual(calls, [['reports', '2026-10-04'], ['praise', '2026-10-04']]);
+    assert.equal(fetchCalls, 0);
+  } finally {
+    if (previousService === undefined) delete globalThis.SundayBulletinSupabaseService;
+    else globalThis.SundayBulletinSupabaseService = previousService;
+    if (previousClient === undefined) delete globalThis._supabase;
+    else globalThis._supabase = previousClient;
+  }
 });
 
 test('keeps announcements, church news, and pastoral prayer in report-page order', () => {
