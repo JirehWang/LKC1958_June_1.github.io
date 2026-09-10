@@ -304,3 +304,40 @@ test('normalizes responsive-reading titles to the same centered vertical alignme
   assert.equal(library.rasterObject(laterPageTitle, { titleVerticalAlign: 'center' }).verticalAlign, 'center');
   assert.equal(library.rasterObject({ type: 'text', role: 'content', verticalAlign: 'end' }, { titleVerticalAlign: 'center' }).verticalAlign, 'end');
 });
+
+test('resolves global JSZip fallback when JSZipImplementation is not provided', async () => {
+  const previousJSZip = global.JSZip;
+  const previousDOMParser = global.DOMParser;
+  let loadAsyncCalled = false;
+  global.JSZip = {
+    loadAsync: async () => {
+      loadAsyncCalled = true;
+      throw new Error('global JSZip successfully reached');
+    }
+  };
+  global.DOMParser = class {};
+  try {
+    await assert.rejects(
+      library.parsePptx(new ArrayBuffer(4)),
+      /global JSZip successfully reached/
+    );
+    assert.equal(loadAsyncCalled, true);
+  } finally {
+    global.JSZip = previousJSZip;
+    if (previousDOMParser === undefined) delete global.DOMParser;
+    else global.DOMParser = previousDOMParser;
+  }
+});
+
+test('throws PPTX 解析元件尚未載入 when no JSZip implementation is available', async () => {
+  const previousJSZip = global.JSZip;
+  delete global.JSZip;
+  try {
+    await assert.rejects(
+      library.parsePptx(new ArrayBuffer(4)),
+      /PPTX 解析元件尚未載入/
+    );
+  } finally {
+    global.JSZip = previousJSZip;
+  }
+});

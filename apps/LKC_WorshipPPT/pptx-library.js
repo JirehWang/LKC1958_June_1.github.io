@@ -1,8 +1,8 @@
 (function(root, factory) {
-  const api = factory();
+  const api = factory(root);
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.TaiwaneseWorshipPptxLibrary = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function() {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function(root) {
   const PPT_WIDTH_EMU = 12192000;
   const PPT_HEIGHT_EMU = 6858000;
   const PPT_ASPECT_RATIO = 16 / 9;
@@ -289,10 +289,38 @@
 
   const extensionMime = extension => ({ png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', svg: 'image/svg+xml', emf: 'image/emf', wmf: 'image/wmf' })[extension] || 'application/octet-stream';
 
+  async function resolveJSZip(JSZipImplementation) {
+    if (JSZipImplementation) return JSZipImplementation;
+    if (typeof root !== 'undefined' && root.JSZip) return root.JSZip;
+    if (typeof globalThis !== 'undefined' && globalThis.JSZip) return globalThis.JSZip;
+    if (typeof window !== 'undefined' && window.JSZip) return window.JSZip;
+    if (typeof document !== 'undefined') {
+      await new Promise((resolve, reject) => {
+        const existing = document.querySelector('script[src*="vendor-jszip"]');
+        if (existing) {
+          if ((typeof root !== 'undefined' && root.JSZip) || (typeof window !== 'undefined' && window.JSZip)) {
+            return resolve();
+          }
+          existing.addEventListener('load', resolve);
+          existing.addEventListener('error', () => reject(new Error('無法載入模組: vendor-jszip')));
+          return;
+        }
+        const s = document.createElement('script');
+        s.src = 'vendor-jszip.min.js?v=3.10.1';
+        s.onload = resolve;
+        s.onerror = () => reject(new Error('無法載入模組: vendor-jszip'));
+        document.head.appendChild(s);
+      });
+      return (typeof root !== 'undefined' && root.JSZip) || (typeof window !== 'undefined' ? window.JSZip : null);
+    }
+    return null;
+  }
+
   async function parsePptx(arrayBuffer, JSZipImplementation, options = {}) {
-    if (!JSZipImplementation) throw new Error('PPTX 解析元件尚未載入');
+    const jszip = await resolveJSZip(JSZipImplementation);
+    if (!jszip) throw new Error('PPTX 解析元件尚未載入');
     if (typeof DOMParser === 'undefined') throw new Error('目前瀏覽器不支援 XML 解析');
-    const zip = await JSZipImplementation.loadAsync(arrayBuffer);
+    const zip = await jszip.loadAsync(arrayBuffer);
     const xml = async path => {
       const file = zip.file(path);
       if (!file) throw new Error(`PPTX 缺少必要檔案：${path}`);
@@ -541,6 +569,7 @@
 
   async function downloadAndParse(entry, JSZipImplementation, readApi) {
     if (!entry || !entry.fileId) throw new Error('找不到對應的雲端 PPTX');
+    const jszip = await resolveJSZip(JSZipImplementation);
     const storageUrl = entry.downloadUrl || entry.storageUrl;
     if (storageUrl && isFirebaseStorageUrl(storageUrl)) {
       let response;
@@ -550,13 +579,13 @@
         throw new Error(`PPTX 下載失敗：${error && error.message ? error.message : error}`);
       }
       if (!response.ok) throw new Error(`PPTX 下載失敗（${response.status}）`);
-      return parsePptx(await response.arrayBuffer(), JSZipImplementation);
+      return parsePptx(await response.arrayBuffer(), jszip);
     }
     if (typeof readApi === 'function') {
       const result = await readApi('cal_getPptLibraryFile', { fileId: entry.fileId });
       const payload = result && result.data;
       if (!payload || !payload.base64) throw new Error('PPTX 雲端代理未回傳檔案內容');
-      return parsePptx(base64ToArrayBuffer(payload.base64), JSZipImplementation);
+      return parsePptx(base64ToArrayBuffer(payload.base64), jszip);
     }
     const url = `https://drive.usercontent.google.com/download?id=${encodeURIComponent(entry.fileId)}&export=download&confirm=t`;
     let response;
@@ -566,7 +595,7 @@
       throw new Error(`PPTX 下載失敗：${error && error.message ? error.message : error}`);
     }
     if (!response.ok) throw new Error(`PPTX 下載失敗（${response.status}）`);
-    return parsePptx(await response.arrayBuffer(), JSZipImplementation);
+    return parsePptx(await response.arrayBuffer(), jszip);
   }
 
   return {
@@ -582,6 +611,7 @@
     resolveSchemeColor,
     inheritRunStyle,
     base64ToArrayBuffer,
+    ensureJSZip: resolveJSZip,
     parsePptx,
     rasterObject,
     rasterizeImportedPages,

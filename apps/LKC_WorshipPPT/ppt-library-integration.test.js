@@ -86,3 +86,13 @@ test('keeps the built-in fallback pages when an external presentation cannot loa
   await assert.rejects(window.loadExternalPresentationSources(), /download failed/);
   assert.equal(model['worship-moment'].pptPages[0].kind, 'fallback-worship');
 });
+
+test('index.html includes vendor-jszip before pptx-library.js', () => {
+  const indexHtml = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+  const jszipIndex = indexHtml.indexOf('vendor-jszip.min.js');
+  const pptxLibraryIndex = indexHtml.indexOf('pptx-library.js');
+  assert.ok(jszipIndex !== -1, 'vendor-jszip.min.js must be present in index.html');
+  assert.ok(pptxLibraryIndex !== -1, 'pptx-library.js must be present in index.html');
+  assert.ok(jszipIndex < pptxLibraryIndex, 'vendor-jszip.min.js must be loaded before pptx-library.js');
+});
+
