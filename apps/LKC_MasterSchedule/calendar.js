@@ -654,6 +654,8 @@ function openBatchModal() {
   // 重用單筆 modal 的類型 select
   document.getElementById('batch_typeId').innerHTML = document.getElementById('evf_typeId').innerHTML;
   document.getElementById('batch_typeId').value = '';
+  const batchTitleEl = document.getElementById('batch_title');
+  if (batchTitleEl) batchTitleEl.value = '';
   document.getElementById('batch_fieldsContainer').innerHTML = '<div class="text-muted text-center py-3">請先選擇類型</div>';
 
   // 星期幾按鈕互動
@@ -762,7 +764,8 @@ async function confirmBatchAdd() {
   });
   if (missing) { missing.focus(); alert('有必填欄位尚未填寫'); return; }
 
-  const events = _batchDates.map(d => ({ typeId, date: d, values: valuesObj, title: '' }));
+  const title = (document.getElementById('batch_title')?.value || '').trim();
+  const events = _batchDates.map(d => ({ typeId, date: d, values: valuesObj, title }));
 
   try {
     const res = await callAPI('cal_addEventsBatch', { events });

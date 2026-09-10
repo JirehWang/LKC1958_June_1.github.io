@@ -37,7 +37,7 @@
   * **API 請求管理**：實作 `callAPI(action, data)` 封裝，依據 `config.js` 的中央 API 呼叫後端。
   * **事件與篩選載入**：加載 `cal_getTypes` 與 `cal_getEvents`。事件載入後，會寫入 `localStorage.setItem('churchEvents', ...)` 以供 `board.html` 離線或免 API 呼叫載入。
   * **自訂欄位動態渲染**：切換事件類型時，呼叫 `cal_getFields` 並執行 `_renderFieldInput(f, value)`，根據欄位型態（文字、多行文字、日期、選項等）生成 DOM 輸入項。
-  * **批次事件建立**：實作 `confirmBatchAdd`，收集多個選取日期、時間與欄位內容，傳送 `cal_addEventsBatch`。
+  * **批次事件建立**：實作 `confirmBatchAdd`，收集多個選取日期、行程標題與欄位內容，傳送 `cal_addEventsBatch`。
   * **AI 語意解析**：同工將文字（如週報內容）貼入，點擊「開始 AI 解析」，發送 `cal_aiParseForType`。解析成功後將回傳的結構化事件數組生成預覽卡片，支援編輯並呼叫 `cal_addEventsBatch` 存檔。
   * **Excel 匯入**：使用 SheetJS 載入 Excel 檔案（.xlsx），自動比對標題列，檢驗日期格式與欄位對照，批次提交 `cal_addEventsBatch`。
   * **範本下載**：透過 `downloadSermonTemplate` 動態產生包含指定類型欄位（Header）的 CSV/Excel 範本供使用者下載。

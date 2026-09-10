@@ -505,13 +505,20 @@
           </div>
         </div>
 
-        <!-- 類型區 -->
+        <!-- 類型與標題區 -->
         <div class="card mb-3 border-success">
-          <div class="card-header bg-success text-white py-2"><b>步驟 2 — 選類型</b></div>
+          <div class="card-header bg-success text-white py-2"><b>步驟 2 — 選類型與標題</b></div>
           <div class="card-body">
-            <select id="batch_typeId" class="form-select form-select-sm" onchange="onBatchTypeChanged()">
-              <option value="">-- 選擇類型 --</option>
-            </select>
+            <div class="mb-2">
+              <label class="form-label small fw-bold">📂 事項類型 *</label>
+              <select id="batch_typeId" class="form-select form-select-sm" onchange="onBatchTypeChanged()">
+                <option value="">-- 選擇類型 --</option>
+              </select>
+            </div>
+            <div>
+              <label class="form-label small fw-bold">🏷️ 行程標題（選填，套用到所有日期）</label>
+              <input type="text" id="batch_title" class="form-control form-control-sm" placeholder="月曆上顯示的文字；留空 = 自動取第一個欄位的值">
+            </div>
           </div>
         </div>
 
