@@ -17,3 +17,10 @@ test('reports the stage that failed instead of labeling every import error as ca
   assert.match(source, /stage = '聖詩／啟應文'/);
   assert.match(source, /status\(`\$\{stage\}帶入失敗：\$\{error\.message\}`\)/);
 });
+
+test('keeps partial Bible import errors visible after the remaining import steps finish', () => {
+  assert.match(source, /let bibleResult = \{ errors: \[\] \}/);
+  assert.match(source, /bibleResult = await window\.generateCalendarContent\(\)/);
+  assert.match(source, /bibleResult && Array\.isArray\(bibleResult\.errors\)/);
+  assert.match(source, /聖經部分失敗/);
+});

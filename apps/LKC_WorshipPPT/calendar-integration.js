@@ -17,10 +17,11 @@
       const event = window.TaiwaneseWorshipCalendarAdapter.selectSermonEvent(events, date, profile.calendarSelector);
       let calendarSummary = `找不到 ${date} 的「${eventLabel}」資料`;
       let libraryResults = [];
+      let bibleResult = { errors: [] };
       if (event) {
         window.TaiwaneseWorshipCalendarAdapter.applyCalendarEvent(event, model);
         stage = '經文';
-        await window.generateCalendarContent();
+        bibleResult = await window.generateCalendarContent();
         stage = '聖詩／啟應文';
         libraryResults = Array.isArray(profile.librarySections) && profile.librarySections.length
           ? await window.loadPptLibraryContent()
@@ -37,7 +38,11 @@
         ? (event ? `資料庫 ${loadedPages} 頁${missing.length ? `，${missing.length} 項找不到` : ''}` : '未載入聖詩／啟應文')
         : '此模板不使用聖詩／啟應文資料庫';
       const bulletinSummary = window.describeBulletinPptContent(bulletinResult);
-      status(`${calendarSummary}；${librarySummary}；${bulletinSummary}`);
+      const bibleErrors = bibleResult && Array.isArray(bibleResult.errors) ? bibleResult.errors : [];
+      const bibleSummary = bibleErrors.length
+        ? `；聖經部分失敗：${bibleErrors.map(error => `${error.label || error.sectionId || '未知區段'}${error.version ? `(${error.version})` : ''}：${error.message}`).join('；')}`
+        : '';
+      status(`${calendarSummary}；${librarySummary}；${bulletinSummary}${bibleSummary}`);
       const reminderApi = window.TaiwaneseWorshipSourceReminders;
       const reminders = reminderApi && typeof reminderApi.buildMissingSourceReminders === 'function'
         ? reminderApi.buildMissingSourceReminders({ date, event, model, bulletinResult, libraryResults, profile })
