@@ -506,7 +506,7 @@
         ? '<button class="btn btn-sm btn-outline-secondary border-0 fw-bold" disabled title="已有點名紀錄或小組關聯，僅可改為不統計" style="border-radius: 12px; font-size: 0.8rem;">不可刪除</button>'
         : `<button class="btn btn-sm btn-outline-danger border-0 fw-bold" onclick="deleteMemberAction('${row[0]}')" style="border-radius: 12px; font-size: 0.8rem; color: var(--color-rose); background-color: rgba(244, 63, 94, 0.05);">刪除</button>`;
 
-      const groupStr = String(row[9] || '').trim();
+      const groupStr = String(row[8] || '').trim();
       let groupHtml = '<span class="text-muted small">未分組</span>';
       if (groupStr) {
         groupHtml = groupStr.split('、').map(g => {
@@ -548,7 +548,7 @@
     const filtered = allMembersRawData.filter(row => {
       const name = (row[0] || "").toString().toLowerCase();
       const code = (row[7] || "").toString().toLowerCase();
-      const group = (row[9] || "").toString().toLowerCase();
+      const group = (row[8] || "").toString().toLowerCase();
       return name.includes(keyword) || code.includes(keyword) || group.includes(keyword);
     });
     updateMemberSummary(filtered.filter(row => row && row[0]).length);

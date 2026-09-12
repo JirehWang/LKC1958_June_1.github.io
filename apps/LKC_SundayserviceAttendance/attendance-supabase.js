@@ -460,7 +460,6 @@
         '',
         m.uid,
         m.group_name || '',
-        m.group_name || '',
         m.role || '小羊'
       ]);
     },
@@ -496,7 +495,6 @@
           m.updated_at ? new Date(m.updated_at).toISOString().slice(0, 10).replace(/-/g, '/') : '',
           '',
           m.uid,
-          m.group_name || '',
           m.group_name || '',
           m.role || '小羊'
         ];

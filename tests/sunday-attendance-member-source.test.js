@@ -51,3 +51,9 @@ test('member list UI uses seven columns and data-driven official category counts
   assert.match(memberPage, /function updateOfficialCategoryCounts/);
   assert.match(memberPage, /共 \$\{total\} 位會友/);
 });
+
+test('member list UI maps small group to row[8] from cached members schema', () => {
+  assert.match(memberPage, /const groupStr = String\(row\[8\] \|\| ''\)\.trim\(\);/);
+  assert.match(memberPage, /const group = \(row\[8\] \|\| ""\)\.toString\(\)\.toLowerCase\(\);/);
+});
+
