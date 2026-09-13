@@ -171,16 +171,31 @@
 </style>
 
 <div class="members-main-wrapper p-2">
-  <!-- 雙視圖切換 Tab -->
-  <div class="d-flex align-items-center mb-3">
-    <div class="btn-group p-1 bg-white shadow-sm" style="border-radius: 24px;">
-      <button id="btnViewGeneral" class="btn btn-sm btn-primary fw-bold px-4 py-2" onclick="switchMemberView('GENERAL')" style="border-radius: 20px;">👥 常態會友名單</button>
-      <button id="btnViewOfficial" class="btn btn-sm btn-outline-primary border-0 fw-bold px-4 py-2" onclick="switchMemberView('OFFICIAL')" style="border-radius: 20px;">📋 和會獨立會員名單 (6大類)</button>
+  <!-- 多視圖切換 Tab -->
+  <div class="d-flex flex-wrap align-items-center mb-3 gap-2">
+    <div class="btn-group flex-wrap p-1 bg-white shadow-sm" style="border-radius: 24px;">
+      <button id="btnViewGeneral" class="btn btn-sm btn-primary fw-bold px-4 py-2" onclick="switchMemberView('GENERAL')" style="border-radius: 20px;">
+        👥 常態會友名單 <span id="badgeGeneralCount" class="badge rounded-pill bg-white text-dark ms-1" style="font-size: 0.75rem;">0</span>
+      </button>
+      <button id="btnViewExcluded" class="btn btn-sm btn-outline-primary border-0 fw-bold px-4 py-2" onclick="switchMemberView('EXCLUDED')" style="border-radius: 20px;">
+        ⏸️ 不統計名單 <span id="badgeExcludedCount" class="badge rounded-pill bg-warning text-dark ms-1" style="font-size: 0.75rem;">0</span>
+      </button>
+      <button id="btnViewOfficial" class="btn btn-sm btn-outline-primary border-0 fw-bold px-4 py-2" onclick="switchMemberView('OFFICIAL')" style="border-radius: 20px;">
+        📋 和會獨立會員名單 (6大類)
+      </button>
     </div>
   </div>
 
-  <!-- 常態會友名單 View -->
+  <!-- 常態會友 / 不統計名單 View -->
   <div id="viewGeneralMembers">
+    <!-- 不統計說明提示（僅在不統計分頁顯示） -->
+    <div id="excludedInfoBanner" class="alert alert-warning border-0 shadow-sm mb-3 d-flex align-items-center gap-2" style="display: none; border-radius: 16px; background-color: rgba(245, 158, 11, 0.12); color: #92400e; font-size: 0.88rem;">
+      <span style="font-size: 1.2rem;">⏸️</span>
+      <div>
+        <strong>此分頁為「不列入統計」名單：</strong>名單內的會友因出國、長照臥床、就醫或特殊狀況，已由每週主日出席率分母中排除。若需恢復常態點名與出席統計，可點擊右側「編輯」並取消勾選「不列入主日出席率統計」。
+      </div>
+    </div>
+
     <div class="d-flex justify-content-between align-items-center mb-3">
       <div class="input-group shadow-sm border-0" style="width: 320px; border-radius: 20px; overflow: hidden;">
         <span class="input-group-text bg-white border-0 text-muted px-3" style="font-size: 0.9rem;">🔍</span>
@@ -189,7 +204,7 @@
       </div>
       <div class="d-flex align-items-center gap-3">
         <span id="memberListSummary" class="small text-secondary">載入中...</span>
-        <button class="btn btn-primary border-0 shadow-sm px-4 py-2 fw-bold" onclick="openMemberModal()" style="border-radius: 20px; font-size: 0.9rem; background-color: var(--color-teal);">＋ 新增會友</button>
+        <button id="btnAddMember" class="btn btn-primary border-0 shadow-sm px-4 py-2 fw-bold" onclick="openMemberModal()" style="border-radius: 20px; font-size: 0.9rem; background-color: var(--color-teal);">＋ 新增會友</button>
       </div>
     </div>
 
@@ -452,6 +467,34 @@
     else setTimeout(restoreAnchor, 0);
   }
 
+  function updateTabBadgeStyles() {
+    const badgeGen = document.getElementById('badgeGeneralCount');
+    const badgeExc = document.getElementById('badgeExcludedCount');
+    if (!badgeGen || !badgeExc) return;
+
+    if (currentMemberView === 'GENERAL') {
+      badgeGen.className = "badge rounded-pill bg-white text-dark ms-1";
+      badgeExc.className = "badge rounded-pill bg-warning bg-opacity-25 text-dark ms-1";
+    } else if (currentMemberView === 'EXCLUDED') {
+      badgeGen.className = "badge rounded-pill bg-light text-secondary ms-1";
+      badgeExc.className = "badge rounded-pill bg-white text-dark ms-1";
+    } else {
+      badgeGen.className = "badge rounded-pill bg-light text-secondary ms-1";
+      badgeExc.className = "badge rounded-pill bg-warning bg-opacity-25 text-dark ms-1";
+    }
+  }
+
+  function updateMemberCounts() {
+    const generalCount = allMembersRawData.filter(row => row && row[0] && !(row[4] === true || row[4] === "TRUE")).length;
+    const excludedCount = allMembersRawData.filter(row => row && row[0] && (row[4] === true || row[4] === "TRUE")).length;
+
+    const badgeGen = document.getElementById('badgeGeneralCount');
+    const badgeExc = document.getElementById('badgeExcludedCount');
+    if (badgeGen) badgeGen.textContent = generalCount;
+    if (badgeExc) badgeExc.textContent = excludedCount;
+    updateTabBadgeStyles();
+  }
+
   function refreshMemberTable(options) {
     options = options || {};
     const scrollContainer = document.querySelector('.member-table-container');
@@ -465,6 +508,7 @@
       const response = data || {};
       allMembersRawData = Array.isArray(response) ? response : (response.members || []);
       memberUsageByUid = response.usageByUid || {};
+      updateMemberCounts();
       filterMembers();
       restoreMemberScroll(scrollAnchor);
     }).getMemberManagementData();
@@ -473,7 +517,13 @@
   function updateMemberSummary(visibleCount) {
     const summary = document.getElementById('memberListSummary');
     if (!summary) return;
-    const total = allMembersRawData.filter(row => row && row[0]).length;
+    const isExcludedTab = (currentMemberView === 'EXCLUDED');
+    const targetPool = allMembersRawData.filter(row => {
+      if (!row || !row[0]) return false;
+      const isEx = (row[4] === true || row[4] === "TRUE");
+      return isExcludedTab ? isEx : !isEx;
+    });
+    const total = targetPool.length;
     const keyword = (document.getElementById('memberSearchInput').value || '').trim();
     summary.textContent = keyword ? `顯示 ${visibleCount} / ${total} 位會友` : `共 ${total} 位會友`;
   }
@@ -486,7 +536,11 @@
   function renderTable(data) {
     const tbody = document.getElementById('memberTableBody');
     if (!data || data.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="8" class="text-center p-5 text-muted">查無資料</td></tr>';
+      const isExcludedTab = (currentMemberView === 'EXCLUDED');
+      const emptyMsg = isExcludedTab 
+        ? '目前無不統計會友名單' 
+        : '查無資料（若此會友為不統計，可切換至「⏸️ 不統計名單」分頁查看）';
+      tbody.innerHTML = `<tr><td colspan="8" class="text-center p-5 text-muted">${emptyMsg}</td></tr>`;
       return;
     }
     let html = '';
@@ -540,18 +594,26 @@
   function filterMembers() {
     const keyword = document.getElementById('memberSearchInput').value.trim().toLowerCase();
     document.getElementById('memberClearBtn').style.display = keyword ? 'block' : 'none';
+    
+    const isExcludedTab = (currentMemberView === 'EXCLUDED');
+    const baseList = allMembersRawData.filter(row => {
+      if (!row || !row[0]) return false;
+      const isEx = (row[4] === true || row[4] === "TRUE");
+      return isExcludedTab ? isEx : !isEx;
+    });
+
     if (!keyword) {
-      updateMemberSummary(allMembersRawData.filter(row => row && row[0]).length);
-      renderTable(allMembersRawData);
+      updateMemberSummary(baseList.length);
+      renderTable(baseList);
       return;
     }
-    const filtered = allMembersRawData.filter(row => {
+    const filtered = baseList.filter(row => {
       const name = (row[0] || "").toString().toLowerCase();
       const code = (row[7] || "").toString().toLowerCase();
       const group = (row[8] || "").toString().toLowerCase();
       return name.includes(keyword) || code.includes(keyword) || group.includes(keyword);
     });
-    updateMemberSummary(filtered.filter(row => row && row[0]).length);
+    updateMemberSummary(filtered.length);
     renderTable(filtered);
   }
 
@@ -587,12 +649,12 @@
       currentMemberName = row[0];
       btnShowQr.disabled = !uid;
     } else {
-      document.getElementById('memModalHeader').innerText = "新增會友資料";
+      document.getElementById('memModalHeader').innerText = (currentMemberView === 'EXCLUDED') ? "新增不統計會友" : "新增會友資料";
       document.getElementById('editOldName_Mem').value = "";
       document.getElementById('editName_Mem').value = "";
       document.getElementById('editGender_Mem').value = "男";
       document.getElementById('editNote_Mem').value = "";
-      document.getElementById('editIsExcluded_Mem').checked = false;
+      document.getElementById('editIsExcluded_Mem').checked = (currentMemberView === 'EXCLUDED');
       let nextUid = calculateNextUid(allMembersRawData);
       document.getElementById('editModal_Uid').value = nextUid;
       currentMemberName = "新會友";
@@ -794,20 +856,47 @@
   function switchMemberView(viewMode) {
     currentMemberView = viewMode;
     const btnGeneral = document.getElementById('btnViewGeneral');
+    const btnExcluded = document.getElementById('btnViewExcluded');
     const btnOfficial = document.getElementById('btnViewOfficial');
     const viewGen = document.getElementById('viewGeneralMembers');
     const viewOff = document.getElementById('viewOfficialMembers');
+    const excludedBanner = document.getElementById('excludedInfoBanner');
+    const searchInput = document.getElementById('memberSearchInput');
+    const btnAddMem = document.getElementById('btnAddMember');
+
+    if (btnGeneral) btnGeneral.className = "btn btn-sm btn-outline-primary border-0 fw-bold px-4 py-2";
+    if (btnExcluded) btnExcluded.className = "btn btn-sm btn-outline-primary border-0 fw-bold px-4 py-2";
+    if (btnOfficial) btnOfficial.className = "btn btn-sm btn-outline-primary border-0 fw-bold px-4 py-2";
 
     if (viewMode === 'GENERAL') {
-      btnGeneral.className = "btn btn-sm btn-primary fw-bold px-4 py-2";
-      btnOfficial.className = "btn btn-sm btn-outline-primary border-0 fw-bold px-4 py-2";
-      viewGen.style.display = 'block';
-      viewOff.style.display = 'none';
+      if (btnGeneral) btnGeneral.className = "btn btn-sm btn-primary fw-bold px-4 py-2";
+      if (viewGen) viewGen.style.display = 'block';
+      if (viewOff) viewOff.style.display = 'none';
+      if (excludedBanner) excludedBanner.style.display = 'none';
+      if (searchInput) {
+        searchInput.placeholder = "輸入姓名/小組/代碼查找常態會友...";
+        searchInput.value = '';
+      }
+      if (btnAddMem) btnAddMem.innerHTML = "＋ 新增會友";
+      updateTabBadgeStyles();
+      filterMembers();
+    } else if (viewMode === 'EXCLUDED') {
+      if (btnExcluded) btnExcluded.className = "btn btn-sm btn-warning text-dark fw-bold px-4 py-2";
+      if (viewGen) viewGen.style.display = 'block';
+      if (viewOff) viewOff.style.display = 'none';
+      if (excludedBanner) excludedBanner.style.display = 'flex';
+      if (searchInput) {
+        searchInput.placeholder = "輸入姓名/小組/代碼查找不統計會友...";
+        searchInput.value = '';
+      }
+      if (btnAddMem) btnAddMem.innerHTML = "＋ 新增不統計會友";
+      updateTabBadgeStyles();
+      filterMembers();
     } else {
-      btnOfficial.className = "btn btn-sm btn-primary fw-bold px-4 py-2";
-      btnGeneral.className = "btn btn-sm btn-outline-primary border-0 fw-bold px-4 py-2";
-      viewGen.style.display = 'none';
-      viewOff.style.display = 'block';
+      if (btnOfficial) btnOfficial.className = "btn btn-sm btn-primary fw-bold px-4 py-2";
+      if (viewGen) viewGen.style.display = 'none';
+      if (viewOff) viewOff.style.display = 'block';
+      updateTabBadgeStyles();
       fetchOfficialMembersData();
     }
   }
