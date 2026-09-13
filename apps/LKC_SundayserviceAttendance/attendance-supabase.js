@@ -506,7 +506,7 @@
 
       const usageByUid = {};
       const rows = (membersRes.data || []).map(m => {
-        const isUsed = usedUids.has(m.uid) || Boolean(m.group_name);
+        const isUsed = usedUids.has(m.uid) || Boolean(m.group_name) || Boolean(m.is_official_member);
         usageByUid[m.uid] = { effective: isUsed };
 
         return [
@@ -638,8 +638,16 @@
       name = String(name || '').trim();
       if (!name) throw new Error('請指定要刪除的會友姓名');
 
-      const { data: mem } = await sb.from('church_members').select('uid').eq('name', name).maybeSingle();
+      const { data: mem } = await sb
+        .from('church_members')
+        .select('uid, name, group_name, is_official_member')
+        .eq('name', name)
+        .maybeSingle();
       if (!mem) throw new Error('找不到會友：' + name);
+
+      if (mem.group_name || mem.is_official_member) {
+        throw new Error('此會友具備小組或正式會籍關聯，無法直接刪除；請改設為「不統計」。');
+      }
 
       // 檢查是否曾有歷史點名紀錄
       const { data: att } = await sb

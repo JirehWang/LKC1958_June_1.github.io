@@ -189,6 +189,8 @@ function _handleAttendanceRequest(body) {
     // ===== 會友管理 =====
     case 'getAllMembers':
       result = getAllMembers(); break;
+    case 'getMemberManagementData':
+      result = getMemberManagementData(); break;
     case 'updateMember':
       result = updateMember(payload.oldName || payload[0], payload.newData || payload[1]); break;
     case 'deleteMember':

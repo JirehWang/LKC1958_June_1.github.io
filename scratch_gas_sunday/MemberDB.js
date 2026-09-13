@@ -226,6 +226,39 @@ function getAllMembers() {
 }
 
 /**
+ * 2b. 取得會友管理名冊及 UID 使用狀態（判斷有效 / 不可刪除）
+ */
+function getMemberManagementData() {
+  const ss = getSS();
+  const members = getAllMembers();
+  const usedUids = new Set();
+  const sheets = ['台語點名紀錄', '華語點名紀錄', '主日學A班點名紀錄', '主日學B班點名紀錄', '禱告會點名紀錄', '聯合點名紀錄'];
+  sheets.forEach(function(sName) {
+    const sh = ss.getSheetByName(sName);
+    if (!sh) return;
+    const data = sh.getDataRange().getValues();
+    for (let r = 1; r < data.length; r++) {
+      const listStr = data[r][1] ? data[r][1].toString() : '';
+      parseAttendanceList(listStr).forEach(function(u) { usedUids.add(u); });
+    }
+  });
+
+  const usageByUid = {};
+  members.forEach(function(row) {
+    const uid = row[7] ? String(row[7]).trim().toUpperCase() : '';
+    const group = row[8] ? String(row[8]).trim() : '';
+    if (uid) {
+      usageByUid[uid] = { effective: usedUids.has(uid) || Boolean(group) };
+    }
+  });
+
+  return {
+    members: members,
+    usageByUid: usageByUid
+  };
+}
+
+/**
  * 3. 新增會友
  */
 function addMember(member) {
@@ -318,6 +351,26 @@ function deleteMember(name) {
       const targetName = name.toString().trim();
       for (let i = data.length - 1; i >= 1; i--) {
         if (data[i][0].toString().trim() === targetName) {
+          const uid = data[i][7] ? String(data[i][7]).trim().toUpperCase() : "";
+          const group = data[i][9] ? String(data[i][9]).trim() : "";
+          if (group) {
+            return "⚠️ 此會友具備小組關聯，無法直接刪除；請改設為「不統計」。";
+          }
+          if (uid) {
+            const ss = getSS();
+            const attSheets = ['台語點名紀錄', '華語點名紀錄', '主日學A班點名紀錄', '主日學B班點名紀錄', '禱告會點名紀錄', '聯合點名紀錄'];
+            for (let s = 0; s < attSheets.length; s++) {
+              const sh = ss.getSheetByName(attSheets[s]);
+              if (!sh) continue;
+              const sData = sh.getDataRange().getValues();
+              for (let r = 1; r < sData.length; r++) {
+                const uids = parseAttendanceList(sData[r][1] ? sData[r][1].toString() : '');
+                if (uids.indexOf(uid) !== -1) {
+                  return "⚠️ 此會友曾有點名紀錄，無法直接刪除；請改設為「不統計」。";
+                }
+              }
+            }
+          }
           sheet.deleteRow(i + 1);
           invalidateAndRebuildMemberCache();
           firebaseInvalidate(['getAllMembers', 'getAllGroupMembers', 'getMemberSuggestions', 'getStats', 'getAllGroupsStats', 'getAdminGroupsList', 'ministry_getPageConfig', 'ministry_getGroupMembers', 'getAttendanceStats']);
