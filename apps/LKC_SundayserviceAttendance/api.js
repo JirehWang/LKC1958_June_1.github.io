@@ -19,7 +19,8 @@ window.google = {
         'getGroupConfig', 'getSmartAttendanceList', 'getQuickSyncData',
         'getAttendanceStats', 'getAttendanceTrend', 'getAgmSessions',
         'getAgmSessionById', 'getAgmCheckinState', 'getAgmCategoryCounts',
-        'getAgmQuorumStats', 'getOfficialMembers', 'getViewerStats'
+        'getAgmQuorumStats', 'getOfficialMembers', 'getViewerStats',
+        'getMemberManagementData', 'getAllMembers'
       ]);
       const REQUEST_TIMEOUT_MS = 15000;
       const MAX_READ_ATTEMPTS = 3;

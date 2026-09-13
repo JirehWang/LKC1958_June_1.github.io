@@ -1,24 +1,58 @@
 // ⚡ apps/LKC_SundayserviceAttendance/attendance-supabase.js
 // 主日出席點名與會友管理 Supabase 熱響應服務模組 (含雙寫備份與冷熱分流)
 
-(function(window) {
+(function(globalScope) {
   const HOT_YEAR_THRESHOLD = 2025;
 
   let _supabaseClient = null;
 
+  function getWin() {
+    if (typeof globalThis !== 'undefined' && globalThis.window) return globalThis.window;
+    if (typeof window !== 'undefined') return window;
+    if (typeof globalScope !== 'undefined') return globalScope;
+    return {};
+  }
+
+  function getGasFn() {
+    const win = getWin();
+    return win.churchAPI_original || win.churchAPI;
+  }
+
+  async function callGas(action, ...args) {
+    const gasFn = getGasFn();
+    if (typeof gasFn === 'function') {
+      return await gasFn(action, ...args);
+    }
+    const win = getWin();
+    const apiUrl = (win.GAS_CONFIG && win.GAS_CONFIG.apiUrl) || win.GAS_URL;
+    if (apiUrl) {
+      const payload = args.length === 1 ? args[0] : args;
+      const res = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: action, payload: payload, token: 'ChurchApp-2026' })
+      });
+      const json = await res.json();
+      return json.data !== undefined ? json.data : json;
+    }
+    throw new Error(`GAS API 未設定，無法執行 ${action}`);
+  }
+
   function getSupabase() {
-    if (_supabaseClient) return _supabaseClient;
-    const config = window._SUPABASE_CONFIG || {};
+    const win = getWin();
+    const config = win._SUPABASE_CONFIG || {};
     if (!config.url || !config.anonKey) {
-      console.warn('⚠️ Supabase 設定尚未載入');
+      _supabaseClient = null;
       return null;
     }
-    if (typeof window.supabase === 'undefined' && typeof createClient === 'undefined') {
-      console.warn('⚠️ Supabase JS SDK 尚未載入');
+    const create = (win.supabase && win.supabase.createClient) || (typeof createClient !== 'undefined' ? createClient : null);
+    if (!create) {
+      _supabaseClient = null;
       return null;
     }
-    const create = (window.supabase && window.supabase.createClient) || createClient;
-    _supabaseClient = create(config.url, config.anonKey);
+    if (!_supabaseClient || win._RESET_SUPABASE_FOR_TEST) {
+      _supabaseClient = create(config.url, config.anonKey);
+    }
     return _supabaseClient;
   }
 
@@ -305,10 +339,27 @@
     // ── 5. 點名統計報表 (getAttendanceStats - 極速讀取 Supabase) ────────
     async getAttendanceStats(req) {
       const sb = getSupabase();
-      if (!sb) return await window.churchAPI('getAttendanceStats', req);
+      if (!sb) return await callGas('getAttendanceStats', req);
 
       const type = (req && req.type) || '華語';
       const mode = (req && req.mode) || 'single';
+
+      // 依冷熱分流架構：Supabase 僅留存一年內資料，超過一年之查詢從線上資料庫 (GAS) 讀取
+      const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
+      const oneYearAgoDate = new Date(Date.now() - ONE_YEAR_MS);
+      const oneYearAgoStr = formatDate(`${oneYearAgoDate.getFullYear()}-${oneYearAgoDate.getMonth() + 1}-${oneYearAgoDate.getDate()}`);
+
+      if (mode === 'single') {
+        const dateStr = formatDate(req.date || '');
+        if (dateStr && dateStr < oneYearAgoStr) {
+          return await callGas('getAttendanceStats', req);
+        }
+      } else {
+        const startStr = formatDate(req.start || '2025/01/01');
+        if (startStr && startStr < oneYearAgoStr) {
+          return await callGas('getAttendanceStats', req);
+        }
+      }
 
       const [membersRes, recsRes] = await Promise.all([
         sb.from('church_members').select('*').order('name', { ascending: true }),
@@ -489,44 +540,63 @@
 
     async getMemberManagementData() {
       const sb = getSupabase();
-      if (!sb) return await window.churchAPI('getMemberManagementData');
 
-      const [membersRes, attRes] = await Promise.all([
-        sb.from('church_members').select('*').order('uid', { ascending: true }),
-        sb.from('attendance_records').select('present_uids')
-      ]);
+      // 依架構規範：判斷會友「狀態」（有效/防刪除保護）必須從線上資料庫 (GAS) 完整歷史紀錄讀取判斷
+      let usageByUid = {};
+      let gasMembers = null;
 
-      if (membersRes.error) throw membersRes.error;
+      try {
+        const gasData = await callGas('getMemberManagementData');
+        if (gasData) {
+          usageByUid = gasData.usageByUid || {};
+          gasMembers = gasData.members || null;
+        }
+      } catch (err) {
+        console.warn('[MemberManagement] 從線上資料庫讀取使用狀態失敗:', err.message);
+      }
 
-      // 建立已使用 UID 集合 (出現在歷史點名紀錄中)
-      const usedUids = new Set();
-      (attRes.data || []).forEach(r => {
-        (r.present_uids || []).forEach(u => usedUids.add(u));
-      });
+      // 名冊部分：若 Supabase 可用則讀取 Supabase（維持極速響應），並套用線上資料庫的使用狀態
+      if (sb) {
+        try {
+          const { data: mems, error } = await sb.from('church_members').select('*').order('uid', { ascending: true });
+          if (!error && mems && mems.length > 0) {
+            const rows = mems.map(m => {
+              const uid = String(m.uid || '').trim().toUpperCase();
+              const isEffective = Boolean(usageByUid[uid] && usageByUid[uid].effective) || Boolean(m.group_name) || Boolean(m.is_official_member);
+              usageByUid[uid] = { effective: isEffective };
 
-      const usageByUid = {};
-      const rows = (membersRes.data || []).map(m => {
-        const isUsed = usedUids.has(m.uid) || Boolean(m.group_name) || Boolean(m.is_official_member);
-        usageByUid[m.uid] = { effective: isUsed };
+              return [
+                m.name,
+                m.gender || '',
+                m.created_at ? new Date(m.created_at).toISOString().slice(0, 10).replace(/-/g, '/') : '',
+                (m.metadata && m.metadata.note) || '',
+                Boolean(m.is_excluded),
+                m.updated_at ? new Date(m.updated_at).toISOString().slice(0, 10).replace(/-/g, '/') : '',
+                '',
+                m.uid,
+                m.group_name || '',
+                m.role || '小羊'
+              ];
+            });
 
-        return [
-          m.name,
-          m.gender || '',
-          m.created_at ? new Date(m.created_at).toISOString().slice(0, 10).replace(/-/g, '/') : '',
-          (m.metadata && m.metadata.note) || '',
-          Boolean(m.is_excluded),
-          m.updated_at ? new Date(m.updated_at).toISOString().slice(0, 10).replace(/-/g, '/') : '',
-          '',
-          m.uid,
-          m.group_name || '',
-          m.role || '小羊'
-        ];
-      });
+            return {
+              members: rows,
+              usageByUid: usageByUid
+            };
+          }
+        } catch (sbErr) {
+          console.warn('[MemberManagement] Supabase 讀取名冊失敗，降級使用線上資料庫名單:', sbErr.message);
+        }
+      }
 
-      return {
-        members: rows,
-        usageByUid: usageByUid
-      };
+      if (gasMembers) {
+        return {
+          members: gasMembers,
+          usageByUid: usageByUid
+        };
+      }
+
+      throw new Error('無法從線上資料庫或 Supabase 取得會友資料');
     },
 
     async addMember(payload) {
@@ -631,7 +701,7 @@
 
     async deleteMember(name) {
       const sb = getSupabase();
-      if (!sb) return await window.churchAPI('deleteMember', name);
+      if (!sb) return await callGas('deleteMember', name);
 
       if (Array.isArray(name)) name = name[0];
       else if (name && typeof name === 'object') name = name.name;
@@ -649,7 +719,18 @@
         throw new Error('此會友具備小組或正式會籍關聯，無法直接刪除；請改設為「不統計」。');
       }
 
-      // 檢查是否曾有歷史點名紀錄
+      // 檢查線上資料庫 (GAS) 全量歷史出席與小組關聯
+      try {
+        const gasData = await callGas('getMemberManagementData');
+        const usage = (gasData && gasData.usageByUid && gasData.usageByUid[mem.uid]) || {};
+        if (usage.effective) {
+          throw new Error('此會友在線上資料庫中曾有點名紀錄或小組關聯，無法直接刪除；請改設為「不統計」。');
+        }
+      } catch (e) {
+        if (e.message && e.message.includes('無法直接刪除')) throw e;
+      }
+
+      // 檢查 Supabase 近一年出席紀錄
       const { data: att } = await sb
         .from('attendance_records')
         .select('id')
@@ -691,5 +772,10 @@
     }
   };
 
-  window.AttendanceSupabaseService = AttendanceSupabaseService;
-})(window);
+  if (typeof window !== 'undefined') {
+    window.AttendanceSupabaseService = AttendanceSupabaseService;
+  }
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { AttendanceSupabaseService };
+  }
+})(typeof globalThis !== 'undefined' ? globalThis : this);
