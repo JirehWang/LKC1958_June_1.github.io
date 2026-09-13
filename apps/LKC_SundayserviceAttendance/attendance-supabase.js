@@ -338,22 +338,40 @@
       members.forEach(m => memberMap.set(m.uid, m));
 
       if (mode === 'single') {
+        const isCombined = type.includes('合計');
         let presentUidSet = new Set();
         let nfMale = 0, nfFemale = 0;
+        let sumMemberCounts = 0;
+        let totalPresentMale = 0, totalPresentFemale = 0;
+
         records.forEach(r => {
-          (r.present_uids || []).forEach(uid => presentUidSet.add(uid));
+          const uids = r.present_uids || [];
+          uids.forEach(uid => {
+            presentUidSet.add(uid);
+            const m = memberMap.get(uid);
+            if (m) {
+              if (m.gender === '男') totalPresentMale++;
+              else if (m.gender === '女') totalPresentFemale++;
+            }
+          });
+          sumMemberCounts += uids.length;
           nfMale += Number(r.new_friends_male || 0);
           nfFemale += Number(r.new_friends_female || 0);
         });
 
         let presentMale = 0, presentFemale = 0;
-        presentUidSet.forEach(uid => {
-          const m = memberMap.get(uid);
-          if (m) {
-            if (m.gender === '男') presentMale++;
-            else if (m.gender === '女') presentFemale++;
-          }
-        });
+        if (isCombined) {
+          presentMale = totalPresentMale;
+          presentFemale = totalPresentFemale;
+        } else {
+          presentUidSet.forEach(uid => {
+            const m = memberMap.get(uid);
+            if (m) {
+              if (m.gender === '男') presentMale++;
+              else if (m.gender === '女') presentFemale++;
+            }
+          });
+        }
 
         const details = members
           .filter(m => !m.is_excluded || presentUidSet.has(m.uid))
@@ -372,7 +390,7 @@
           .sort((a, b) => (b.attended ? 1 : 0) - (a.attended ? 1 : 0));
 
         return {
-          presentCount: presentUidSet.size,
+          presentCount: isCombined ? sumMemberCounts : presentUidSet.size,
           newFriends: nfMale + nfFemale,
           nfMale,
           nfFemale,
@@ -381,9 +399,10 @@
           details
         };
       } else {
-        // Range mode
-        const validDays = records.length;
-        const uidCounts = new Map();
+        // Range mode: validDays must be number of distinct service dates (Sundays), not records.length
+        const serviceDates = new Set(records.map(r => r.date));
+        const validDays = serviceDates.size;
+        const memberDatesMap = new Map();
         let nfMale = 0, nfFemale = 0;
         let totalPresentMale = 0, totalPresentFemale = 0;
         let sumMemberCounts = 0;
@@ -391,7 +410,9 @@
         records.forEach(r => {
           const uids = r.present_uids || [];
           uids.forEach(uid => {
-            uidCounts.set(uid, (uidCounts.get(uid) || 0) + 1);
+            if (!memberDatesMap.has(uid)) memberDatesMap.set(uid, new Set());
+            memberDatesMap.get(uid).add(r.date);
+
             const m = memberMap.get(uid);
             if (m) {
               if (m.gender === '男') totalPresentMale++;
@@ -408,12 +429,14 @@
         const avgPresentCount = validDays > 0 ? Math.round(sumMemberCounts / validDays) : 0;
         const avgMale = validDays > 0 ? Math.round(totalPresentMale / validDays) : 0;
         const avgFemale = validDays > 0 ? Math.round(totalPresentFemale / validDays) : 0;
+        const avgNfMale = validDays > 0 ? Math.round(nfMale / validDays) : 0;
+        const avgNfFemale = validDays > 0 ? Math.round(nfFemale / validDays) : 0;
 
         const details = members
           .filter(m => !m.is_excluded)
           .map(m => {
-            const count = uidCounts.get(m.uid) || 0;
-            const rate = validDays > 0 ? Math.round((count / validDays) * 100) : 0;
+            const count = memberDatesMap.has(m.uid) ? memberDatesMap.get(m.uid).size : 0;
+            const rate = validDays > 0 ? Math.min(100, Math.round((count / validDays) * 100)) : 0;
             return {
               name: m.name,
               gender: m.gender || '',
@@ -427,9 +450,9 @@
 
         return {
           presentCount: avgPresentCount,
-          newFriends: nfMale + nfFemale,
-          nfMale,
-          nfFemale,
+          newFriends: avgNfMale + avgNfFemale,
+          nfMale: avgNfMale,
+          nfFemale: avgNfFemale,
           presentMale: avgMale,
           presentFemale: avgFemale,
           avgCount,
