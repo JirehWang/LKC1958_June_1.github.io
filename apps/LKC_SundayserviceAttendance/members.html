@@ -188,13 +188,6 @@
 
   <!-- 常態會友 / 不統計名單 View -->
   <div id="viewGeneralMembers">
-    <!-- 不統計說明提示（僅在不統計分頁顯示） -->
-    <div id="excludedInfoBanner" class="alert alert-warning border-0 shadow-sm mb-3 d-flex align-items-center gap-2" style="display: none; border-radius: 16px; background-color: rgba(245, 158, 11, 0.12); color: #92400e; font-size: 0.88rem;">
-      <span style="font-size: 1.2rem;">⏸️</span>
-      <div>
-        <strong>此分頁為「不列入統計」名單：</strong>名單內的會友因出國、長照臥床、就醫或特殊狀況，已由每週主日出席率分母中排除。若需恢復常態點名與出席統計，可點擊右側「編輯」並取消勾選「不列入主日出席率統計」。
-      </div>
-    </div>
 
     <div class="d-flex justify-content-between align-items-center mb-3">
       <div class="input-group shadow-sm border-0" style="width: 320px; border-radius: 20px; overflow: hidden;">
@@ -860,7 +853,6 @@
     const btnOfficial = document.getElementById('btnViewOfficial');
     const viewGen = document.getElementById('viewGeneralMembers');
     const viewOff = document.getElementById('viewOfficialMembers');
-    const excludedBanner = document.getElementById('excludedInfoBanner');
     const searchInput = document.getElementById('memberSearchInput');
     const btnAddMem = document.getElementById('btnAddMember');
 
@@ -872,7 +864,6 @@
       if (btnGeneral) btnGeneral.className = "btn btn-sm btn-primary fw-bold px-4 py-2";
       if (viewGen) viewGen.style.display = 'block';
       if (viewOff) viewOff.style.display = 'none';
-      if (excludedBanner) excludedBanner.style.display = 'none';
       if (searchInput) {
         searchInput.placeholder = "輸入姓名/小組/代碼查找常態會友...";
         searchInput.value = '';
@@ -884,7 +875,6 @@
       if (btnExcluded) btnExcluded.className = "btn btn-sm btn-warning text-dark fw-bold px-4 py-2";
       if (viewGen) viewGen.style.display = 'block';
       if (viewOff) viewOff.style.display = 'none';
-      if (excludedBanner) excludedBanner.style.display = 'flex';
       if (searchInput) {
         searchInput.placeholder = "輸入姓名/小組/代碼查找不統計會友...";
         searchInput.value = '';
