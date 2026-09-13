@@ -360,3 +360,66 @@ function getAttendanceCountMap(ss, type) {
   cache.put(cacheKey, JSON.stringify(counts), 21600);
   return counts;
 }
+
+/**
+ * 取得線上所有點名紀錄表的歷史出席數據（供全量審計與 Supabase 同步）
+ */
+function getAllAttendanceHistory() {
+  const ss = getSS();
+  const sheets = ['台語點名紀錄', '華語點名紀錄', '聯合點名紀錄', '主日學A班點名紀錄', '主日學B班點名紀錄', '禱告會點名紀錄'];
+  const allRecords = [];
+  const allUids = {};
+  const memberCounts = {};
+
+  sheets.forEach(function(sName) {
+    const sh = ss.getSheetByName(sName);
+    if (!sh) return;
+    const data = sh.getDataRange().getValues();
+    const serviceType = sName.replace('點名紀錄', '');
+
+    for (let r = 1; r < data.length; r++) {
+      const dVal = data[r][0];
+      if (!dVal) continue;
+      let dStr = '';
+      if (dVal instanceof Date) {
+        dStr = Utilities.formatDate(dVal, "GMT+8", "yyyy-MM-dd");
+      } else {
+        const dMatch = String(dVal).match(/(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
+        if (dMatch) {
+          dStr = dMatch[1] + '-' + ('0' + dMatch[2]).slice(-2) + '-' + ('0' + dMatch[3]).slice(-2);
+        } else {
+          dStr = String(dVal).trim();
+        }
+      }
+      if (!dStr) continue;
+
+      const listStr = data[r][1] ? data[r][1].toString() : '';
+      const nfMale = Number(data[r][2] || 0);
+      const nfFemale = Number(data[r][3] || 0);
+      const uids = parseAttendanceList(listStr);
+
+      uids.forEach(function(u) {
+        allUids[u] = true;
+        memberCounts[u] = (memberCounts[u] || 0) + 1;
+      });
+
+      if (uids.length > 0 || nfMale > 0 || nfFemale > 0) {
+        allRecords.push({
+          service_type: serviceType,
+          date: dStr,
+          present_uids: uids,
+          new_friends_male: nfMale,
+          new_friends_female: nfFemale,
+          raw_list_str: listStr
+        });
+      }
+    }
+  });
+
+  return {
+    recordsCount: allRecords.length,
+    uniqueUids: Object.keys(allUids),
+    memberCounts: memberCounts,
+    records: allRecords
+  };
+}

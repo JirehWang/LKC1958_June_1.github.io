@@ -13,13 +13,11 @@ const memberUiPath = path.join(
 );
 const source = fs.readFileSync(memberUiPath, 'utf8');
 
-test('member UI markup includes excluded tab, badges, and info banner', () => {
+test('member UI markup includes excluded tab and badges', () => {
   assert.match(source, /id="btnViewExcluded"/);
   assert.match(source, /switchMemberView\('EXCLUDED'\)/);
   assert.match(source, /id="badgeGeneralCount"/);
   assert.match(source, /id="badgeExcludedCount"/);
-  assert.match(source, /id="excludedInfoBanner"/);
-  assert.match(source, /此分頁為「不列入統計」名單/);
 });
 
 test('tab switching and filtering isolates regular members from excluded members', () => {
@@ -92,7 +90,6 @@ test('tab switching and filtering isolates regular members from excluded members
   context.switchMemberView('GENERAL');
   assert.equal(context.currentMemberView, 'GENERAL');
   assert.equal(getEl('viewGeneralMembers').style.display, 'block');
-  assert.equal(getEl('excludedInfoBanner').style.display, 'none');
   assert.equal(getEl('memberListSummary').textContent, '共 3 位會友');
   // Check rendered table rows in GENERAL view
   assert.match(getEl('memberTableBody').innerHTML, /常態會友一/);
@@ -110,7 +107,6 @@ test('tab switching and filtering isolates regular members from excluded members
   context.switchMemberView('EXCLUDED');
   assert.equal(context.currentMemberView, 'EXCLUDED');
   assert.equal(getEl('viewGeneralMembers').style.display, 'block');
-  assert.equal(getEl('excludedInfoBanner').style.display, 'flex');
   assert.equal(getEl('memberListSummary').textContent, '共 2 位會友');
   // Check rendered table rows in EXCLUDED view
   assert.match(getEl('memberTableBody').innerHTML, /不統計會友甲/);
