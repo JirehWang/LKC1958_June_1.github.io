@@ -19,23 +19,29 @@
   }
 
   async function callGas(action, ...args) {
+    let result;
     const gasFn = getGasFn();
     if (typeof gasFn === 'function') {
-      return await gasFn(action, ...args);
+      result = await gasFn(action, ...args);
+    } else {
+      const win = getWin();
+      const apiUrl = (win.GAS_CONFIG && win.GAS_CONFIG.apiUrl) || win.GAS_URL;
+      if (apiUrl) {
+        const payload = args.length === 1 ? args[0] : args;
+        const res = await fetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: action, payload: payload, token: 'ChurchApp-2026' })
+        });
+        result = await res.json();
+      } else {
+        throw new Error(`GAS API 未設定，無法執行 ${action}`);
+      }
     }
-    const win = getWin();
-    const apiUrl = (win.GAS_CONFIG && win.GAS_CONFIG.apiUrl) || win.GAS_URL;
-    if (apiUrl) {
-      const payload = args.length === 1 ? args[0] : args;
-      const res = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: action, payload: payload, token: 'ChurchApp-2026' })
-      });
-      const json = await res.json();
-      return json.data !== undefined ? json.data : json;
+    if (result && typeof result === 'object' && result.data !== undefined) {
+      return result.data;
     }
-    throw new Error(`GAS API 未設定，無法執行 ${action}`);
+    return result;
   }
 
   function getSupabase() {

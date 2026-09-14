@@ -498,7 +498,7 @@
     const tbody = document.getElementById('memberTableBody');
     tbody.innerHTML = '<tr><td colspan="8" class="text-center p-5"><div class="spinner-border text-primary"></div><br>資料載入中...</td></tr>';
     google.script.run.withSuccessHandler(function(data) {
-      const response = data || {};
+      const response = (data && data.data !== undefined && !data.members) ? data.data : (data || {});
       allMembersRawData = Array.isArray(response) ? response : (response.members || []);
       memberUsageByUid = response.usageByUid || {};
       updateMemberCounts();
