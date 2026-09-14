@@ -2,7 +2,12 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { exportWorshipPPTX, getImportedSlideObjects, cleanParagraphProperties } = require('./ppt-export.js');
+const {
+  exportWorshipPPTX,
+  getImportedSlideObjects,
+  cleanParagraphProperties,
+  deduplicatePptxMedia
+} = require('./ppt-export.js');
 
 test('exports slides correctly with mock pptxgenjs', async () => {
   const slides = [];
@@ -684,4 +689,40 @@ test('cleanParagraphProperties removes duplicate a:pPr tags from a:p paragraphs'
   `;
   const result = cleanParagraphProperties(originalXml);
   assert.equal(result.replace(/\s+/g, ''), expectedXml.replace(/\s+/g, ''));
+});
+
+test('deduplicates identical PPTX media without changing slide relationships', async () => {
+  const entries = new Map([
+    ['ppt/media/image1.png', 'same-image'],
+    ['ppt/media/image2.png', 'same-image'],
+    ['ppt/media/image3.png', 'different-image'],
+    ['ppt/slides/_rels/slide1.xml.rels', '<Relationships><Relationship Id="rId1" Target="../media/image2.png"/></Relationships>']
+  ]);
+  const zip = {
+    files: Object.fromEntries([...entries.keys()].map(name => [name, {}])),
+    file(name, value) {
+      if (arguments.length === 1) {
+        const content = entries.get(name);
+        if (content == null) return null;
+        return {
+          async: async type => type === 'uint8array'
+            ? Uint8Array.from([...content].map(character => character.charCodeAt(0)))
+            : content
+        };
+      }
+      entries.set(name, value);
+      this.files[name] = {};
+      return this;
+    },
+    remove(name) {
+      entries.delete(name);
+      delete this.files[name];
+    }
+  };
+
+  const result = await deduplicatePptxMedia(zip);
+
+  assert.equal(result.removed, 1);
+  assert.equal(entries.has('ppt/media/image2.png'), false);
+  assert.match(entries.get('ppt/slides/_rels/slide1.xml.rels'), /Target="\.\.\/media\/image1\.png"/);
 });

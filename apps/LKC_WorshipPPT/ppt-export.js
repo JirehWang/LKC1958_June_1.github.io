@@ -45,6 +45,113 @@
     });
   }
 
+  const PPTX_MEDIA_PATTERN = /^ppt\/media\/[^/]+\.(?:png|jpe?g|gif|svg|webp|emf|wmf)$/i;
+
+  function normalizePackagePath(parts) {
+    const normalized = [];
+    for (const part of parts) {
+      if (!part || part === '.') continue;
+      if (part === '..') normalized.pop();
+      else normalized.push(part);
+    }
+    return normalized.join('/');
+  }
+
+  function relationshipSourceDirectory(relationshipName) {
+    if (relationshipName === '_rels/.rels') return '';
+    const sourcePartName = relationshipName
+      .replace(/\/_rels\//, '/')
+      .replace(/\.rels$/i, '');
+    return sourcePartName.split('/').slice(0, -1).join('/');
+  }
+
+  function resolveRelationshipTarget(relationshipName, target) {
+    if (!target || target.startsWith('/')) return target.replace(/^\//, '');
+    const sourceDirectory = relationshipSourceDirectory(relationshipName);
+    return normalizePackagePath([...sourceDirectory.split('/'), ...target.split('/')]);
+  }
+
+  function relativePackagePath(fromDirectory, targetPath) {
+    const fromParts = fromDirectory ? fromDirectory.split('/') : [];
+    const targetParts = targetPath.split('/');
+    let commonLength = 0;
+    while (commonLength < fromParts.length
+      && commonLength < targetParts.length
+      && fromParts[commonLength] === targetParts[commonLength]) {
+      commonLength += 1;
+    }
+    const parentParts = new Array(fromParts.length - commonLength).fill('..');
+    return [...parentParts, ...targetParts.slice(commonLength)].join('/');
+  }
+
+  function rewriteMediaRelationships(xml, relationshipName, duplicateMedia) {
+    let changed = false;
+    const sourceDirectory = relationshipSourceDirectory(relationshipName);
+    const rewritten = xml.replace(/(<Relationship\b[^>]*\bTarget\s*=\s*["'])([^"']+)(["'])/g, (match, prefix, target, suffix) => {
+      const packageTarget = resolveRelationshipTarget(relationshipName, target);
+      const canonicalTarget = duplicateMedia.get(packageTarget);
+      if (!canonicalTarget) return match;
+      changed = true;
+      return `${prefix}${relativePackagePath(sourceDirectory, canonicalTarget)}${suffix}`;
+    });
+    return { xml: rewritten, changed };
+  }
+
+  function fallbackMediaHash(bytes) {
+    let first = 2166136261;
+    let second = 2246822519;
+    for (let index = 0; index < bytes.length; index += 1) {
+      first = Math.imul(first ^ bytes[index], 16777619);
+      second = Math.imul(second ^ (bytes[index] + index), 3266489917);
+    }
+    return `${bytes.length}:${first >>> 0}:${second >>> 0}`;
+  }
+
+  async function mediaContentSignature(mediaFile) {
+    const bytes = await mediaFile.async('uint8array');
+    const cryptoApi = root.crypto;
+    if (cryptoApi && cryptoApi.subtle && typeof cryptoApi.subtle.digest === 'function') {
+      const digest = new Uint8Array(await cryptoApi.subtle.digest('SHA-256', bytes));
+      const digestHex = Array.from(digest, byte => byte.toString(16).padStart(2, '0')).join('');
+      return `${bytes.length}:${digestHex}`;
+    }
+    return fallbackMediaHash(bytes);
+  }
+
+  async function deduplicatePptxMedia(zip) {
+    const mediaNames = Object.keys(zip.files || {}).filter(name => PPTX_MEDIA_PATTERN.test(name));
+    const canonicalByContent = new Map();
+    const duplicateMedia = new Map();
+
+    for (const mediaName of mediaNames) {
+      const mediaFile = zip.file(mediaName);
+      if (!mediaFile || typeof mediaFile.async !== 'function') continue;
+      const extension = mediaName.slice(mediaName.lastIndexOf('.')).toLowerCase();
+      const contentKey = `${extension}:${await mediaContentSignature(mediaFile)}`;
+      const canonicalName = canonicalByContent.get(contentKey);
+      if (canonicalName) duplicateMedia.set(mediaName, canonicalName);
+      else canonicalByContent.set(contentKey, mediaName);
+    }
+
+    if (!duplicateMedia.size) return { removed: 0, relationshipsUpdated: 0 };
+
+    let relationshipsUpdated = 0;
+    const relationshipNames = Object.keys(zip.files || {}).filter(name => name.endsWith('.rels'));
+    for (const relationshipName of relationshipNames) {
+      const relationshipFile = zip.file(relationshipName);
+      if (!relationshipFile || typeof relationshipFile.async !== 'function') continue;
+      const originalXml = await relationshipFile.async('text');
+      const result = rewriteMediaRelationships(originalXml, relationshipName, duplicateMedia);
+      if (result.changed) {
+        zip.file(relationshipName, result.xml);
+        relationshipsUpdated += 1;
+      }
+    }
+
+    for (const duplicateName of duplicateMedia.keys()) zip.remove(duplicateName);
+    return { removed: duplicateMedia.size, relationshipsUpdated };
+  }
+
   async function ensurePptxExportReady(options = {}) {
     if (options.PptxGenJS || root.PptxGenJS) return;
     if (typeof document === 'undefined') return;
@@ -471,7 +578,7 @@
     const fileName = `${templateProfile.filenamePrefix || '台語主日禮拜'}_${fileDate}.pptx`;
 
     if (typeof pptx.write === 'function' && typeof document !== 'undefined') {
-      return pptx.write('blob').then(async (blob) => {
+      return pptx.write({ outputType: 'blob', compression: true }).then(async (blob) => {
         const JSZipLib = options.JSZip || root.JSZip;
         if (JSZipLib) {
           const zip = await JSZipLib.loadAsync(blob);
@@ -483,9 +590,11 @@
               zip.file(name, cleanedXml);
             }
           }
+          await deduplicatePptxMedia(zip);
           const cleanedBlob = await zip.generateAsync({
             type: 'blob',
-            mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+            mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+            compression: 'DEFLATE'
           });
           const url = URL.createObjectURL(cleanedBlob);
           const a = document.createElement('a');
@@ -571,6 +680,7 @@
   return {
     exportWorshipPPTX,
     getImportedSlideObjects,
-    cleanParagraphProperties
+    cleanParagraphProperties,
+    deduplicatePptxMedia
   };
 });
