@@ -799,51 +799,51 @@
       const sb = getSupabase();
 
       // 依架構規範：判斷會友「狀態」（有效/防刪除保護）必須從線上資料庫 (GAS) 完整歷史紀錄讀取判斷
+      // ⚡ 同步並行發送 GAS 與 Supabase 請求，節省等待時間
       let usageByUid = {};
       let gasMembers = null;
 
-      try {
-        const gasData = await callGas('getMemberManagementData');
-        if (gasData) {
-          usageByUid = gasData.usageByUid || {};
-          gasMembers = gasData.members || null;
-        }
-      } catch (err) {
+      const gasPromise = callGas('getMemberManagementData').catch(err => {
         console.warn('[MemberManagement] 從線上資料庫讀取使用狀態失敗:', err.message);
+        return null;
+      });
+
+      const sbPromise = sb
+        ? sb.from('church_members').select('*').order('uid', { ascending: true })
+        : Promise.resolve({ data: null, error: new Error('Supabase 未就緒') });
+
+      const [gasData, sbRes] = await Promise.all([gasPromise, sbPromise]);
+
+      if (gasData) {
+        usageByUid = gasData.usageByUid || {};
+        gasMembers = gasData.members || null;
       }
 
-      // 名冊部分：若 Supabase 可用則讀取 Supabase（維持極速響應），並套用線上資料庫的使用狀態
-      if (sb) {
-        try {
-          const { data: mems, error } = await sb.from('church_members').select('*').order('uid', { ascending: true });
-          if (!error && mems && mems.length > 0) {
-            const rows = mems.map(m => {
-              const uid = String(m.uid || '').trim().toUpperCase();
-              const isEffective = Boolean(usageByUid[uid] && usageByUid[uid].effective) || Boolean(m.group_name) || Boolean(m.is_official_member);
-              usageByUid[uid] = { effective: isEffective };
+      // 名冊部分：若 Supabase 可用則優先使用 Supabase 名單，並套用線上資料庫的使用狀態
+      if (sbRes && !sbRes.error && sbRes.data && sbRes.data.length > 0) {
+        const rows = sbRes.data.map(m => {
+          const uid = String(m.uid || '').trim().toUpperCase();
+          const isEffective = Boolean(usageByUid[uid] && usageByUid[uid].effective) || Boolean(m.group_name) || Boolean(m.is_official_member);
+          usageByUid[uid] = { effective: isEffective };
 
-              return [
-                m.name,
-                m.gender || '',
-                m.created_at ? new Date(m.created_at).toISOString().slice(0, 10).replace(/-/g, '/') : '',
-                (m.metadata && m.metadata.note) || '',
-                Boolean(m.is_excluded),
-                m.updated_at ? new Date(m.updated_at).toISOString().slice(0, 10).replace(/-/g, '/') : '',
-                '',
-                m.uid,
-                m.group_name || '',
-                m.role || '小羊'
-              ];
-            });
+          return [
+            m.name,
+            m.gender || '',
+            m.created_at ? new Date(m.created_at).toISOString().slice(0, 10).replace(/-/g, '/') : '',
+            (m.metadata && m.metadata.note) || '',
+            Boolean(m.is_excluded),
+            m.updated_at ? new Date(m.updated_at).toISOString().slice(0, 10).replace(/-/g, '/') : '',
+            '',
+            m.uid,
+            m.group_name || '',
+            m.role || '小羊'
+          ];
+        });
 
-            return {
-              members: rows,
-              usageByUid: usageByUid
-            };
-          }
-        } catch (sbErr) {
-          console.warn('[MemberManagement] Supabase 讀取名冊失敗，降級使用線上資料庫名單:', sbErr.message);
-        }
+        return {
+          members: rows,
+          usageByUid: usageByUid
+        };
       }
 
       if (gasMembers) {

@@ -424,26 +424,12 @@
 <script>
   var allMembersRawData = [];
   var memberUsageByUid = {};
+  var isMembersLoading = false;
   var currentMemberName = "";
   var currentShareUrl = "";
   var currentShareQrUrl = "";
   var previewRequestId = 0;
   var currentPreviewMode = "";
-
-  function getMemberScrollKey(rowOrUid) {
-    const rawValue = Array.isArray(rowOrUid) ? (rowOrUid[7] || rowOrUid[0]) : rowOrUid;
-    return encodeURIComponent(String(rawValue || ''));
-  }
-
-  function restoreMemberScroll(anchor) {
-    const scrollContainer = document.querySelector('.member-table-container');
-    if (!anchor || !scrollContainer || !window.ListScrollAnchor) return;
-    const restoreAnchor = function() {
-      window.ListScrollAnchor.restore(scrollContainer, 'tr[data-scroll-key]', anchor);
-    };
-    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(restoreAnchor);
-    else setTimeout(restoreAnchor, 0);
-  }
 
   function getMemberScrollKey(rowOrUid) {
     const rawValue = Array.isArray(rowOrUid) ? (rowOrUid[7] || rowOrUid[0]) : rowOrUid;
@@ -489,22 +475,46 @@
   }
 
   function refreshMemberTable(options) {
+    if (isMembersLoading) return;
     options = options || {};
+    isMembersLoading = true;
     const scrollContainer = document.querySelector('.member-table-container');
     const preferredKey = options.preserveUid ? getMemberScrollKey(options.preserveUid) : '';
     const scrollAnchor = scrollContainer && window.ListScrollAnchor
       ? window.ListScrollAnchor.capture(scrollContainer, 'tr[data-scroll-key]', preferredKey)
       : null;
     const tbody = document.getElementById('memberTableBody');
-    tbody.innerHTML = '<tr><td colspan="8" class="text-center p-5"><div class="spinner-border text-primary"></div><br>資料載入中...</td></tr>';
-    google.script.run.withSuccessHandler(function(data) {
-      const response = (data && data.data !== undefined && !data.members) ? data.data : (data || {});
-      allMembersRawData = Array.isArray(response) ? response : (response.members || []);
-      memberUsageByUid = response.usageByUid || {};
-      updateMemberCounts();
-      filterMembers();
-      restoreMemberScroll(scrollAnchor);
-    }).getMemberManagementData();
+    const searchInput = document.getElementById('memberSearchInput');
+    const currentKw = searchInput ? searchInput.value.trim() : '';
+
+    if (currentKw) {
+      tbody.innerHTML = `<tr><td colspan="8" class="text-center p-5"><div class="spinner-border text-primary mb-2"></div><br><span class="text-secondary fw-bold">資料載入中，已記錄關鍵字「${currentKw}」，載入完成後將自動搜尋...</span></td></tr>`;
+      const summary = document.getElementById('memberListSummary');
+      if (summary) summary.textContent = '資料載入中...';
+    } else {
+      tbody.innerHTML = '<tr><td colspan="8" class="text-center p-5"><div class="spinner-border text-primary mb-2"></div><br>資料載入中...</td></tr>';
+      const summary = document.getElementById('memberListSummary');
+      if (summary) summary.textContent = '載入中...';
+    }
+
+    google.script.run
+      .withSuccessHandler(function(data) {
+        isMembersLoading = false;
+        const response = (data && data.data !== undefined && !data.members) ? data.data : (data || {});
+        allMembersRawData = Array.isArray(response) ? response : (response.members || []);
+        memberUsageByUid = response.usageByUid || {};
+        updateMemberCounts();
+        filterMembers();
+        restoreMemberScroll(scrollAnchor);
+      })
+      .withFailureHandler(function(err) {
+        isMembersLoading = false;
+        const errMsg = (err && err.message) || String(err || '連線逾時或錯誤');
+        tbody.innerHTML = `<tr><td colspan="8" class="text-center p-5 text-danger">⚠️ 會友名單載入失敗：${errMsg}<br><button class="btn btn-sm btn-outline-primary mt-3 px-4 py-2" onclick="refreshMemberTable()">重新載入</button></td></tr>`;
+        const summary = document.getElementById('memberListSummary');
+        if (summary) summary.textContent = '載入失敗';
+      })
+      .getMemberManagementData();
   }
 
   function updateMemberSummary(visibleCount) {
@@ -585,9 +595,27 @@
   }
 
   function filterMembers() {
-    const keyword = document.getElementById('memberSearchInput').value.trim().toLowerCase();
-    document.getElementById('memberClearBtn').style.display = keyword ? 'block' : 'none';
-    
+    const searchInput = document.getElementById('memberSearchInput');
+    const rawKw = searchInput ? searchInput.value.trim() : '';
+    const keyword = rawKw.toLowerCase();
+    const clearBtn = document.getElementById('memberClearBtn');
+    if (clearBtn) clearBtn.style.display = keyword ? 'block' : 'none';
+
+    // 🛡️ 防禦：若資料仍在載入中且尚未有清單快照，絕不執行空清單過濾或顯示「查無資料」，維持載入等待提示並保留輸入之搜尋詞
+    if (isMembersLoading && (!allMembersRawData || allMembersRawData.length === 0)) {
+      const tbody = document.getElementById('memberTableBody');
+      const summary = document.getElementById('memberListSummary');
+      if (tbody) {
+        if (keyword) {
+          tbody.innerHTML = `<tr><td colspan="8" class="text-center p-5"><div class="spinner-border text-primary mb-2"></div><br><span class="text-secondary fw-bold">資料載入中，已記錄關鍵字「${rawKw}」，載入完成後將自動搜尋...</span></td></tr>`;
+        } else {
+          tbody.innerHTML = '<tr><td colspan="8" class="text-center p-5"><div class="spinner-border text-primary mb-2"></div><br>資料載入中...</td></tr>';
+        }
+      }
+      if (summary) summary.textContent = '資料載入中...';
+      return;
+    }
+
     const isExcludedTab = (currentMemberView === 'EXCLUDED');
     const baseList = allMembersRawData.filter(row => {
       if (!row || !row[0]) return false;

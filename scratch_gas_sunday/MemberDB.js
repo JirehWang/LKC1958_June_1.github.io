@@ -231,17 +231,39 @@ function getAllMembers() {
 function getMemberManagementData() {
   const ss = getSS();
   const members = getAllMembers();
-  const usedUids = new Set();
-  const sheets = ['台語點名紀錄', '華語點名紀錄', '主日學A班點名紀錄', '主日學B班點名紀錄', '禱告會點名紀錄', '聯合點名紀錄'];
-  sheets.forEach(function(sName) {
-    const sh = ss.getSheetByName(sName);
-    if (!sh) return;
-    const data = sh.getDataRange().getValues();
-    for (let r = 1; r < data.length; r++) {
-      const listStr = data[r][1] ? data[r][1].toString() : '';
-      parseAttendanceList(listStr).forEach(function(u) { usedUids.add(u); });
+
+  let usedUids = null;
+  const hasCache = typeof CacheService !== 'undefined' && CacheService && typeof CacheService.getScriptCache === 'function';
+  const CACHE_KEY = 'MEMBER_MANAGEMENT_USED_UIDS_V1';
+  let cache = null;
+  if (hasCache) {
+    try {
+      cache = CacheService.getScriptCache();
+      const cached = cache.get(CACHE_KEY);
+      if (cached) {
+        usedUids = new Set(JSON.parse(cached));
+      }
+    } catch (e) { usedUids = null; }
+  }
+
+  if (!usedUids) {
+    usedUids = new Set();
+    const sheets = ['台語點名紀錄', '華語點名紀錄', '主日學A班點名紀錄', '主日學B班點名紀錄', '禱告會點名紀錄', '聯合點名紀錄'];
+    sheets.forEach(function(sName) {
+      const sh = ss.getSheetByName(sName);
+      if (!sh) return;
+      const data = sh.getDataRange().getValues();
+      for (let r = 1; r < data.length; r++) {
+        const listStr = data[r][1] ? data[r][1].toString() : '';
+        parseAttendanceList(listStr).forEach(function(u) { usedUids.add(u); });
+      }
+    });
+    if (cache) {
+      try {
+        cache.put(CACHE_KEY, JSON.stringify(Array.from(usedUids)), 3600);
+      } catch (e) {}
     }
-  });
+  }
 
   const usageByUid = {};
   members.forEach(function(row) {
