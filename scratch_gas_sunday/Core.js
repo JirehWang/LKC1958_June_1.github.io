@@ -193,6 +193,8 @@ function _handleAttendanceRequest(body) {
       result = getMemberManagementData(); break;
     case 'getAllAttendanceHistory':
       result = getAllAttendanceHistory(); break;
+    case 'searchMemberOccurrences':
+      result = searchMemberOccurrences(payload && payload.query); break;
     case 'updateMember':
       result = updateMember(payload.oldName || payload[0], payload.newData || payload[1]); break;
     case 'deleteMember':

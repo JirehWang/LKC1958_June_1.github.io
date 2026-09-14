@@ -423,3 +423,61 @@ function getAllAttendanceHistory() {
     records: allRecords
   };
 }
+
+/**
+ * 跨試算表搜尋特定人員（供深層排查）
+ */
+function searchMemberOccurrences(query) {
+  query = String(query || 'LK00121').trim();
+  const results = [];
+  
+  const ss1 = getSS();
+  ss1.getSheets().forEach(function(sh) {
+    const sName = sh.getName();
+    const data = sh.getDataRange().getValues();
+    for (let r = 0; r < data.length; r++) {
+      for (let c = 0; c < data[r].length; c++) {
+        const val = String(data[r][c] || '');
+        if (val.indexOf(query) !== -1 || (query === 'LK00121' && val.indexOf('楊潘秀連') !== -1)) {
+          results.push({
+            ss: '主日試算表',
+            sheet: sName,
+            row: r + 1,
+            col: c + 1,
+            val: val.slice(0, 100),
+            rowPreview: data[r].slice(0, 8).map(String).join(' | ')
+          });
+          break;
+        }
+      }
+    }
+  });
+
+  try {
+    const ss2 = getGroupSS();
+    ss2.getSheets().forEach(function(sh) {
+      const sName = sh.getName();
+      const data = sh.getDataRange().getValues();
+      for (let r = 0; r < data.length; r++) {
+        for (let c = 0; c < data[r].length; c++) {
+          const val = String(data[r][c] || '');
+          if (val.indexOf(query) !== -1 || (query === 'LK00121' && val.indexOf('楊潘秀連') !== -1)) {
+            results.push({
+              ss: '小組試算表',
+              sheet: sName,
+              row: r + 1,
+              col: c + 1,
+              val: val.slice(0, 100),
+              rowPreview: data[r].slice(0, 8).map(String).join(' | ')
+            });
+            break;
+          }
+        }
+      }
+    });
+  } catch (e) {
+    results.push({ error: e.toString() });
+  }
+
+  return results;
+}

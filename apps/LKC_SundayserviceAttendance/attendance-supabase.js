@@ -484,7 +484,6 @@
         const avgNfFemale = validDays > 0 ? Math.round(nfFemale / validDays) : 0;
 
         const details = members
-          .filter(m => !m.is_excluded)
           .map(m => {
             const count = memberDatesMap.has(m.uid) ? memberDatesMap.get(m.uid).size : 0;
             const rate = validDays > 0 ? Math.min(100, Math.round((count / validDays) * 100)) : 0;
@@ -494,9 +493,11 @@
               uid: m.uid,
               count,
               rate,
-              inGroup: Boolean(m.group_name && m.group_name !== '未分組')
+              inGroup: Boolean(m.group_name && m.group_name !== '未分組'),
+              is_excluded: m.is_excluded
             };
           })
+          .filter(m => !m.is_excluded || m.count > 0)
           .sort((a, b) => b.rate - a.rate);
 
         return {

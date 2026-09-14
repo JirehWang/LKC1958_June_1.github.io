@@ -153,8 +153,8 @@ function _getRangeStats(ss, type, startStr, endStr, baseSheetName) {
     const gender = genderIdx !== -1 ? memData[i][genderIdx] : "";
     const uid = uidIdx !== -1 ? String(memData[i][uidIdx] || "").trim() : "";
     const isExcluded = excludeIdx !== -1 ? (memData[i][excludeIdx] === true || memData[i][excludeIdx] === "TRUE") : false;
-    if (!isExcluded) {
-      const count = (uid && attendanceMap[uid]) || 0;
+    const count = (uid && attendanceMap[uid]) || 0;
+    if (!isExcluded || count > 0) {
       result.details.push({ name, gender, uid, count, rate: validDays > 0 ? Math.round((count / validDays) * 100) : 0 });
     }
   }
@@ -214,8 +214,8 @@ function _getCombinedRangeStats(ss, startStr, endStr, baseSheetName, targetTypes
     const gender = genderIdx !== -1 ? memData[i][genderIdx] : "";
     const uid = uidIdx !== -1 ? String(memData[i][uidIdx] || "").trim() : "";
     const isExcluded = excludeIdx !== -1 ? (memData[i][excludeIdx] === true || memData[i][excludeIdx] === "TRUE") : false;
-    if (!isExcluded) {
-      const count = (uid && memberDatesMap[uid]) ? memberDatesMap[uid].size : 0;
+    const count = (uid && memberDatesMap[uid]) ? memberDatesMap[uid].size : 0;
+    if (!isExcluded || count > 0) {
       sumAttendance += count;
       details.push({ name, gender, uid, count, rate: validDays > 0 ? Math.round((count / validDays) * 100) : 0 });
     }
