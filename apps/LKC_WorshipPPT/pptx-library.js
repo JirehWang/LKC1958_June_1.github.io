@@ -567,27 +567,15 @@
     }
   }
 
-  async function downloadAndParse(entry, JSZipImplementation, readApi) {
-    if (!entry || !entry.fileId) throw new Error('找不到對應的雲端 PPTX');
-    const jszip = await resolveJSZip(JSZipImplementation);
-    const storageUrl = entry.downloadUrl || entry.storageUrl;
-    if (storageUrl && isFirebaseStorageUrl(storageUrl)) {
-      let response;
-      try {
-        response = await fetch(storageUrl);
-      } catch (error) {
-        throw new Error(`PPTX 下載失敗：${error && error.message ? error.message : error}`);
-      }
-      if (!response.ok) throw new Error(`PPTX 下載失敗（${response.status}）`);
-      return parsePptx(await response.arrayBuffer(), jszip);
-    }
-    if (typeof readApi === 'function') {
-      const result = await readApi('cal_getPptLibraryFile', { fileId: entry.fileId });
-      const payload = result && result.data;
-      if (!payload || !payload.base64) throw new Error('PPTX 雲端代理未回傳檔案內容');
-      return parsePptx(base64ToArrayBuffer(payload.base64), jszip);
-    }
-    const url = `https://drive.usercontent.google.com/download?id=${encodeURIComponent(entry.fileId)}&export=download&confirm=t`;
+  function isPptProxyTransportError(error) {
+    if (!error) return false;
+    if (['INVALID_RESPONSE', 'TIMEOUT', 'GAS_TIMEOUT'].includes(error.type)) return true;
+    if (error.name === 'SyntaxError') return true;
+    return /GAS|健康檢查|非 JSON|not valid json|failed to fetch|network|load failed|逾時|timeout|未知的指令/i
+      .test(String(error.message || error));
+  }
+
+  async function fetchAndParsePptx(url, jszip) {
     let response;
     try {
       response = await fetch(url);
@@ -596,6 +584,46 @@
     }
     if (!response.ok) throw new Error(`PPTX 下載失敗（${response.status}）`);
     return parsePptx(await response.arrayBuffer(), jszip);
+  }
+
+  async function downloadAndParse(entry, JSZipImplementation, readApi) {
+    if (!entry || !entry.fileId) throw new Error('找不到對應的雲端 PPTX');
+    const jszip = await resolveJSZip(JSZipImplementation);
+    const storageUrl = [entry.storageUrl, entry.downloadUrl].find(isFirebaseStorageUrl);
+    const directUrl = entry.downloadUrl || entry.storageUrl;
+    if (storageUrl) {
+      return fetchAndParsePptx(storageUrl, jszip);
+    }
+
+    let proxyError = null;
+    if (typeof readApi === 'function') {
+      let result;
+      try {
+        result = await readApi('cal_getPptLibraryFile', { fileId: entry.fileId });
+      } catch (error) {
+        if (!directUrl || !isPptProxyTransportError(error)) throw error;
+        proxyError = error;
+      }
+      if (!proxyError) {
+        const payload = result && result.data;
+        if (payload && payload.base64) {
+          return parsePptx(base64ToArrayBuffer(payload.base64), jszip);
+        }
+        proxyError = new Error('PPTX 雲端代理未回傳檔案內容');
+      }
+    }
+
+    if (directUrl) {
+      try {
+        return await fetchAndParsePptx(directUrl, jszip);
+      } catch (directError) {
+        if (!proxyError) throw directError;
+        throw new Error(`PPTX 下載失敗：${directError.message}；GAS 代理：${proxyError.message}`);
+      }
+    }
+
+    const fallbackUrl = `https://drive.usercontent.google.com/download?id=${encodeURIComponent(entry.fileId)}&export=download&confirm=t`;
+    return fetchAndParsePptx(fallbackUrl, jszip);
   }
 
   return {

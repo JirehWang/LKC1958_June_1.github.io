@@ -213,6 +213,41 @@ test('routes Google Drive download URLs through the GAS Base64 proxy', async () 
   }
 });
 
+test('falls back to the indexed Drive URL when the GAS PPTX proxy returns a health response', async () => {
+  const previousFetch = global.fetch;
+  const previousDOMParser = global.DOMParser;
+  const directUrl = 'https://drive.usercontent.google.com/download?id=h65&export=download&confirm=t';
+  const fetchedUrls = [];
+  let gasCalls = 0;
+  global.fetch = async url => {
+    fetchedUrls.push(url);
+    return { ok: true, arrayBuffer: async () => new ArrayBuffer(4) };
+  };
+  global.DOMParser = class {};
+  const jszip = { loadAsync: async () => { throw new Error('direct payload reached parser'); } };
+  try {
+    await assert.rejects(
+      library.downloadAndParse(
+        { fileId: 'h65', downloadUrl: directUrl },
+        jszip,
+        async () => {
+          gasCalls += 1;
+          const error = new Error('後端服務回傳健康檢查文字');
+          error.type = 'INVALID_RESPONSE';
+          throw error;
+        }
+      ),
+      /direct payload reached parser/
+    );
+    assert.equal(gasCalls, 1);
+    assert.deepEqual(fetchedUrls, [directUrl]);
+  } finally {
+    global.fetch = previousFetch;
+    if (previousDOMParser === undefined) delete global.DOMParser;
+    else global.DOMParser = previousDOMParser;
+  }
+});
+
 test('uses an inherited slide-layout font size when a placeholder run omits sz', () => {
   assert.deepEqual(library.inheritRunStyle({ bold: true }, 60), { bold: true, fontSize: 60 });
   assert.deepEqual(library.inheritRunStyle({ fontSize: 48 }, 60), { fontSize: 48 });
