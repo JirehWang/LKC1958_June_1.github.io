@@ -58,6 +58,53 @@
     return `${config.prefix}.${index}`;
   }
 
+  function getDocumentOptions(document) {
+    return document && document._sundayBulletinAiOptions
+      ? document._sundayBulletinAiOptions
+      : {};
+  }
+
+  function toggleClass(element, className, force) {
+    if (!element || !element.classList) return;
+    if (force && typeof element.classList.add === 'function') {
+      element.classList.add(className);
+    } else if (!force && typeof element.classList.remove === 'function') {
+      element.classList.remove(className);
+    }
+  }
+
+  function setSuggestionControls(textarea, options) {
+    const opts = options || {};
+    const hasChange = Boolean(opts.hasChange);
+    const applied = Boolean(opts.applied);
+    const checkbox = textarea && textarea._aiSuggestionCheckbox;
+    const applyButton = textarea && textarea._aiApplyButton;
+
+    if (checkbox) {
+      checkbox.checked = false;
+      checkbox.disabled = !hasChange;
+    }
+    if (applyButton) {
+      applyButton.disabled = !hasChange;
+      applyButton.textContent = applied ? '已套用' : (hasChange ? '套用這項' : '無需套用');
+      toggleClass(applyButton, 'ai-apply-suggestion-button-applied', applied);
+    }
+  }
+
+  function emitApply(document, ids) {
+    const onApply = getDocumentOptions(document).onApply;
+    if (typeof onApply === 'function' && ids.length) {
+      onApply({ ids, count: ids.length });
+    }
+  }
+
+  function createInputEvent() {
+    const EventCtor = root.Event || (typeof Event !== 'undefined' ? Event : null);
+    return EventCtor
+      ? new EventCtor('input', { bubbles: true })
+      : { type: 'input', bubbles: true };
+  }
+
   function createSuggestionSlot(document, textarea) {
     const layout = document.createElement('div');
     layout.className = 'ai-field-layout';
@@ -85,7 +132,37 @@
     const suggestionNote = document.createElement('div');
     suggestionNote.className = 'ai-suggestion-note';
 
-    suggestionColumn.append(suggestionLabel, suggestionInput, suggestionNote);
+    const suggestionActions = document.createElement('div');
+    suggestionActions.className = 'ai-suggestion-actions';
+
+    const selectLabel = document.createElement('label');
+    selectLabel.className = 'ai-suggestion-select';
+
+    const suggestionCheckbox = document.createElement('input');
+    suggestionCheckbox.type = 'checkbox';
+    suggestionCheckbox.className = 'ai-suggestion-checkbox';
+    suggestionCheckbox.disabled = true;
+    suggestionCheckbox.setAttribute('aria-label', '選取此項 AI 建議');
+    suggestionCheckbox.dataset.aiFieldId = textarea.dataset.aiFieldId;
+
+    const selectText = document.createElement('span');
+    selectText.textContent = '選取套用';
+    selectLabel.append(suggestionCheckbox, selectText);
+
+    const applyButton = document.createElement('button');
+    applyButton.type = 'button';
+    applyButton.className = 'btn ai-apply-suggestion-button';
+    applyButton.textContent = '無需套用';
+    applyButton.disabled = true;
+    applyButton.setAttribute('aria-label', '套用此項 AI 建議');
+    applyButton.addEventListener('click', () => {
+      if (applySuggestionToField(textarea)) {
+        emitApply(document, [textarea.dataset.aiFieldId]);
+      }
+    });
+
+    suggestionActions.append(selectLabel, applyButton);
+    suggestionColumn.append(suggestionLabel, suggestionInput, suggestionNote, suggestionActions);
     const parent = textarea.parentNode;
     parent.insertBefore(layout, textarea);
     layout.append(originalColumn, suggestionColumn);
@@ -94,6 +171,8 @@
     textarea._aiSuggestionInput = suggestionInput;
     textarea._aiSuggestionNote = suggestionNote;
     textarea._aiSuggestionLayout = layout;
+    textarea._aiSuggestionCheckbox = suggestionCheckbox;
+    textarea._aiApplyButton = applyButton;
   }
 
   function getEditableTextareas(document) {
@@ -109,7 +188,11 @@
           textarea.addEventListener('input', () => {
             textarea._aiSuggestionInput.value = '';
             textarea._aiSuggestionNote.textContent = '原文已變更，請重新檢查';
-            textarea._aiSuggestionLayout.classList.remove('ai-suggestion-ready');
+            toggleClass(textarea._aiSuggestionLayout, 'ai-suggestion-ready', false);
+            toggleClass(textarea._aiSuggestionLayout, 'ai-suggestion-applied', false);
+            textarea.dataset.aiSuggestionChanged = 'false';
+            textarea.dataset.aiSuggestionApplied = 'false';
+            setSuggestionControls(textarea);
           });
         }
         fields.push({ id, text: textarea.value });
@@ -118,19 +201,112 @@
     return fields;
   }
 
-  function init(document) {
+  function findFieldTextarea(document, id) {
+    return document.querySelector('[data-ai-field-id="' + id + '"]');
+  }
+
+  function getSuggestionEntries(document) {
+    if (!document) return [];
+    return getEditableTextareas(document)
+      .map(field => {
+        const textarea = findFieldTextarea(document, field.id);
+        if (!textarea || !textarea._aiSuggestionInput) return null;
+        const suggestion = String(textarea._aiSuggestionInput.value || '').trim();
+        const text = String(textarea.value || '').trim();
+        const aiMarkedChanged = textarea.dataset.aiSuggestionChanged !== 'false';
+        return {
+          id: field.id,
+          text,
+          suggestion,
+          changed: Boolean(aiMarkedChanged && suggestion && suggestion !== text),
+          textarea
+        };
+      })
+      .filter(Boolean)
+      .filter(item => item.changed);
+  }
+
+  function selectSuggestionIds(items, selectedIds) {
+    const selected = new Set(
+      Array.isArray(selectedIds) ? selectedIds.map(id => String(id)) : []
+    );
+    return (Array.isArray(items) ? items : [])
+      .filter(item => item && item.id != null && item.changed && selected.has(String(item.id)))
+      .map(item => String(item.id));
+  }
+
+  function getPendingSuggestionIds(document) {
+    return getSuggestionEntries(document).map(item => item.id);
+  }
+
+  function getSelectedSuggestionIds(document) {
+    if (!document) return [];
+    const pending = new Set(getPendingSuggestionIds(document));
+    return Array.from(document.querySelectorAll('.ai-suggestion-checkbox:checked'))
+      .filter(checkbox => !checkbox.disabled && pending.has(String(checkbox.dataset.aiFieldId || '')))
+      .map(checkbox => String(checkbox.dataset.aiFieldId));
+  }
+
+  function applySuggestionToField(textarea) {
+    if (!textarea || !textarea._aiSuggestionInput) return false;
+
+    const suggestion = String(textarea._aiSuggestionInput.value || '').trim();
+    const current = String(textarea.value || '').trim();
+    if (!suggestion || suggestion === current) return false;
+
+    textarea.value = suggestion;
+    if (typeof textarea.dispatchEvent === 'function') {
+      textarea.dispatchEvent(createInputEvent());
+    }
+
+    textarea._aiSuggestionInput.value = '';
+    if (textarea._aiSuggestionNote) textarea._aiSuggestionNote.textContent = '已套用 AI 建議';
+    toggleClass(textarea._aiSuggestionLayout, 'ai-suggestion-ready', false);
+    toggleClass(textarea._aiSuggestionLayout, 'ai-suggestion-applied', true);
+    textarea.dataset.aiSuggestionChanged = 'false';
+    textarea.dataset.aiSuggestionApplied = 'true';
+    setSuggestionControls(textarea, { applied: true });
+    return true;
+  }
+
+  function applySuggestions(document, ids) {
+    if (!document) return [];
+
+    const entries = getSuggestionEntries(document);
+    const targetIds = ids == null
+      ? entries.map(item => item.id)
+      : selectSuggestionIds(entries, ids);
+    const target = new Set(targetIds);
+    const appliedIds = [];
+
+    entries.forEach(item => {
+      if (target.has(item.id) && applySuggestionToField(item.textarea)) {
+        appliedIds.push(item.id);
+      }
+    });
+
+    emitApply(document, appliedIds);
+    return appliedIds;
+  }
+
+  function init(document, options) {
     if (!document) return;
+    if (options) document._sundayBulletinAiOptions = options;
     getEditableTextareas(document);
   }
 
   function clearSuggestions(document) {
     if (!document) return;
     getEditableTextareas(document).forEach(field => {
-      const textarea = document.querySelector(`[data-ai-field-id="${field.id}"]`);
+      const textarea = findFieldTextarea(document, field.id);
       if (!textarea || !textarea._aiSuggestionInput) return;
       textarea._aiSuggestionInput.value = '';
       textarea._aiSuggestionNote.textContent = '';
-      textarea._aiSuggestionLayout.classList.remove('ai-suggestion-ready');
+      toggleClass(textarea._aiSuggestionLayout, 'ai-suggestion-ready', false);
+      toggleClass(textarea._aiSuggestionLayout, 'ai-suggestion-applied', false);
+      textarea.dataset.aiSuggestionChanged = 'false';
+      textarea.dataset.aiSuggestionApplied = 'false';
+      setSuggestionControls(textarea);
     });
   }
 
@@ -156,13 +332,20 @@
       const response = await callApi({ fields: requested });
       const suggestions = normalizeProofreadingResponse(response, requested);
       suggestions.forEach(item => {
-        const textarea = document.querySelector(`[data-ai-field-id="${item.id}"]`);
+        const textarea = findFieldTextarea(document, item.id);
         if (!textarea || !textarea._aiSuggestionInput) return;
         textarea._aiSuggestionInput.value = item.suggestion;
         textarea._aiSuggestionNote.textContent = item.changed
           ? (item.note || '請人工確認後再採用')
           : (item.note || '原文無明顯錯字，可維持原文');
-        textarea._aiSuggestionLayout.classList.add('ai-suggestion-ready');
+        const hasChange = Boolean(
+          item.changed && String(item.suggestion).trim() !== String(item.text).trim()
+        );
+        textarea.dataset.aiSuggestionChanged = String(hasChange);
+        textarea.dataset.aiSuggestionApplied = 'false';
+        toggleClass(textarea._aiSuggestionLayout, 'ai-suggestion-applied', false);
+        toggleClass(textarea._aiSuggestionLayout, 'ai-suggestion-ready', hasChange);
+        setSuggestionControls(textarea, { hasChange });
       });
       status(`AI 檢查完成：${suggestions.length} 個欄位`);
       notify('AI 建議已產生，原文未被修改', 'success');
@@ -179,6 +362,11 @@
   const api = {
     buildProofreadingPayload,
     normalizeProofreadingResponse,
+    selectSuggestionIds,
+    applySuggestionToField,
+    applySuggestions,
+    getPendingSuggestionIds,
+    getSelectedSuggestionIds,
     getEditableTextareas,
     init,
     clearSuggestions,

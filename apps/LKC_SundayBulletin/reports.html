@@ -140,6 +140,48 @@
       gap: 10px;
       flex-wrap: wrap;
     }
+    .ai-bulk-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .ai-bulk-actions[hidden] {
+      display: none;
+    }
+    .ai-bulk-select,
+    .ai-suggestion-select {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      color: #e0f2fe;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .ai-bulk-select input,
+    .ai-suggestion-select input {
+      accent-color: #2c5f8a;
+      cursor: pointer;
+    }
+    .ai-bulk-button {
+      padding: 6px 10px;
+      font-size: 12px;
+      line-height: 1.2;
+      white-space: nowrap;
+      background: rgba(255, 255, 255, 0.92);
+      color: #1e3a5f;
+      border: 1px solid rgba(255, 255, 255, 0.75);
+    }
+    .ai-bulk-button:hover:not(:disabled) {
+      background: #ffffff;
+    }
+    .ai-bulk-button-primary {
+      background: #dcfce7;
+      color: #166534;
+      border-color: #86efac;
+    }
     .ai-proofread-button {
       background: #e0f2fe;
       color: #075985;
@@ -196,13 +238,50 @@
       color: #64748b;
       font-size: 11px;
     }
+    .ai-suggestion-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-top: 8px;
+      flex-wrap: wrap;
+    }
+    .ai-suggestion-select {
+      color: #0369a1;
+    }
+    .ai-apply-suggestion-button {
+      padding: 5px 9px;
+      font-size: 12px;
+      line-height: 1.2;
+      color: #075985;
+      background: #e0f2fe;
+      border: 1px solid #7dd3fc;
+    }
+    .ai-apply-suggestion-button:hover:not(:disabled) {
+      background: #bae6fd;
+    }
+    .ai-apply-suggestion-button-applied {
+      color: #166534;
+      background: #dcfce7;
+      border-color: #86efac;
+    }
     .ai-suggestion-ready .ai-suggestion-input {
       border-color: #38bdf8;
       box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.12);
     }
+    .ai-suggestion-applied .ai-suggestion-input {
+      border-color: #86efac;
+      background: #f0fdf4;
+    }
+    .ai-suggestion-applied .ai-suggestion-label {
+      color: #15803d;
+    }
     @media (max-width: 680px) {
       .ai-field-layout {
         grid-template-columns: 1fr;
+      }
+      .ai-bulk-actions {
+        width: 100%;
       }
     }
   </style>
@@ -229,6 +308,14 @@
       <div class="ai-proofread-toolbar">
         <button class="btn ai-proofread-button" id="btnAiProofread" type="button">AI 檢查錯字</button>
         <span id="aiCheckStatus" style="font-size: 13px; opacity: 0.9;">尚未檢查</span>
+        <div class="ai-bulk-actions" id="aiBulkActions" hidden>
+          <label class="ai-bulk-select">
+            <input type="checkbox" id="aiSelectAllChanged" disabled>
+            <span>全選修改項目</span>
+          </label>
+          <button class="btn ai-bulk-button" id="btnAiApplySelected" type="button" disabled>套用勾選 (0)</button>
+          <button class="btn ai-bulk-button ai-bulk-button-primary" id="btnAiApplyAll" type="button" disabled>一鍵套用全部</button>
+        </div>
         <span id="syncStatus" style="font-size: 13px; opacity: 0.8;">狀態：未連線</span>
       </div>
     </div>
@@ -389,15 +476,35 @@
     btnConfirmLoadOther.addEventListener('click', loadOtherFromCloud);
 
     // 初始化所有字數統計
-    SundayBulletinAI.init(document);
+    SundayBulletinAI.init(document, {
+      onApply: ({ count }) => {
+        updateAiBulkActions();
+        showToast(`✅ 已套用 ${count} 項 AI 建議`, 'success');
+      }
+    });
     document.getElementById('btnAiProofread').addEventListener('click', runAiProofread);
+    document.getElementById('aiSelectAllChanged').addEventListener('change', (event) => {
+      toggleAllAiSuggestions(event.target.checked);
+    });
+    document.getElementById('btnAiApplySelected').addEventListener('click', applySelectedAiSuggestions);
+    document.getElementById('btnAiApplyAll').addEventListener('click', applyAllAiSuggestions);
+    document.addEventListener('change', (event) => {
+      if (event.target && event.target.matches && event.target.matches('.ai-suggestion-checkbox')) {
+        updateAiBulkActions();
+      }
+    });
+    document.addEventListener('input', (event) => {
+      if (event.target && event.target.matches && event.target.matches('textarea.form-input')) {
+        updateAiBulkActions();
+      }
+    });
     initCharCounters();
 
     clearFormWithoutConfirm();
   });
 
   async function runAiProofread() {
-    await SundayBulletinAI.checkAll({
+    const suggestions = await SundayBulletinAI.checkAll({
       document,
       button: document.getElementById('btnAiProofread'),
       callApi: callProofreadingApi,
@@ -406,6 +513,59 @@
       },
       onNotify: showToast
     }).catch(() => {});
+    updateAiBulkActions();
+    return suggestions;
+  }
+
+  function updateAiBulkActions() {
+    const bulkActions = document.getElementById('aiBulkActions');
+    const selectAll = document.getElementById('aiSelectAllChanged');
+    const applySelected = document.getElementById('btnAiApplySelected');
+    const applyAll = document.getElementById('btnAiApplyAll');
+    if (!bulkActions || !selectAll || !applySelected || !applyAll || !window.SundayBulletinAI) return;
+
+    const pendingIds = SundayBulletinAI.getPendingSuggestionIds(document);
+    const selectedIds = SundayBulletinAI.getSelectedSuggestionIds(document);
+    const hasPending = pendingIds.length > 0;
+
+    bulkActions.hidden = !hasPending;
+    selectAll.disabled = !hasPending;
+    selectAll.checked = hasPending && selectedIds.length === pendingIds.length;
+    applySelected.disabled = selectedIds.length === 0;
+    applySelected.textContent = selectedIds.length
+      ? `套用勾選 (${selectedIds.length})`
+      : '套用勾選';
+    applyAll.disabled = !hasPending;
+  }
+
+  function toggleAllAiSuggestions(checked) {
+    const pending = new Set(SundayBulletinAI.getPendingSuggestionIds(document));
+    document.querySelectorAll('.ai-suggestion-checkbox').forEach((checkbox) => {
+      if (!checkbox.disabled && pending.has(String(checkbox.dataset.aiFieldId || ''))) {
+        checkbox.checked = checked;
+      }
+    });
+    updateAiBulkActions();
+  }
+
+  function applySelectedAiSuggestions() {
+    const selectedIds = SundayBulletinAI.getSelectedSuggestionIds(document);
+    if (!selectedIds.length) {
+      showToast('請先勾選要套用的 AI 修改項目', 'info');
+      return;
+    }
+    SundayBulletinAI.applySuggestions(document, selectedIds);
+    updateAiBulkActions();
+  }
+
+  function applyAllAiSuggestions() {
+    const pendingIds = SundayBulletinAI.getPendingSuggestionIds(document);
+    if (!pendingIds.length) {
+      showToast('目前沒有可套用的 AI 修改項目', 'info');
+      return;
+    }
+    SundayBulletinAI.applySuggestions(document);
+    updateAiBulkActions();
   }
 
   async function callProofreadingApi(payload) {
@@ -512,6 +672,7 @@
       if (el._updateCharCount) el._updateCharCount();
     });
     if (window.SundayBulletinAI) SundayBulletinAI.clearSuggestions(document);
+    updateAiBulkActions();
   }
 
   // 雲端同步 (Supabase 優先 + GAS 備援)
