@@ -451,7 +451,7 @@ flowchart LR
 
 ### 會友刪除保護資料流
 
-`members.html` 透過 `getMemberManagementData` 讀取快取會友名單，並由 `MemberDB.js` 即時掃描主日與小組資料來源產生 `usageByUid`。UID 若曾出現在任一 `*點名紀錄` 的出席／缺席欄位、存在於 `*_名單`，或主會友資料仍有小組欄位，即標記為 `effective`。前端顯示「有效」並停用刪除；即使繞過前端直接呼叫 `deleteMember`，後端仍會在持有 ScriptLock 時重新掃描並拒絕硬刪除，只保留改為「不統計」的操作。
+`members.html` 透過 `getMemberManagementData` 讀取快取會友名單，並由 `MemberDB.js` 即時掃描主日點名與小組成員名單產生 `usageByUid`。UID 若曾出現在主日點名紀錄（不含小組點名紀錄）、存在於小組成員名單（`*_名單`），或主檔已有小組欄位，即標記為 `effective`。前端顯示「有效」並停用刪除；即使繞過前端直接呼叫 `deleteMember`，後端仍會在持有 ScriptLock 時重新掃描並拒絕硬刪除，只保留改為「不統計」的操作。
 
 ## 6. 資料儲存與跨系統讀取
 
@@ -600,3 +600,47 @@ LKC_MasterSchedule GAS → Google Drive 聖詩／啟應文資料夾（唯讀檔�
 ### 多模板擴充邊界（台語、聯合台語與聯合華語已實作）
 
 「台語」、「聯合－台語」與「聯合－華語」共用資料回退、PPTX／OOXML 解析、Canvas 點陣化、報告動態分頁、deck/page ID、版面群組與 PptxGenJS 匯出核心；流程段落、行事曆 selector、聖經版本、固定禮文、固定素材、預設版面、來源需求與輸出檔名由 declarative template profile 提供。模板版面已分為既有 `worshipPpt/layoutConfig/shared` 與 `worshipPpt/layoutConfig/templates/{templateId}`；聯合台語僅在尚無專屬設定時以台語版面作為初始 fallback。內容維持由既有行事曆／週報 API 直接提供，不建立 `worshipPpt/content` 重複鏡像；若未來需要離線快照，另行評估獨立的快取策略。
+
+## 台語有聲聖經時間軸與播放管線資料流（2026-09）
+
+```mermaid
+sequenceDiagram
+    participant User as 長輩使用者
+    participant App as script.js / index.html
+    participant FHL as 信望愛 API (qsb.php & media.fhl.net)
+    participant Pipe as scaffold_bible_aligner.py
+    participant Auditor as bible_audio_auditor.py
+    participant Pub as timestamps/ (正式庫)
+    participant Pend as timestamps/pending/ (待審區)
+
+    Note over Pipe,Auditor: 離線/後台時間軸生產與修復
+    Pipe->>FHL: 下載官方經文 (tghg) 與音訊 (MP3)
+    Pipe->>Pipe: Word-Level ASR + 換氣池中介索引 (_index.json)
+    Pipe->>Pipe: 一級口播凍結 + 二級音素夾擊 + RMS微吸附
+    Pipe->>Auditor: 閉環審查 (CPS, RMS, 順序, 覆蓋率)
+    alt 驗收通過 (PASS & 0 Error)
+        Pipe->>Pub: 原子替換寫入 timestamps/{bid}_{chap}.json (Schema v2)
+    else 驗收未通過 (Fail / Warn)
+        Pipe->>Pend: 隔離寫入 timestamps/pending/{bid}_{chap}.json
+    end
+
+    Note over User,App: 前台播放器播放與無障礙互動
+    User->>App: 選擇書卷與章節 (或 URL 帶入)
+    App->>App: 發起 currentChapterRequestId 序號防亂序
+    App->>FHL: fetchScripture (AbortController 支援)
+    App->>Pub: 載入 timestamps/{bid}_{chap}.json
+    alt 正式時間軸存在
+        Pub-->>App: 精準時間戳記 (Schema v2)
+        App->>App: 標記「精準時間軸」(翡翠綠徽章)，精準高亮
+    else 正式時間軸不存在 (含隔離於待審區)
+        App->>App: 標記「估算定位」(琥珀金徽章)
+        App->>App: 音訊 metadata 確認後，依新音長比例動態估算
+    end
+    App->>App: 斷點續播 (每 5 秒 localStorage 記錄，重開提示「繼續上次」)
+    App->>App: 倒退 10 秒 / 前進 10 秒 (邊界 clamp，維持播放狀態)
+```
+
+- **管線隔離保證**：未通過 `BibleAudioAuditor` 門檻的產物嚴格限制於 `timestamps/pending/`，絕不寫入或殘留於 `timestamps/`。
+- **播放版本隔離**：華語朗讀版本（`audioVer === '0'`）嚴格拒絕載入台語時間軸，切換至動態估算定位。
+- **異步防競爭**：經文與時間軸載入採用最新序號守衛（`requestId`）與 `AbortController`，舊請求回應一律靜默丟棄。
+

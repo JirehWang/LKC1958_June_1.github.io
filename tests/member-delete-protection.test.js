@@ -137,15 +137,15 @@ function loadMemberDb() {
   return { context, memberSheet };
 }
 
-test('usage map protects Sunday attendance, group membership, and group attendance history', () => {
+test('usage map protects Sunday attendance and group membership without reading group attendance history', () => {
   const { context } = loadMemberDb();
   const usage = context.getMemberUsageStatusMap();
 
   assert.equal(usage.LK00001.effective, true);
   assert.equal(usage.LK00001.hasAttendance, true);
   assert.equal(usage.LK00002.inGroup, true);
-  assert.equal(usage.LK00003.hasAttendance, true);
-  assert.equal(usage.LK00004.hasAttendance, true);
+  assert.equal(usage.LK00003, undefined);
+  assert.equal(usage.LK00004, undefined);
   assert.equal(usage.LK00005.inGroup, true);
   assert.equal(usage.LK00006, undefined);
 });
