@@ -481,3 +481,71 @@ function searchMemberOccurrences(query) {
 
   return results;
 }
+
+/**
+ * 取得指定點名類型與日期區間的點名原始紀錄（供 Supabase 冷熱分流彙集調用）
+ * @param {string|string[]} types - 點名類型（例如 '台語' 或 ['台語', '華語']）
+ * @param {string} start - 起始日期 (yyyy-MM-dd 或 yyyy/MM/dd)
+ * @param {string} end - 結束日期 (yyyy-MM-dd 或 yyyy/MM/dd)
+ * @return {Array<{service_type: string, date: string, present_uids: string[], new_friends_male: number, new_friends_female: number}>}
+ */
+function getAttendanceRecords(types, start, end) {
+  const ss = getSS();
+  let typeList = [];
+  if (Array.isArray(types)) {
+    typeList = types;
+  } else if (typeof types === 'string' && types.trim()) {
+    typeList = [types.trim()];
+  } else {
+    typeList = ['台語', '華語', '聯合'];
+  }
+
+  const startNum = toDateNum(start || '1970-01-01');
+  const endNum = toDateNum(end || '2099-12-31');
+  const records = [];
+
+  typeList.forEach(function(typeName) {
+    const cleanType = String(typeName).replace('點名紀錄', '').trim();
+    const sheetName = cleanType + '點名紀錄';
+    const sh = ss.getSheetByName(sheetName);
+    if (!sh) return;
+    const data = sh.getDataRange().getValues();
+
+    for (let r = 1; r < data.length; r++) {
+      const dVal = data[r][0];
+      if (!dVal) continue;
+      const rowDateNum = toDateNum(dVal);
+      if (rowDateNum < startNum || rowDateNum >= endNum) continue;
+
+      let dStr = '';
+      if (dVal instanceof Date) {
+        dStr = Utilities.formatDate(dVal, "GMT+8", "yyyy-MM-dd");
+      } else {
+        const dMatch = String(dVal).match(/(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
+        if (dMatch) {
+          dStr = dMatch[1] + '-' + ('0' + dMatch[2]).slice(-2) + '-' + ('0' + dMatch[3]).slice(-2);
+        } else {
+          dStr = String(dVal).trim();
+        }
+      }
+      if (!dStr) continue;
+
+      const listStr = data[r][1] ? data[r][1].toString().trim() : '';
+      const nfMale = Number(data[r][2] || 0);
+      const nfFemale = Number(data[r][3] || 0);
+      const uids = parseAttendanceList(listStr);
+
+      if (uids.length > 0 || nfMale > 0 || nfFemale > 0) {
+        records.push({
+          service_type: cleanType,
+          date: dStr,
+          present_uids: uids,
+          new_friends_male: nfMale,
+          new_friends_female: nfFemale
+        });
+      }
+    }
+  });
+
+  return records;
+}

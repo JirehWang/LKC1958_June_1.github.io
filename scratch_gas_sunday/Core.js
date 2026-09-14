@@ -229,6 +229,8 @@ function _handleAttendanceRequest(body) {
       result = getAttendanceStats(payload); break;
     case 'getAttendanceTrend':
       result = getAttendanceTrend(payload); break;
+    case 'getAttendanceRecords':
+      result = getAttendanceRecords(payload && (payload.types || payload.type), payload && payload.start, payload && payload.end); break;
 
     // ===== 趨勢分析 =====
     case 'getCategoryChartData':

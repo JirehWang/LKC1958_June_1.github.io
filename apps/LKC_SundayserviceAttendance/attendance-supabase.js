@@ -95,6 +95,132 @@
     }, 50);
   }
 
+  function _computeAttendanceTrend(sessionMap, members, req) {
+    const allDates = Object.keys(sessionMap).sort();
+    if (allDates.length === 0) {
+      return {
+        periodHistory: "無",
+        periodRecent: "無",
+        sessionsHistory: 0,
+        sessionsRecent: 0,
+        details: []
+      };
+    }
+
+    function parseDateKey(dKey) {
+      const parts = String(dKey || '').replace(/\//g, '-').split('-');
+      if (parts.length === 3) {
+        return new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+      }
+      const clean = String(dKey || '').replace(/\D/g, '');
+      if (clean.length === 8) {
+        return new Date(parseInt(clean.substring(0, 4), 10), parseInt(clean.substring(4, 6), 10) - 1, parseInt(clean.substring(6, 8), 10));
+      }
+      const d = new Date(dKey);
+      return isNaN(d.getTime()) ? new Date(0) : d;
+    }
+
+    const recentWeeks = (req && req.recentWeeks) ? parseInt(req.recentWeeks, 10) : 8;
+    const finalRecentWeeks = isNaN(recentWeeks) ? 8 : Math.max(3, recentWeeks);
+    const RECENT_WINDOW_DAYS = finalRecentWeeks * 7;
+    const MAX_HISTORY_DAYS = 365;
+
+    const latestDateKey = allDates[allDates.length - 1];
+    const latestDate = parseDateKey(latestDateKey);
+    const cutoffDate = new Date(latestDate);
+    cutoffDate.setDate(cutoffDate.getDate() - RECENT_WINDOW_DAYS);
+    const maxHistoryDate = new Date(cutoffDate);
+    maxHistoryDate.setDate(maxHistoryDate.getDate() - MAX_HISTORY_DAYS);
+
+    const recentDates = [];
+    const generalHistoryDates = [];
+    allDates.forEach(d => {
+      const dDate = parseDateKey(d);
+      if (dDate > cutoffDate) recentDates.push(d);
+      else if (dDate >= maxHistoryDate) generalHistoryDates.push(d);
+    });
+
+    const recentCount = recentDates.length;
+    const details = [];
+
+    Object.keys(members).forEach(uid => {
+      let firstAppearanceDateStr = null;
+      for (let i = 0; i < allDates.length; i++) {
+        if (sessionMap[allDates[i]].uids.has(uid)) {
+          firstAppearanceDateStr = allDates[i];
+          break;
+        }
+      }
+      if (!firstAppearanceDateStr) return;
+
+      const firstAppDate = parseDateKey(firstAppearanceDateStr);
+      const individualStartDate = firstAppDate > maxHistoryDate ? firstAppDate : maxHistoryDate;
+      const historyDays = Math.ceil((cutoffDate.getTime() - individualStartDate.getTime()) / (1000 * 3600 * 24));
+      // 歷史至少要有 8 週 (56 天) 才有參考價值，若未滿則不列入分析
+      if (historyDays < 56) return;
+
+      let historyAttended = 0, individualHistoryCount = 0;
+      generalHistoryDates.forEach(d => {
+        const dDate = parseDateKey(d);
+        if (dDate >= individualStartDate) {
+          individualHistoryCount++;
+          if (sessionMap[d].uids.has(uid)) historyAttended++;
+        }
+      });
+      let recentAttended = 0;
+      recentDates.forEach(d => {
+        if (sessionMap[d].uids.has(uid)) recentAttended++;
+      });
+
+      let consecutiveMisses = 0, lastAttendedDateKey = null;
+      for (let i = allDates.length - 1; i >= 0; i--) {
+        if (!sessionMap[allDates[i]].uids.has(uid)) consecutiveMisses++;
+        else { lastAttendedDateKey = allDates[i]; break; }
+      }
+
+      let missingThreeWeeks = false;
+      if (lastAttendedDateKey) {
+        const lastDate = parseDateKey(lastAttendedDateKey);
+        const diffDays = Math.floor((latestDate.getTime() - lastDate.getTime()) / (1000 * 3600 * 24));
+        if (diffDays >= 21) missingThreeWeeks = true;
+      } else if (consecutiveMisses > 0) {
+        missingThreeWeeks = true;
+      }
+
+      const historyRate = individualHistoryCount > 0 ? Math.round((historyAttended / individualHistoryCount) * 100) : 0;
+      const recentRate  = recentCount > 0 ? Math.round((recentAttended / recentCount) * 100) : 0;
+      const rateDrop    = historyRate - recentRate;
+      const dropScore   = rateDrop > 0 ? rateDrop : 0;
+
+      details.push({
+        name: members[uid].name,
+        uid: uid,
+        gender: members[uid].gender,
+        inGroup: members[uid].inGroup,
+        historyRate, recentRate, rateDrop, consecutiveMisses, dropScore, missingThreeWeeks,
+        warningDesc: missingThreeWeeks ? "⚠️ 已連續三週未出席" : ""
+      });
+    });
+
+    details.sort((a, b) => b.dropScore - a.dropScore);
+
+    function fmt(dKey) {
+      const d = parseDateKey(dKey);
+      const y = d.getFullYear();
+      const m = ('0' + (d.getMonth() + 1)).slice(-2);
+      const day = ('0' + d.getDate()).slice(-2);
+      return `${y}/${m}/${day}`;
+    }
+
+    return {
+      periodHistory: generalHistoryDates.length > 0 ? (fmt(generalHistoryDates[0]) + " ~ " + fmt(generalHistoryDates[generalHistoryDates.length - 1])) : "無",
+      periodRecent: recentDates.length > 0 ? (fmt(recentDates[0]) + " ~ " + fmt(recentDates[recentDates.length - 1])) : "無",
+      sessionsHistory: generalHistoryDates.length,
+      sessionsRecent: recentDates.length,
+      details: details
+    };
+  }
+
   const AttendanceSupabaseService = {
     // ── 1. 場次分類 (getGroupConfig) ──────────────────────────
     async getGroupConfig() {
@@ -517,6 +643,130 @@
           details
         };
       }
+    },
+
+    // ── 6. 出席頻率變化分析 (getAttendanceTrend - 支援冷熱路徑資料彙集) ──
+    async getAttendanceTrend(req) {
+      const sb = getSupabase();
+      if (!sb) return await callGas('getAttendanceTrend', req);
+
+      const type = (req && req.type) || '華語';
+      let targetTypes = [];
+      if (type.includes('合計')) {
+        targetTypes = (req && Array.isArray(req.targetGroups) && req.targetGroups.length > 0)
+          ? req.targetGroups
+          : ['台語', '華語', '聯合'];
+      } else {
+        targetTypes = [type];
+      }
+
+      const startStr = formatDate((req && req.start) || '2025/01/01');
+      const endStr = formatDate((req && req.end) || '2027/12/31');
+      const baseSheet = (req && req.baseSheet) || '會友名單';
+
+      // 依冷熱分流架構：以一年為分界（Supabase 留存近一年資料，超過一年為冷資料）
+      const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
+      const oneYearAgoDate = new Date(Date.now() - ONE_YEAR_MS);
+      const oneYearAgoStr = formatDate(`${oneYearAgoDate.getFullYear()}-${oneYearAgoDate.getMonth() + 1}-${oneYearAgoDate.getDate()}`);
+
+      // 1. 取得名單（依基準過濾，並標記小組狀態）
+      let memQuery = sb.from('church_members').select('uid, name, gender, group_name, is_excluded, is_official_member');
+      if (baseSheet === '會員名單') {
+        memQuery = memQuery.eq('is_official_member', true);
+      }
+      const { data: dbMembers, error: memErr } = await memQuery;
+      if (memErr) throw memErr;
+
+      const membersMap = {};
+      (dbMembers || []).forEach(m => {
+        if (baseSheet !== '會員名單' && m.is_excluded) return;
+        const uid = String(m.uid || '').trim().toUpperCase();
+        if (!uid) return;
+        membersMap[uid] = {
+          name: m.name,
+          gender: m.gender || '-',
+          inGroup: Boolean(m.group_name && m.group_name !== '未分組')
+        };
+      });
+
+      // 2. 收集場次點名紀錄（冷熱路徑資料彙集）
+      const sessionMap = {}; // dateStr -> { uids: Set<string>, nfCount: number }
+
+      function addRecordToSessionMap(r) {
+        if (!r || !r.date) return;
+        const dStr = formatDate(r.date);
+        if (!sessionMap[dStr]) sessionMap[dStr] = { uids: new Set(), nfCount: 0 };
+        const uids = Array.isArray(r.present_uids) ? r.present_uids : [];
+        uids.forEach(u => {
+          const cleanU = String(u || '').trim().toUpperCase();
+          if (cleanU) sessionMap[dStr].uids.add(cleanU);
+        });
+        const nfMale = Number(r.new_friends_male || 0);
+        const nfFemale = Number(r.new_friends_female || 0);
+        sessionMap[dStr].nfCount = Math.max(sessionMap[dStr].nfCount, nfMale + nfFemale);
+      }
+
+      if (startStr >= oneYearAgoStr) {
+        // 情況 A：純熱路徑 (<50ms)
+        const { data: hotRecs, error: hotErr } = await sb
+          .from('attendance_records')
+          .select('service_type, date, present_uids, new_friends_male, new_friends_female')
+          .in('service_type', targetTypes)
+          .gte('date', startStr)
+          .lte('date', endStr);
+
+        if (hotErr) throw hotErr;
+        (hotRecs || []).forEach(addRecordToSessionMap);
+      } else {
+        // 情況 B：冷熱資料彙集路徑（跨年份）
+        // B1. 熱路徑拉取 (oneYearAgoStr ~ endStr)
+        const { data: hotRecs, error: hotErr } = await sb
+          .from('attendance_records')
+          .select('service_type, date, present_uids, new_friends_male, new_friends_female')
+          .in('service_type', targetTypes)
+          .gte('date', oneYearAgoStr)
+          .lte('date', endStr);
+
+        if (hotErr) console.warn('[AttendanceTrend] 讀取熱端資料異常:', hotErr.message);
+
+        // B2. 冷路徑從線上資料庫 (GAS) 拉取歷史紀錄 (startStr ~ oneYearAgoStr)
+        let coldRecs = [];
+        try {
+          const gasRes = await callGas('getAttendanceRecords', {
+            types: targetTypes,
+            start: startStr,
+            end: oneYearAgoStr
+          });
+          if (Array.isArray(gasRes)) {
+            coldRecs = gasRes;
+          }
+        } catch (coldErr) {
+          console.warn('[AttendanceTrend] 讀取冷端資料異常，嘗試全量退回 GAS:', coldErr.message);
+          return await callGas('getAttendanceTrend', req);
+        }
+
+        // B3. 彙集冷熱資料（冷端先入，熱端覆蓋或合併）
+        (coldRecs || []).forEach(addRecordToSessionMap);
+        (hotRecs || []).forEach(addRecordToSessionMap);
+      }
+
+      const allDates = Object.keys(sessionMap).sort();
+      if (allDates.length === 0) {
+        // 若彙集後完全無場次，回退 GAS
+        try {
+          return await callGas('getAttendanceTrend', req);
+        } catch (e) {
+          return {
+            periodHistory: "無",
+            periodRecent: "無",
+            sessionsHistory: 0,
+            sessionsRecent: 0,
+            details: []
+          };
+        }
+      }
+
+      return _computeAttendanceTrend(sessionMap, membersMap, req);
     },
 
     // ── 4. 會友名冊維護 (getAllMembers & getMemberManagementData) ─
