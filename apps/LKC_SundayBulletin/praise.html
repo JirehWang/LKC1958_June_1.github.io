@@ -107,6 +107,54 @@
       opacity: 1;
       text-decoration: underline;
     }
+    .song-history-panel {
+      margin: 0 0 20px;
+      padding: 14px 16px;
+      border: 1px solid #d8e3ee;
+      border-radius: 9px;
+      background: rgba(248, 251, 253, 0.95);
+    }
+    .song-history-heading {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 12px;
+      flex-wrap: wrap;
+      color: #1a3f5c;
+      font-weight: 700;
+    }
+    .song-history-status {
+      color: #64748b;
+      font-size: 12px;
+      font-weight: 400;
+    }
+    .song-history-controls {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .song-history-controls .form-input,
+    .song-history-select {
+      min-width: 0;
+    }
+    .song-history-select {
+      margin-top: 8px;
+    }
+    .song-history-help {
+      margin: 8px 0 0;
+      color: #64748b;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    @media (max-width: 600px) {
+      .song-history-controls {
+        grid-template-columns: 1fr;
+      }
+      .song-history-refresh {
+        justify-content: center;
+      }
+    }
   </style>
 </head>
 <body>
@@ -140,6 +188,21 @@
           說明：在此上傳聖歌隊獻詩之歌名與歌詞，週報與 PPT 系統將可自動同步。
         </div>
       </div>
+
+      <section class="song-history-panel" aria-labelledby="songHistoryHeading">
+        <div class="song-history-heading">
+          <span id="songHistoryHeading">📚 查詢過往歌曲並帶入</span>
+          <span id="songHistoryStatus" class="song-history-status" role="status" aria-live="polite">正在載入歌曲清單...</span>
+        </div>
+        <div class="song-history-controls">
+          <input type="search" id="songHistorySearch" class="form-input" aria-label="搜尋過往歌曲" placeholder="輸入歌名關鍵字" autocomplete="off">
+          <button type="button" class="btn btn-outline-white song-history-refresh" id="btnRefreshSongHistory" style="color: #2c5f8a; border-color: #2c5f8a;">↻ 重新查詢</button>
+        </div>
+        <select id="songHistorySelect" class="form-input song-history-select" aria-label="選擇過往歌曲" disabled>
+          <option value="">請先載入歌曲清單</option>
+        </select>
+        <p class="song-history-help">選取歌曲會以 GAS 歌詞取代目前內容；輸入新歌名可建立歌名索引，選取舊歌後修改歌詞則沿用原歌名，不新增重複歌名。</p>
+      </section>
 
       <div class="form-group">
         <label for="songTitle" style="font-weight: bold;">讚美／聖歌隊詩名：</label>
@@ -188,7 +251,15 @@
     date: '',
     title: '',
     kicker: '聖歌隊',
-    lyrics: ''
+    lyrics: '',
+    songOrigin: 'new',
+    sourceTitle: '',
+    sourceLyrics: ''
+  };
+  const praiseHistory = {
+    songs: [],
+    gasRecords: null,
+    gasRecordsPromise: null
   };
 
   document.addEventListener('DOMContentLoaded', () => {
@@ -207,10 +278,24 @@
     dateInput.addEventListener('change', (e) => {
       state.date = e.target.value;
       loadLocalBackup();
+      resetPraiseHistorySelection();
+    });
+
+    document.getElementById('songHistorySearch').addEventListener('input', (e) => {
+      renderPraiseHistoryOptions(e.target.value);
+    });
+
+    document.getElementById('songHistorySelect').addEventListener('change', (e) => {
+      applyPraiseHistorySong(e.target.value);
+    });
+
+    document.getElementById('btnRefreshSongHistory').addEventListener('click', () => {
+      loadPraiseHistory();
     });
 
     document.getElementById('songTitle').addEventListener('input', (e) => {
       state.title = e.target.value;
+      markSongAsNewIfTitleChanged();
       saveLocalBackup();
     });
 
@@ -229,6 +314,7 @@
     document.getElementById('btnLoadCloud').addEventListener('click', loadFromCloud);
 
     loadLocalBackup();
+    loadPraiseHistory({ silent: true });
   });
 
   function collectState() {
@@ -261,14 +347,319 @@
       state.title = data.title || '';
       state.kicker = data.kicker || '聖歌隊';
       state.lyrics = data.lyrics || '';
+      state.songOrigin = data.songOrigin === 'existing' ? 'existing' : 'new';
+      state.sourceTitle = data.sourceTitle || '';
+      state.sourceLyrics = data.sourceLyrics || '';
+      if (
+        state.songOrigin !== 'existing'
+        || normalizeSongTitle(state.sourceTitle) !== normalizeSongTitle(state.title)
+      ) {
+        state.songOrigin = 'new';
+        state.sourceTitle = '';
+        state.sourceLyrics = '';
+      }
       renderState();
       showToast('載入本地填寫草稿', 'info');
     } else {
       state.title = '';
       state.kicker = '聖歌隊';
       state.lyrics = '';
+      state.songOrigin = 'new';
+      state.sourceTitle = '';
+      state.sourceLyrics = '';
       renderState();
     }
+  }
+
+  function normalizeSongTitle(value) {
+    return String(value || '').trim().toLocaleLowerCase('zh-TW');
+  }
+
+  function markSongAsNewIfTitleChanged() {
+    if (state.songOrigin !== 'existing') return;
+    if (normalizeSongTitle(state.title) === normalizeSongTitle(state.sourceTitle)) return;
+    state.songOrigin = 'new';
+    state.sourceTitle = '';
+    state.sourceLyrics = '';
+  }
+
+  function normalizePraiseHistory(items) {
+    const normalized = (Array.isArray(items) ? items : [])
+      .map((item) => ({
+        date: String(item?.date || '').trim().slice(0, 10),
+        title: String(item?.title || '').trim(),
+        kicker: String(item?.kicker || '').trim(),
+        lyrics: String(item?.lyrics || '').trim(),
+        updatedAt: String(item?.updatedAt || item?.updated_at || '').trim()
+      }))
+      .filter((item) => item.title)
+      .sort((left, right) => {
+        const dateCompare = right.date.localeCompare(left.date);
+        return dateCompare || right.updatedAt.localeCompare(left.updatedAt);
+      });
+
+    const seen = new Set();
+    return normalized
+      .filter((item) => {
+        const identity = normalizeSongTitle(item.title);
+        if (seen.has(identity)) return false;
+        seen.add(identity);
+        return true;
+      })
+      .sort((left, right) => {
+        return left.title.localeCompare(right.title, 'zh-Hant');
+      });
+  }
+
+  function renderPraiseHistoryOptions(keyword = '') {
+    const select = document.getElementById('songHistorySelect');
+    const status = document.getElementById('songHistoryStatus');
+    if (!select || !status) return;
+
+    const normalizedKeyword = String(keyword || '').trim().toLocaleLowerCase('zh-TW');
+    const matches = praiseHistory.songs.filter((song) => {
+      if (!normalizedKeyword) return true;
+      const searchable = normalizeSongTitle(song.title);
+      return searchable.includes(normalizedKeyword);
+    });
+
+    select.replaceChildren();
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = matches.length
+      ? '請選擇要帶入的過往歌曲...'
+      : (praiseHistory.songs.length ? '找不到符合關鍵字的歌曲' : '目前沒有可用的歷史歌曲');
+    select.appendChild(placeholder);
+
+    matches.forEach((song) => {
+      const option = document.createElement('option');
+      option.value = song.title;
+      option.textContent = song.title;
+      select.appendChild(option);
+    });
+
+    select.disabled = matches.length === 0;
+    status.textContent = praiseHistory.songs.length
+      ? `找到 ${matches.length} / ${praiseHistory.songs.length} 筆`
+      : '尚無歷史歌曲';
+  }
+
+  function resetPraiseHistorySelection() {
+    const select = document.getElementById('songHistorySelect');
+    if (select) select.value = '';
+  }
+
+  async function applyPraiseHistorySong(title) {
+    const selected = praiseHistory.songs.find(
+      (song) => normalizeSongTitle(song.title) === normalizeSongTitle(title)
+    );
+    if (!selected) return;
+
+    const select = document.getElementById('songHistorySelect');
+    const status = document.getElementById('songHistoryStatus');
+    if (select) select.disabled = true;
+    if (status) status.textContent = `正在從 GAS 載入「${selected.title}」的完整歌詞...`;
+
+    // 先替換表單內容，避免上一首歌的歌詞殘留或與新歌詞串接。
+    state.title = selected.title;
+    state.kicker = '聖歌隊';
+    state.lyrics = '';
+    state.songOrigin = 'existing';
+    state.sourceTitle = selected.title;
+    state.sourceLyrics = '';
+    renderState();
+
+    try {
+      const gasData = await findPraiseRecordFromGasByTitle(selected.title);
+      state.title = gasData.title || selected.title;
+      state.kicker = gasData.kicker || '聖歌隊';
+      state.lyrics = gasData.lyrics || '';
+      state.sourceTitle = state.title;
+      state.sourceLyrics = state.lyrics;
+      renderState();
+      saveLocalBackup();
+      showToast(`📚 已從 GAS 帶入「${state.title}」的歌曲資料`, 'success');
+      if (status) status.textContent = `已從 GAS 載入「${state.title}」`;
+    } catch (err) {
+      console.error('[praise.html] GAS 載入歷史歌曲失敗:', err);
+      state.lyrics = '';
+      state.sourceLyrics = '';
+      renderState();
+      if (status) status.textContent = `歌詞載入失敗：${selected.title}`;
+      showToast(`❌ 無法從 GAS 載入「${selected.title}」的歌詞`, 'error');
+    } finally {
+      if (select) select.disabled = false;
+    }
+  }
+
+  async function loadPraiseHistory({ silent = false } = {}) {
+    const status = document.getElementById('songHistoryStatus');
+    const refreshButton = document.getElementById('btnRefreshSongHistory');
+    if (status) status.textContent = '正在載入歌曲清單...';
+    if (refreshButton) refreshButton.disabled = true;
+
+    let supabaseSongs = [];
+    try {
+      const sbService = window.SundayBulletinSupabaseService;
+      const listTitles = sbService && (
+        typeof sbService.listPraiseTitles === 'function'
+          ? sbService.listPraiseTitles.bind(sbService)
+          : typeof sbService.listPraiseSongs === 'function'
+            ? sbService.listPraiseSongs.bind(sbService)
+            : null
+      );
+      if (listTitles) {
+        try {
+          const listedSongs = await listTitles();
+          supabaseSongs = normalizePraiseHistory(listedSongs);
+          if (supabaseSongs.length) {
+            praiseHistory.songs = supabaseSongs;
+            renderPraiseHistoryOptions(document.getElementById('songHistorySearch')?.value || '');
+            if (status) status.textContent = '已載入 Supabase 歌名，正在同步 GAS 歷史歌名...';
+          }
+        } catch (sbErr) {
+          console.warn('[praise.html] Supabase listPraiseTitles 失敗，嘗試 GAS 備援:', sbErr.message);
+        }
+      }
+
+      const gasSongs = await loadPraiseHistoryFromGas();
+      praiseHistory.songs = normalizePraiseHistory([...supabaseSongs, ...gasSongs]);
+      renderPraiseHistoryOptions(document.getElementById('songHistorySearch')?.value || '');
+      await syncMissingPraiseTitlesToSupabase(gasSongs, supabaseSongs);
+      if (!gasSongs.length && !supabaseSongs.length && !silent) {
+        showToast('目前找不到可帶入的歷史歌曲，仍可直接輸入新歌', 'info');
+      }
+    } catch (err) {
+      console.error('[praise.html] 載入歷史歌曲失敗:', err);
+      praiseHistory.songs = supabaseSongs;
+      renderPraiseHistoryOptions(document.getElementById('songHistorySearch')?.value || '');
+      if (status) {
+        status.textContent = supabaseSongs.length
+          ? 'Supabase 歌名已載入，GAS 歷史同步失敗'
+          : '歷史歌曲載入失敗，可直接輸入新歌';
+      }
+      if (!silent) showToast('歷史歌曲查詢失敗，仍可直接輸入新歌', 'error');
+    } finally {
+      if (refreshButton) refreshButton.disabled = false;
+    }
+  }
+
+  async function syncMissingPraiseTitlesToSupabase(gasSongs, knownSongs) {
+    const sbService = window.SundayBulletinSupabaseService;
+    if (!sbService) return 0;
+
+    const knownTitles = new Set(
+      normalizePraiseHistory(knownSongs).map((song) => normalizeSongTitle(song.title))
+    );
+    const missingTitles = [...new Set(
+      normalizePraiseHistory(gasSongs)
+        .map((song) => song.title)
+        .filter((title) => !knownTitles.has(normalizeSongTitle(title)))
+    )];
+    if (!missingTitles.length) return 0;
+
+    try {
+      let result;
+      if (typeof sbService.savePraiseTitles === 'function') {
+        result = await sbService.savePraiseTitles(missingTitles, 'praise-gas-backfill');
+      } else if (typeof sbService.savePraiseTitle === 'function') {
+        for (const title of missingTitles) {
+          await sbService.savePraiseTitle(title, 'praise-gas-backfill');
+        }
+        result = { success: true };
+      }
+      if (result?.success) {
+        const status = document.getElementById('songHistoryStatus');
+        if (status) status.textContent = '已將 ' + missingTitles.length + ' 個 GAS 歌名補入 Supabase';
+        return missingTitles.length;
+      }
+    } catch (err) {
+      console.warn('[praise.html] GAS 歷史歌名補入 Supabase 失敗:', err.message);
+    }
+    return 0;
+  }
+
+  async function loadPraiseRecordFromGas(dateStr) {
+    if (!CONFIG?.GAS_SYNC_URL) throw new Error('GAS_SYNC_URL 未設定');
+
+    const date = String(dateStr || '').trim().slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('歌曲日期格式錯誤');
+
+    const loadUrl = new URL(CONFIG.GAS_SYNC_URL, window.location.href);
+    loadUrl.searchParams.set('action', 'load');
+    loadUrl.searchParams.set('key', `praise_songs_${date}`);
+    const response = await fetch(loadUrl.toString());
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+    const payload = await response.json();
+    if (!payload || payload.success !== true || !payload.data) {
+      throw new Error(payload?.error || 'GAS 歌曲資料不存在');
+    }
+
+    return { ...payload.data, date: payload.data.date || date };
+  }
+
+  async function loadPraiseRecordsFromGas() {
+    if (!CONFIG?.GAS_SYNC_URL) return [];
+    if (Array.isArray(praiseHistory.gasRecords)) return praiseHistory.gasRecords;
+    if (praiseHistory.gasRecordsPromise) return praiseHistory.gasRecordsPromise;
+
+    const loadPromise = (async () => {
+      const listUrl = new URL(CONFIG.GAS_SYNC_URL, window.location.href);
+      listUrl.searchParams.set('action', 'list');
+      const listResponse = await fetch(listUrl.toString());
+      if (!listResponse.ok) throw new Error(`HTTP ${listResponse.status}`);
+
+      const listPayload = await listResponse.json();
+      if (!listPayload || listPayload.success !== true || !Array.isArray(listPayload.drafts)) {
+        throw new Error(listPayload?.error || 'GAS 歷史歌曲清單格式錯誤');
+      }
+
+      // 永久清單：不設一年、月份或其他日期範圍限制。
+      const keys = listPayload.drafts
+        .map((entry) => typeof entry === 'string' ? entry : entry?.key)
+        .filter((key) => /^praise_songs_\d{4}-\d{2}-\d{2}$/.test(String(key || '')))
+        .sort((left, right) => String(right).localeCompare(String(left)));
+
+      const records = await Promise.all(keys.map(async (key) => {
+        const keyDate = String(key).slice('praise_songs_'.length);
+        try {
+          return await loadPraiseRecordFromGas(keyDate);
+        } catch (err) {
+          console.warn('[praise.html] GAS 歌曲 ' + keyDate + ' 載入失敗:', err.message);
+          return null;
+        }
+      }));
+
+      return records
+        .filter(Boolean)
+        .sort((left, right) => String(right.date || '').localeCompare(String(left.date || '')));
+    })();
+
+    praiseHistory.gasRecordsPromise = loadPromise;
+    try {
+      praiseHistory.gasRecords = await loadPromise;
+      return praiseHistory.gasRecords;
+    } finally {
+      praiseHistory.gasRecordsPromise = null;
+    }
+  }
+
+  async function loadPraiseHistoryFromGas() {
+    return normalizePraiseHistory(await loadPraiseRecordsFromGas());
+  }
+
+  async function findPraiseRecordFromGasByTitle(title) {
+    const targetTitle = normalizeSongTitle(title);
+    const records = await loadPraiseRecordsFromGas();
+    const matches = records.filter(
+      (record) => normalizeSongTitle(record.title) === targetTitle
+    );
+    if (!matches.length) {
+      throw new Error('GAS 找不到對應歌名的歌詞');
+    }
+    // records 已按日期由新到舊排序；同名時先帶入最新版本供使用者確認。
+    return matches[0];
   }
 
   // 雲端同步 (Supabase 優先 + GAS 備援)
@@ -280,6 +671,22 @@
     }
     if (!state.title) {
       showToast('請填寫讚美詩歌名稱', 'error');
+      return;
+    }
+    if (!state.lyrics) {
+      showToast('請填寫歌詞', 'error');
+      return;
+    }
+
+    const existingSong = praiseHistory.songs.find(
+      (song) => normalizeSongTitle(song.title) === normalizeSongTitle(state.title)
+    );
+    const hasExistingSelection = (
+      state.songOrigin === 'existing'
+      && normalizeSongTitle(state.sourceTitle) === normalizeSongTitle(state.title)
+    );
+    if (!hasExistingSelection && existingSong) {
+      showToast('這個歌名已存在，請先從過往歌曲清單帶入，再確認或修改歌詞', 'error');
       return;
     }
 
@@ -295,17 +702,23 @@
       updatedAt: new Date().toISOString()
     };
 
+    const shouldSaveTitleIndex = !hasExistingSelection;
     let supabaseSaved = false;
     const sbService = window.SundayBulletinSupabaseService;
-    if (sbService && typeof sbService.savePraise === 'function') {
+    if (shouldSaveTitleIndex && sbService) {
       try {
-        const sbRes = await sbService.savePraise(state.date, payload);
+        // 新歌才新增永久歌名索引；舊歌只寫入本次日期的 GAS 完整資料。
+        const sbRes = typeof sbService.savePraiseTitle === 'function'
+          ? await sbService.savePraiseTitle(state.title)
+          : typeof sbService.savePraiseTitles === 'function'
+            ? await sbService.savePraiseTitles([state.title])
+            : null;
         if (sbRes && sbRes.success) {
           supabaseSaved = true;
           document.getElementById('syncStatus').textContent = '狀態：已儲存至 Supabase';
         }
       } catch (sbErr) {
-        console.warn('[praise.html] Supabase savePraise 失敗:', sbErr.message);
+        console.warn('[praise.html] Supabase savePraiseTitle 失敗:', sbErr.message);
       }
     }
 
@@ -315,23 +728,64 @@
         headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify({ key, data: payload })
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
       const json = await res.json();
-      if (json.success) {
-        document.getElementById('syncStatus').textContent = supabaseSaved ? '狀態：已儲存至 Supabase 與雲端備援' : '狀態：已儲存至雲端';
-        showToast('🎉 讚美詩歌與歌詞已成功上傳至雲端！', 'success');
+      if (!json.success) {
+        throw new Error(json.error || '後端儲存失敗');
+      }
+
+      const savedRecord = { ...payload, date: state.date };
+      if (Array.isArray(praiseHistory.gasRecords)) {
+        const recordIndex = praiseHistory.gasRecords.findIndex(
+          (record) => String(record.date || '') === state.date
+        );
+        if (recordIndex >= 0) {
+          praiseHistory.gasRecords[recordIndex] = savedRecord;
+        } else {
+          praiseHistory.gasRecords.unshift(savedRecord);
+        }
+        praiseHistory.gasRecords.sort(
+          (left, right) => String(right.date || '').localeCompare(String(left.date || ''))
+        );
+      }
+
+      if (shouldSaveTitleIndex && supabaseSaved) {
+        praiseHistory.songs = normalizePraiseHistory([
+          ...praiseHistory.songs,
+          { title: state.title }
+        ]);
+        renderPraiseHistoryOptions(document.getElementById('songHistorySearch')?.value || '');
+        state.songOrigin = 'existing';
+        state.sourceTitle = state.title;
+        state.sourceLyrics = state.lyrics;
+      } else if (hasExistingSelection) {
+        state.songOrigin = 'existing';
+        state.sourceTitle = state.title;
+        state.sourceLyrics = state.lyrics;
+      }
+      saveLocalBackup();
+
+      if (hasExistingSelection) {
+        document.getElementById('syncStatus').textContent = '狀態：舊歌已依本次日期存入 GAS（未新增歌名）';
+        showToast('🎉 舊歌歌詞已依本次日期上傳，未新增重複歌名。', 'success');
+      } else if (supabaseSaved) {
+        document.getElementById('syncStatus').textContent = '狀態：新歌歌名已存 Supabase，完整資料已存 GAS';
+        showToast('🎉 新歌歌名與完整歌詞已成功上傳至雲端！', 'success');
       } else {
-        if (!supabaseSaved) throw new Error(json.error || '後端儲存失敗');
-        showToast('🎉 讚美詩歌與歌詞已成功儲存至 Supabase（GAS 備援異常）', 'success');
+        document.getElementById('syncStatus').textContent = '狀態：完整資料已存 GAS，歌名索引尚未寫入';
+        showToast('⚠️ 歌詞已存至 GAS，但歌名索引尚未寫入 Supabase。', 'error');
       }
     } catch (err) {
       console.error(err);
       if (supabaseSaved) {
-        document.getElementById('syncStatus').textContent = '狀態：已儲存至 Supabase (GAS 離線)';
-        showToast('🎉 讚美詩歌與歌詞已儲存至 Supabase！', 'success');
+        document.getElementById('syncStatus').textContent = '狀態：歌名已存 Supabase（GAS 離線）';
+        showToast('❌ 歌名已儲存至 Supabase，但 GAS 尚未儲存完整歌詞', 'error');
+      } else if (hasExistingSelection) {
+        document.getElementById('syncStatus').textContent = '狀態：舊歌上傳失敗，GAS 尚未更新';
+        showToast('❌ 舊歌歌詞尚未寫入 GAS：' + err.message, 'error');
       } else {
         document.getElementById('syncStatus').textContent = '狀態：上傳失敗';
-        showToast(`❌ 上傳失敗：${err.message}`, 'error');
+        showToast('❌ 上傳失敗：' + err.message, 'error');
       }
     }
   }
@@ -346,7 +800,27 @@
     document.getElementById('syncStatus').textContent = '狀態：正在下載...';
     showToast('正在下載雲端暫存...', 'info');
 
-    // 1. 優先從 Supabase 讀取 (<50ms)
+    // GAS 是完整歌曲資料的來源，包含演唱者與歌詞。
+    try {
+      const gasData = await loadPraiseRecordFromGas(state.date);
+      if (gasData && (gasData.title || gasData.lyrics)) {
+        state.title = gasData.title || '';
+        state.kicker = gasData.kicker || '聖歌隊';
+        state.lyrics = gasData.lyrics || '';
+        state.songOrigin = 'existing';
+        state.sourceTitle = state.title;
+        state.sourceLyrics = state.lyrics;
+        renderState();
+        document.getElementById('syncStatus').textContent = '狀態：已載入 GAS 完整資料';
+        showToast('📂 成功從 GAS 載入完整歌曲資料！', 'success');
+        saveLocalBackup();
+        return;
+      }
+    } catch (gasErr) {
+      console.warn('[praise.html] GAS loadPraise 失敗，嘗試 Supabase 舊資料備援:', gasErr.message);
+    }
+
+    // 僅為了相容舊資料：GAS 無法使用時，才讀取既有 Supabase 完整資料。
     const sbService = window.SundayBulletinSupabaseService;
     if (sbService && typeof sbService.loadPraise === 'function') {
       try {
@@ -355,42 +829,22 @@
           state.title = sbData.title || '';
           state.kicker = sbData.kicker || '聖歌隊';
           state.lyrics = sbData.lyrics || '';
+          state.songOrigin = 'existing';
+          state.sourceTitle = state.title;
+          state.sourceLyrics = state.lyrics;
           renderState();
-          document.getElementById('syncStatus').textContent = '狀態：已載入 Supabase 資料';
-          showToast('📂 成功載入 Supabase 雲端資料！', 'success');
+          document.getElementById('syncStatus').textContent = '狀態：已載入 Supabase 舊資料備援';
+          showToast('📂 GAS 無法連線，已載入 Supabase 舊資料', 'info');
           saveLocalBackup();
           return;
         }
       } catch (sbErr) {
-        console.warn('[praise.html] Supabase loadPraise 失敗，嘗試 GAS 備援:', sbErr.message);
+        console.warn('[praise.html] Supabase loadPraise 備援失敗:', sbErr.message);
       }
     }
 
-    // 2. GAS 備援
-    const key = `praise_songs_${state.date}`;
-    const url = `${CONFIG.GAS_SYNC_URL}?action=load&key=${encodeURIComponent(key)}`;
-
-    try {
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
-      if (json.success && json.data) {
-        state.title = json.data.title || '';
-        state.kicker = json.data.kicker || '聖歌隊';
-        state.lyrics = json.data.lyrics || '';
-        renderState();
-        document.getElementById('syncStatus').textContent = '狀態：已載入雲端資料';
-        showToast('📂 成功載入雲端暫存資料！', 'success');
-        saveLocalBackup();
-      } else {
-        document.getElementById('syncStatus').textContent = '狀態：雲端無資料';
-        showToast('ℹ️ 該日期雲端尚無填寫記錄', 'info');
-      }
-    } catch (err) {
-      console.error(err);
-      document.getElementById('syncStatus').textContent = '狀態：載入失敗';
-      showToast(`❌ 載入失敗：${err.message}`, 'error');
-    }
+    document.getElementById('syncStatus').textContent = '狀態：雲端無資料';
+    showToast('ℹ️ 該日期雲端尚無填寫記錄', 'info');
   }
 
   function updateLyricsMonitor() {

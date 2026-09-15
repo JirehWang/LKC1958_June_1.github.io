@@ -232,6 +232,57 @@
       return { success: true, location: 'supabase', date, updatedAt: nowIso };
     },
 
+    // Supabase 只保存永久歌名索引；完整歌詞與日期紀錄仍以 GAS 為來源。
+    async savePraiseTitle(title, userIdentifier = 'praise-title-index') {
+      const sb = getSupabase();
+      if (!sb) return null;
+
+      const cleanTitle = String(title || '').trim();
+      if (!cleanTitle) throw new Error('缺少讚美詩歌名稱 (title)');
+
+      const nowIso = new Date().toISOString();
+      const row = {
+        title: cleanTitle,
+        updated_at: nowIso,
+        updated_by: userIdentifier
+      };
+
+      const { error } = await sb
+        .from('sunday_bulletin_praise_titles')
+        .upsert(row, { onConflict: 'title', defaultToNull: false });
+
+      if (error) throw error;
+      return { success: true, location: 'supabase', title: cleanTitle, updatedAt: nowIso };
+    },
+
+    // 一次補入 GAS 歷史歌名；只寫入 title，不把日期、歌詞或演唱者帶進索引表。
+    async savePraiseTitles(titles, userIdentifier = 'praise-title-index') {
+      const sb = getSupabase();
+      if (!sb) return null;
+
+      const uniqueTitles = [...new Set(
+        (Array.isArray(titles) ? titles : [])
+          .map(title => String(title || '').trim())
+          .filter(Boolean)
+      )];
+      if (!uniqueTitles.length) {
+        return { success: true, location: 'supabase', count: 0 };
+      }
+
+      const nowIso = new Date().toISOString();
+      const rows = uniqueTitles.map(title => ({
+        title,
+        updated_at: nowIso,
+        updated_by: userIdentifier
+      }));
+      const { error } = await sb
+        .from('sunday_bulletin_praise_titles')
+        .upsert(rows, { onConflict: 'title', defaultToNull: false });
+
+      if (error) throw error;
+      return { success: true, location: 'supabase', count: uniqueTitles.length, updatedAt: nowIso };
+    },
+
     async loadPraise(dateStr) {
       const sb = getSupabase();
       if (!sb) return null;
@@ -255,6 +306,51 @@
         lyrics: data.lyrics || '',
         updatedAt: data.updated_at
       };
+    },
+
+    // 不設日期範圍或一年限制，永久保留所有歷史歌名索引。
+    async listPraiseTitles() {
+      const sb = getSupabase();
+      if (!sb) return null;
+
+      try {
+        const { data, error } = await sb
+          .from('sunday_bulletin_praise_titles')
+          .select('title, updated_at')
+          .order('title', { ascending: true });
+
+        if (error) throw error;
+        return (data || [])
+          .map(row => ({
+            title: String(row.title || '').trim(),
+            updatedAt: row.updated_at || ''
+          }))
+          .filter(row => row.title);
+      } catch (indexError) {
+        // migration 尚未執行時，先從舊表提供相容清單；不套用日期限制。
+        const { data, error } = await sb
+          .from('sunday_bulletin_praise')
+          .select('title, updated_at')
+          .order('title', { ascending: true });
+
+        if (error) throw indexError;
+        const seen = new Set();
+        return (data || [])
+          .map(row => ({
+            title: String(row.title || '').trim(),
+            updatedAt: row.updated_at || ''
+          }))
+          .filter(row => {
+            if (!row.title || seen.has(row.title)) return false;
+            seen.add(row.title);
+            return true;
+          });
+      }
+    },
+
+    // 舊呼叫端相容別名；同樣只回傳索引欄位。
+    async listPraiseSongs() {
+      return this.listPraiseTitles();
     }
   };
 

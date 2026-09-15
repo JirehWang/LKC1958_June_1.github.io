@@ -74,10 +74,31 @@ async function migrate() {
           updated_by TEXT DEFAULT 'praise-admin'
       );
 
+      -- 4. 永久歌名索引：只保存歌名，完整歌詞與日期紀錄仍由 GAS 管理
+      CREATE TABLE IF NOT EXISTS public.sunday_bulletin_praise_titles (
+          title TEXT PRIMARY KEY,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+          updated_by TEXT DEFAULT 'praise-title-index'
+      );
+
+      -- 先把舊 Supabase 完整表中的歌名補入新索引；GAS 歷史資料由頁面首次載入時同步。
+      INSERT INTO public.sunday_bulletin_praise_titles (title, created_at, updated_at, updated_by)
+      SELECT
+          trim(title),
+          COALESCE(min(created_at), now()),
+          COALESCE(max(updated_at), now()),
+          'migration'
+      FROM public.sunday_bulletin_praise
+      WHERE trim(title) <> ''
+      GROUP BY trim(title)
+      ON CONFLICT (title) DO NOTHING;
+
       -- 啟用 RLS
       ALTER TABLE public.sunday_bulletins ENABLE ROW LEVEL SECURITY;
       ALTER TABLE public.sunday_bulletin_reports ENABLE ROW LEVEL SECURITY;
       ALTER TABLE public.sunday_bulletin_praise ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE public.sunday_bulletin_praise_titles ENABLE ROW LEVEL SECURITY;
 
       -- 建立或替換 RLS 政策 (允許 anon 與 authenticated 讀寫)
       DO $$
@@ -93,12 +114,25 @@ async function migrate() {
         IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'sunday_bulletin_praise' AND policyname = 'Allow anon all on sunday_bulletin_praise') THEN
           CREATE POLICY "Allow anon all on sunday_bulletin_praise" ON public.sunday_bulletin_praise FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
         END IF;
+
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'sunday_bulletin_praise_titles' AND policyname = 'Allow anon select on sunday_bulletin_praise_titles') THEN
+          CREATE POLICY "Allow anon select on sunday_bulletin_praise_titles" ON public.sunday_bulletin_praise_titles FOR SELECT TO anon, authenticated USING (true);
+        END IF;
+
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'sunday_bulletin_praise_titles' AND policyname = 'Allow anon insert on sunday_bulletin_praise_titles') THEN
+          CREATE POLICY "Allow anon insert on sunday_bulletin_praise_titles" ON public.sunday_bulletin_praise_titles FOR INSERT TO anon, authenticated WITH CHECK (true);
+        END IF;
+
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'sunday_bulletin_praise_titles' AND policyname = 'Allow anon update on sunday_bulletin_praise_titles') THEN
+          CREATE POLICY "Allow anon update on sunday_bulletin_praise_titles" ON public.sunday_bulletin_praise_titles FOR UPDATE TO anon, authenticated USING (true) WITH CHECK (true);
+        END IF;
       END $$;
 
       -- 授權 anon 與 authenticated 角色存取
       GRANT ALL ON public.sunday_bulletins TO anon, authenticated, service_role;
       GRANT ALL ON public.sunday_bulletin_reports TO anon, authenticated, service_role;
       GRANT ALL ON public.sunday_bulletin_praise TO anon, authenticated, service_role;
+      GRANT SELECT, INSERT, UPDATE ON public.sunday_bulletin_praise_titles TO anon, authenticated, service_role;
     `;
 
     await client.query(ddl);

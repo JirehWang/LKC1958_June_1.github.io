@@ -36,7 +36,8 @@ function createMockSupabaseClient() {
   const store = {
     sunday_bulletins: new Map(),
     sunday_bulletin_reports: new Map(),
-    sunday_bulletin_praise: new Map()
+    sunday_bulletin_praise: new Map(),
+    sunday_bulletin_praise_titles: new Map()
   };
 
   const client = {
@@ -45,14 +46,21 @@ function createMockSupabaseClient() {
       const table = store[tableName] || new Map();
       return {
         upsert(row, opts) {
-          const key = row.date;
-          table.set(key, { ...row });
+          const rows = Array.isArray(row) ? row : [row];
+          rows.forEach(item => {
+            const key = tableName === 'sunday_bulletin_praise_titles' ? item.title : item.date;
+            table.set(key, { ...item });
+          });
+          const storedRows = rows.map(item => {
+            const key = tableName === 'sunday_bulletin_praise_titles' ? item.title : item.date;
+            return table.get(key);
+          });
           return {
             select() {
-              return Promise.resolve({ data: [table.get(key)], error: null });
+              return Promise.resolve({ data: storedRows, error: null });
             },
             then(resolve) {
-              return Promise.resolve({ data: [table.get(key)], error: null }).then(resolve);
+              return Promise.resolve({ data: storedRows, error: null }).then(resolve);
             }
           };
         },
@@ -228,6 +236,24 @@ test('SundayBulletinSupabaseService handles reports and praise upload CRUD', asy
   assert.equal(praise.title, '奇異恩典');
   assert.equal(praise.kicker, '聖歌隊');
   assert.equal(praise.lyrics, '奇異恩典，何等甘甜');
+});
+
+test('SundayBulletinSupabaseService keeps a permanent title-only praise index', async () => {
+  const mockClient = createMockSupabaseClient();
+  const service = loadSupabaseService(mockClient);
+
+  await service.savePraiseTitles(['早期仍然有效的歌曲', '近期歌曲', '近期歌曲']);
+
+  const songs = await service.listPraiseTitles();
+  const storedOldRecord = mockClient._store.sunday_bulletin_praise_titles.get('早期仍然有效的歌曲');
+
+  assert.equal(songs.length, 2);
+  assert.deepEqual(songs.map(song => song.title), ['早期仍然有效的歌曲', '近期歌曲']);
+  assert.equal('date' in storedOldRecord, false);
+  assert.equal('lyrics' in storedOldRecord, false);
+  assert.equal('kicker' in storedOldRecord, false);
+  assert.equal('raw_data' in storedOldRecord, false);
+  assert.equal(typeof songs[0].updatedAt, 'string');
 });
 
 test('DraftManager prioritizes Supabase and mirrors to GAS in background', async () => {
