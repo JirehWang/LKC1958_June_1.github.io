@@ -10,7 +10,10 @@ foreach ($javascriptFile in $javascriptFiles) {
 }
 
 $integrationJavascriptFiles = @(
-    ".\apps\LKC_SundayBulletin\js\bulletin-supabase.js",
+  ".\apps\LKC_SundayBulletin\js\bulletin-supabase.js",
+  ".\firebase\observability-browser.js",
+  ".\firebase\observability-endpoints.js",
+  ".\scripts\cleanup-observability-logs.mjs",
     ".\scripts\migrate_sunday_bulletin_supabase.js",
     ".\scripts\sync_sunday_bulletin_gas_to_supabase.js"
 )
@@ -34,6 +37,8 @@ foreach ($testFile in $testFiles) {
 }
 
 $integrationTestFiles = @(
+    ".\tests\observability-endpoints.test.mjs",
+    ".\tests\observability-retention.test.mjs",
     ".\tests\sunday-bulletin-supabase.test.js",
     ".\tests\supabase-migration-security.test.js",
     ".\tests\sunday-bulletin-gas-sync.test.js"

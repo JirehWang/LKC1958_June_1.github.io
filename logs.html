@@ -194,10 +194,343 @@
       display: none;
     }
 
+    .scope-note {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-top: 12px;
+      color: #475569;
+      font-size: 0.88rem;
+    }
+
+    .scope-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 999px;
+      background: var(--blue);
+      box-shadow: 0 0 0 4px #dbeafe;
+    }
+
+    .toolbar {
+      grid-template-columns: repeat(6, minmax(130px, 1fr));
+    }
+
+    .toolbar .search-field {
+      grid-column: span 2;
+    }
+
+    .toolbar-actions {
+      display: flex;
+      gap: 8px;
+      align-items: end;
+      grid-column: span 2;
+    }
+
+    .toolbar-actions button {
+      flex: 1;
+    }
+
+    .summary {
+      grid-template-columns: repeat(7, minmax(110px, 1fr));
+    }
+
+    .metric.critical {
+      border-color: #fecaca;
+      background: #fff7f7;
+    }
+
+    .metric.error {
+      border-color: #fed7aa;
+      background: #fffaf5;
+    }
+
+    .metric.warn {
+      border-color: #fde68a;
+      background: #fffdf2;
+    }
+
+    .metric.info {
+      border-color: #bfdbfe;
+      background: #f7fbff;
+    }
+
+    .system-groups {
+      display: grid;
+      gap: 14px;
+    }
+
+    .system-group {
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--panel);
+      box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+    }
+
+    .system-group > summary {
+      list-style: none;
+      cursor: pointer;
+    }
+
+    .system-group > summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .system-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: center;
+      padding: 15px 16px;
+      background: #f8fafc;
+    }
+
+    .system-header:hover {
+      background: #f1f5f9;
+    }
+
+    .system-heading {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: baseline;
+      min-width: 0;
+    }
+
+    .system-heading h2 {
+      margin: 0;
+      font-size: 1rem;
+    }
+
+    .system-group-label,
+    .environment,
+    .source-badge {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 3px 8px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .system-group-label {
+      color: #1d4ed8;
+      background: #dbeafe;
+    }
+
+    .environment {
+      color: #475569;
+      background: #e2e8f0;
+    }
+
+    .system-counts {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 6px;
+    }
+
+    .count-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      border-radius: 999px;
+      padding: 4px 8px;
+      color: #334155;
+      background: #e2e8f0;
+      font-size: 0.78rem;
+      font-weight: 800;
+    }
+
+    .count-badge.critical {
+      color: #991b1b;
+      background: #fee2e2;
+    }
+
+    .count-badge.error {
+      color: #c2410c;
+      background: #ffedd5;
+    }
+
+    .count-badge.warn {
+      color: #92400e;
+      background: #fef3c7;
+    }
+
+    .count-badge.info {
+      color: #075985;
+      background: #e0f2fe;
+    }
+
+    .log-list {
+      display: grid;
+      gap: 8px;
+      padding: 10px;
+    }
+
+    .log-card {
+      overflow: hidden;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .log-card > summary {
+      list-style: none;
+      cursor: pointer;
+    }
+
+    .log-card > summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .log-summary-grid {
+      display: grid;
+      grid-template-columns: 82px 170px minmax(150px, 1fr) minmax(180px, 2fr) 92px;
+      gap: 10px;
+      align-items: center;
+      padding: 11px 12px;
+    }
+
+    .log-summary-grid:hover {
+      background: #f8fafc;
+    }
+
+    .log-time,
+    .log-action,
+    .log-message {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .log-time {
+      color: #64748b;
+      font-size: 0.82rem;
+    }
+
+    .log-action {
+      color: #334155;
+      font-weight: 700;
+      font-size: 0.88rem;
+    }
+
+    .log-message {
+      color: #1f2937;
+      font-size: 0.9rem;
+    }
+
+    .source-badge {
+      justify-content: center;
+      color: #475569;
+      background: #f1f5f9;
+    }
+
+    .log-detail {
+      padding: 13px 14px 15px;
+      border-top: 1px solid #e2e8f0;
+      background: #fbfdff;
+    }
+
+    .detail-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .detail-item {
+      min-width: 0;
+      padding: 9px 10px;
+      border: 1px solid #e2e8f0;
+      border-radius: 7px;
+      background: #fff;
+    }
+
+    .detail-item span {
+      display: block;
+      margin-bottom: 4px;
+      color: #64748b;
+      font-size: 0.76rem;
+      font-weight: 700;
+    }
+
+    .detail-item strong {
+      display: block;
+      overflow-wrap: anywhere;
+      color: #1f2937;
+      font-size: 0.86rem;
+      font-weight: 700;
+    }
+
+    .detail-section-label {
+      display: block;
+      margin: 8px 0 4px;
+      color: #475569;
+      font-size: 0.8rem;
+      font-weight: 800;
+    }
+
+    .log-card .meta {
+      max-height: 180px;
+      padding: 9px 10px;
+      border: 1px solid #e2e8f0;
+      border-radius: 7px;
+      background: #fff;
+    }
+
+    .level.info {
+      background: #0369a1;
+    }
+
+    .level.warn {
+      background: #b45309;
+    }
+
+    .level.error {
+      background: #dc2626;
+    }
+
+    .level.critical {
+      background: #991b1b;
+    }
+
     @media (max-width: 760px) {
       .toolbar,
       .summary {
         grid-template-columns: 1fr;
+      }
+
+      .toolbar .search-field {
+        grid-column: auto;
+      }
+
+      .toolbar-actions {
+        align-items: stretch;
+        grid-column: auto;
+      }
+
+      .system-header {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .system-counts {
+        justify-content: flex-start;
+      }
+
+      .log-summary-grid,
+      .detail-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .log-time,
+      .log-action,
+      .log-message {
+        overflow: visible;
+        white-space: normal;
       }
     }
   </style>
@@ -205,7 +538,8 @@
 <body>
   <header>
     <h1>LKC 系統運作紀錄</h1>
-    <div class="muted">檢視中央 API、快取 fallback、錯誤與寫入後快取清除紀錄。</div>
+    <div class="muted">依系統、來源與嚴重度整理中央 API、快取、前端與平台事件。</div>
+    <div class="scope-note"><span class="scope-dot" aria-hidden="true"></span><span id="systemCoverage">系統 Registry 載入中...</span></div>
   </header>
 
   <main>
@@ -215,58 +549,56 @@
         <input id="dateInput" type="date">
       </label>
       <label>
-        系統
-        <select id="systemSelect">
-          <option value="all">全部系統</option>
-          <option value="LKC_NewFamily">新家人系統</option>
-          <option value="LKC_MinistrySchedule_TEST">事工系統</option>
-          <option value="LKC_MasterSchedule">教會行事曆</option>
-          <option value="LKC_SundayserviceAttendance">主日點名</option>
-          <option value="LKC_Group">小組系統</option>
-          <option value="LKC_worship">敬拜團</option>
-          <option value="LKC_WhosCar">誰的車</option>
+        系統群組
+        <select id="groupSelect">
+          <option value="all">全部系統群組</option>
         </select>
       </label>
       <label>
-        等級
-        <select id="levelSelect">
-          <option value="all">全部</option>
-          <option value="critical">critical</option>
-          <option value="error">error</option>
-          <option value="warn">warn</option>
-          <option value="info">info</option>
+        系統
+        <select id="systemSelect">
+          <option value="all">全部系統</option>
         </select>
       </label>
-      <button id="refreshBtn" type="button">重新整理</button>
-      <button id="exportBtn" type="button">匯出 JSON</button>
+      <label>
+        嚴重度
+        <select id="levelSelect">
+          <option value="all">全部</option>
+          <option value="critical">Critical｜嚴重</option>
+          <option value="error">Error｜錯誤</option>
+          <option value="warn">Warn｜警告</option>
+          <option value="info">Info｜資訊</option>
+        </select>
+      </label>
+      <label>
+        來源
+        <select id="sourceSelect">
+          <option value="all">全部來源</option>
+        </select>
+      </label>
+      <label class="search-field">
+        搜尋
+        <input id="searchInput" type="search" placeholder="訊息、Action、錯誤類型、Request ID">
+      </label>
+      <div class="toolbar-actions">
+        <button id="refreshBtn" type="button">重新整理</button>
+        <button id="exportBtn" type="button">匯出 JSON</button>
+      </div>
     </section>
 
     <section class="summary" aria-label="紀錄摘要">
       <div class="metric"><span class="muted">總筆數</span><strong id="totalCount">0</strong></div>
-      <div class="metric"><span class="muted">Error/Critical</span><strong id="errorCount">0</strong></div>
-      <div class="metric"><span class="muted">Warn</span><strong id="warnCount">0</strong></div>
+      <div class="metric critical"><span class="muted">Critical｜嚴重</span><strong id="criticalCount">0</strong></div>
+      <div class="metric error"><span class="muted">Error｜錯誤</span><strong id="errorCount">0</strong></div>
+      <div class="metric warn"><span class="muted">Warn｜警告</span><strong id="warnCount">0</strong></div>
+      <div class="metric info"><span class="muted">Info｜資訊</span><strong id="infoCount">0</strong></div>
       <div class="metric"><span class="muted">平均耗時</span><strong id="avgDuration">0ms</strong></div>
       <div class="metric"><span class="muted">總耗時</span><strong id="sumDuration">0ms</strong></div>
     </section>
 
     <div id="statusBox" class="status">載入中...</div>
 
-    <section id="tableWrap" class="table-wrap hidden" aria-label="紀錄列表">
-      <table>
-        <thead>
-          <tr>
-            <th style="width: 170px;">時間</th>
-            <th style="width: 160px;">系統</th>
-            <th style="width: 90px;">等級</th>
-            <th style="width: 190px;">Action</th>
-            <th>訊息</th>
-            <th style="width: 100px;">耗時</th>
-            <th style="width: 260px;">Meta</th>
-          </tr>
-        </thead>
-        <tbody id="logRows"></tbody>
-      </table>
-    </section>
+    <section id="groupsWrap" class="system-groups hidden" aria-label="依系統分組的紀錄"></section>
   </main>
 
   <script type="module">
@@ -274,34 +606,49 @@
     import {
       ref, get
     } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-database.js';
-
-    const systems = [
-      'LKC_NewFamily',
-      'LKC_MinistrySchedule_TEST',
-      'LKC_MasterSchedule',
-      'LKC_SundayserviceAttendance',
-      'LKC_SundayserviceAttendance_TEST',
-      'LKC_Group',
-      'LKC_Group_TEST',
-      'LKC_worship',
-      'LKC_WhosCar'
-    ];
+    import {
+      ERROR_LEVELS,
+      ERROR_LEVEL_META,
+      LOG_SOURCES,
+      OBSERVABILITY_SYSTEMS,
+      SYSTEM_GROUPS,
+      getSystemDefinition,
+      getSystemGroup,
+      normalizeLogEntry
+    } from './firebase/observability-registry.js';
 
     const dateInput = document.getElementById('dateInput');
+    const groupSelect = document.getElementById('groupSelect');
     const systemSelect = document.getElementById('systemSelect');
     const levelSelect = document.getElementById('levelSelect');
+    const sourceSelect = document.getElementById('sourceSelect');
+    const searchInput = document.getElementById('searchInput');
     const refreshBtn = document.getElementById('refreshBtn');
     const exportBtn = document.getElementById('exportBtn');
     const statusBox = document.getElementById('statusBox');
-    const tableWrap = document.getElementById('tableWrap');
-    const logRows = document.getElementById('logRows');
+    const groupsWrap = document.getElementById('groupsWrap');
+    const systemCoverage = document.getElementById('systemCoverage');
 
     const totalCount = document.getElementById('totalCount');
+    const criticalCount = document.getElementById('criticalCount');
     const errorCount = document.getElementById('errorCount');
     const warnCount = document.getElementById('warnCount');
+    const infoCount = document.getElementById('infoCount');
     const avgDuration = document.getElementById('avgDuration');
     const sumDuration = document.getElementById('sumDuration');
     let currentLogs = [];
+
+    const SOURCE_LABELS = Object.freeze({
+      api: 'API',
+      ui: '前端介面',
+      unhandled: '未捕捉例外',
+      supabase: 'Supabase',
+      firebase: 'Firebase',
+      gas: 'GAS',
+      audio: '音訊',
+      workflow: 'Workflow',
+      unknown: '未分類'
+    });
 
     function todayKey() {
       const d = new Date();
@@ -327,46 +674,148 @@
         .replace(/'/g, '&#39;');
     }
 
+    function safeJson(value) {
+      try {
+        return JSON.stringify(value || {}, null, 2);
+      } catch {
+        return '[無法顯示資料]';
+      }
+    }
+
+    function formatEnvironment(environment) {
+      return ({
+        production: '正式',
+        test: '測試',
+        staging: '預備',
+        development: '開發',
+        unknown: '未設定'
+      })[environment] || environment || '未設定';
+    }
+
+    function formatDuration(value) {
+      if (value == null || !Number.isFinite(Number(value))) return '—';
+      return `${Math.round(Number(value))}ms`;
+    }
+
+    function renderOption(value, label) {
+      return `<option value="${escapeHTML(value)}">${escapeHTML(label)}</option>`;
+    }
+
+    function populateFilters() {
+      const groups = SYSTEM_GROUPS
+        .filter(group => group.id !== 'unknown')
+        .slice()
+        .sort((a, b) => a.order - b.order);
+      groupSelect.innerHTML = renderOption('all', '全部系統群組')
+        + groups.map(group => renderOption(group.id, group.label)).join('');
+
+      const systems = OBSERVABILITY_SYSTEMS
+        .slice()
+        .sort((a, b) => {
+          const groupOrder = getSystemGroup(a.id).order - getSystemGroup(b.id).order;
+          return groupOrder || a.label.localeCompare(b.label, 'zh-Hant');
+        });
+      systemSelect.innerHTML = renderOption('all', '全部系統')
+        + systems.map(system => {
+          const environment = system.environment === 'test' ? '｜測試' : '';
+          return renderOption(system.id, `${system.label}${environment}`);
+        }).join('');
+
+      sourceSelect.innerHTML = renderOption('all', '全部來源')
+        + LOG_SOURCES
+          .filter(source => source !== 'unknown')
+          .map(source => renderOption(source, SOURCE_LABELS[source] || source))
+          .join('')
+        + renderOption('unknown', SOURCE_LABELS.unknown);
+
+      systemCoverage.textContent = `已納入 ${OBSERVABILITY_SYSTEMS.length} 個系統（含正式、測試與平台服務）`;
+    }
+
     async function readSystemLogs(system, dateKey) {
       const snap = await get(ref(rtdb, `logs/${system}/${dateKey}`));
       if (!snap.exists()) return [];
-      const val = snap.val();
-      return Object.keys(val).map(id => Object.assign({ id }, val[id]));
+      const value = snap.val();
+      if (!value || typeof value !== 'object') return [];
+      return Object.entries(value).map(([id, item]) => ({ id, ...(item || {}) }));
+    }
+
+    function matchesSearch(item) {
+      const query = searchInput.value.trim().toLowerCase();
+      if (!query) return true;
+      const system = getSystemDefinition(item.system);
+      const haystack = [
+        item.system,
+        system.label,
+        item.source,
+        item.action,
+        item.message,
+        item.errorType,
+        item.requestId,
+        item.endpoint,
+        item.page,
+        item.fingerprint
+      ].join(' ').toLowerCase();
+      return haystack.includes(query);
     }
 
     async function loadLogs() {
       refreshBtn.disabled = true;
       statusBox.classList.remove('hidden');
-      tableWrap.classList.add('hidden');
+      groupsWrap.classList.add('hidden');
       statusBox.textContent = '載入中...';
 
       try {
         const dateKey = dateInput.value || todayKey();
+        const selectedGroup = groupSelect.value;
         const selectedSystem = systemSelect.value;
         const selectedLevel = levelSelect.value;
-        const targetSystems = selectedSystem === 'all' ? systems : [selectedSystem];
+        const selectedSource = sourceSelect.value;
+        const targetSystems = OBSERVABILITY_SYSTEMS
+          .filter(system => selectedSystem === 'all' || system.id === selectedSystem)
+          .filter(system => selectedGroup === 'all' || system.group === selectedGroup)
+          .map(system => system.storageId || system.id);
 
-        const chunks = await Promise.all(targetSystems.map(system => readSystemLogs(system, dateKey)));
-        let logs = chunks.flat();
+        const results = await Promise.allSettled(targetSystems.map(system => readSystemLogs(system, dateKey)));
+        const rejected = results.filter(result => result.status === 'rejected');
+        let logs = results
+          .filter(result => result.status === 'fulfilled')
+          .flatMap(result => result.value)
+          .map(item => normalizeLogEntry(item));
+
         if (selectedLevel !== 'all') {
           logs = logs.filter(item => item.level === selectedLevel);
         }
-        logs.sort((a, b) => String(b.time || '').localeCompare(String(a.time || '')));
+        if (selectedSource !== 'all') {
+          logs = logs.filter(item => item.source === selectedSource);
+        }
+        logs = logs.filter(matchesSearch);
+        logs.sort((a, b) => {
+          const levelRank = (ERROR_LEVEL_META[b.level] || ERROR_LEVEL_META.info).rank
+            - (ERROR_LEVEL_META[a.level] || ERROR_LEVEL_META.info).rank;
+          return levelRank || String(b.time || '').localeCompare(String(a.time || ''));
+        });
         currentLogs = logs;
 
         renderSummary(logs);
-        renderRows(logs);
+        renderGroups(logs);
 
-        if (logs.length === 0) {
+        if (rejected.length && logs.length) {
+          statusBox.textContent = `部分系統讀取失敗：${rejected.length} 個系統；已顯示可讀取的紀錄。`;
+        } else if (rejected.length) {
+          const reason = rejected[0].reason;
+          statusBox.textContent = `讀取失敗：${reason && (reason.message || reason) || '未知錯誤'}`;
+        } else if (logs.length === 0) {
           statusBox.textContent = '目前沒有符合條件的紀錄。';
-          tableWrap.classList.add('hidden');
         } else {
           statusBox.classList.add('hidden');
-          tableWrap.classList.remove('hidden');
         }
+
+        if (logs.length) groupsWrap.classList.remove('hidden');
       } catch (err) {
+        currentLogs = [];
+        renderSummary([]);
+        groupsWrap.classList.add('hidden');
         statusBox.textContent = `讀取失敗：${err.message || err}`;
-        tableWrap.classList.add('hidden');
       } finally {
         refreshBtn.disabled = false;
       }
@@ -375,16 +824,19 @@
     function renderSummary(logs) {
       const durations = logs.map(item => Number(item.durationMs)).filter(Number.isFinite);
       const sum = durations.reduce((acc, value) => acc + value, 0);
-      const avg = durations.length
-        ? Math.round(sum / durations.length)
-        : 0;
+      const avg = durations.length ? Math.round(sum / durations.length) : 0;
+      const counts = Object.fromEntries(Object.keys(ERROR_LEVELS).map(level => [level, 0]));
+      logs.forEach(item => {
+        if (counts[item.level] !== undefined) counts[item.level] += 1;
+      });
 
       totalCount.textContent = logs.length;
-      errorCount.textContent = logs.filter(item => item.level === 'error' || item.level === 'critical').length;
-      warnCount.textContent = logs.filter(item => item.level === 'warn').length;
+      criticalCount.textContent = counts.critical;
+      errorCount.textContent = counts.error;
+      warnCount.textContent = counts.warn;
+      infoCount.textContent = counts.info;
       avgDuration.textContent = `${avg}ms`;
 
-      // 格式化總耗時為易讀的格式
       let sumText = `${sum}ms`;
       if (sum >= 1000) {
         const sec = sum / 1000;
@@ -405,20 +857,105 @@
       sumDuration.textContent = sumText;
     }
 
-    function renderRows(logs) {
-      logRows.innerHTML = logs.map(item => {
-        const level = item.level || 'info';
-        const metaText = JSON.stringify(item.meta || {}, null, 2);
+    function countBadges(logs) {
+      const counts = Object.fromEntries(Object.keys(ERROR_LEVELS).map(level => [level, 0]));
+      logs.forEach(item => {
+        if (counts[item.level] !== undefined) counts[item.level] += 1;
+      });
+      return Object.keys(ERROR_LEVELS)
+        .filter(level => counts[level] > 0)
+        .map(level => `<span class="count-badge ${level}">${ERROR_LEVEL_META[level].shortLabel} ${counts[level]}</span>`)
+        .join('');
+    }
+
+    function detailField(label, value) {
+      const display = value === null || value === undefined || value === '' ? '—' : value;
+      return `<div class="detail-item"><span>${escapeHTML(label)}</span><strong>${escapeHTML(display)}</strong></div>`;
+    }
+
+    function renderLogCard(item, fingerprintCounts) {
+      const level = ERROR_LEVEL_META[item.level] ? item.level : ERROR_LEVELS.info;
+      const levelMeta = ERROR_LEVEL_META[level];
+      const system = getSystemDefinition(item.system);
+      const sourceLabel = SOURCE_LABELS[item.source] || item.source || SOURCE_LABELS.unknown;
+      const sameFingerprintCount = fingerprintCounts.get(item.fingerprint) || 1;
+      return `
+        <details class="log-card">
+          <summary>
+            <div class="log-summary-grid">
+              <span class="level ${level}">${escapeHTML(levelMeta.shortLabel)}</span>
+              <span class="log-time">${escapeHTML(formatTime(item.time))}</span>
+              <span class="log-action">${escapeHTML(item.action || '未命名動作')}</span>
+              <span class="log-message">${escapeHTML(item.message || item.errorType || '未提供訊息')}</span>
+              <span class="source-badge">${escapeHTML(sourceLabel)}</span>
+            </div>
+          </summary>
+          <div class="log-detail">
+            <div class="detail-grid">
+              ${detailField('系統', `${system.label}（${item.system}）`)}
+              ${detailField('嚴重度', `${levelMeta.shortLabel}｜${levelMeta.label}`)}
+              ${detailField('環境', formatEnvironment(item.environment))}
+              ${detailField('來源', sourceLabel)}
+              ${detailField('錯誤類型', item.errorType)}
+              ${detailField('Request ID', item.requestId)}
+              ${detailField('相同錯誤次數', sameFingerprintCount)}
+              ${detailField('耗時', formatDuration(item.durationMs))}
+              ${detailField('頁面', item.page)}
+              ${detailField('Endpoint', item.endpoint || '尚未提供')}
+              ${detailField('Fingerprint', item.fingerprint)}
+              ${detailField('時間', formatTime(item.time))}
+            </div>
+            <span class="detail-section-label">Meta</span>
+            <pre class="meta">${escapeHTML(safeJson(item.meta))}</pre>
+          </div>
+        </details>
+      `;
+    }
+
+    function renderGroups(logs) {
+      if (!logs.length) {
+        groupsWrap.innerHTML = '';
+        return;
+      }
+
+      const fingerprintCounts = new Map();
+      logs.forEach(item => fingerprintCounts.set(item.fingerprint, (fingerprintCounts.get(item.fingerprint) || 0) + 1));
+      const bySystem = new Map();
+      logs.forEach(item => {
+        if (!bySystem.has(item.system)) bySystem.set(item.system, []);
+        bySystem.get(item.system).push(item);
+      });
+
+      const groups = [...bySystem.entries()]
+        .map(([systemId, entries]) => {
+          const highestRank = Math.max(...entries.map(item => (ERROR_LEVEL_META[item.level] || ERROR_LEVEL_META.info).rank));
+          return { systemId, entries, highestRank, definition: getSystemDefinition(systemId), group: getSystemGroup(systemId) };
+        })
+        .sort((a, b) => b.highestRank - a.highestRank
+          || a.group.order - b.group.order
+          || a.definition.label.localeCompare(b.definition.label, 'zh-Hant'));
+
+      groupsWrap.innerHTML = groups.map(({ systemId, entries, definition, group }) => {
+        const sortedEntries = entries.slice().sort((a, b) => {
+          const levelRank = (ERROR_LEVEL_META[b.level] || ERROR_LEVEL_META.info).rank
+            - (ERROR_LEVEL_META[a.level] || ERROR_LEVEL_META.info).rank;
+          return levelRank || String(b.time || '').localeCompare(String(a.time || ''));
+        });
         return `
-          <tr>
-            <td>${escapeHTML(formatTime(item.time))}</td>
-            <td>${escapeHTML(item.system)}</td>
-            <td><span class="level ${escapeHTML(level)}">${escapeHTML(level)}</span></td>
-            <td>${escapeHTML(item.action)}</td>
-            <td>${escapeHTML(item.message)}</td>
-            <td>${item.durationMs == null ? '' : escapeHTML(item.durationMs + 'ms')}</td>
-            <td><pre class="meta">${escapeHTML(metaText)}</pre></td>
-          </tr>
+          <details class="system-group" open>
+            <summary class="system-header">
+              <div class="system-heading">
+                <span class="system-group-label">${escapeHTML(group.label)}</span>
+                <h2>${escapeHTML(definition.label)}</h2>
+                <span class="muted">${escapeHTML(systemId)}</span>
+                <span class="environment">${escapeHTML(formatEnvironment(definition.environment))}</span>
+              </div>
+              <div class="system-counts">${countBadges(entries)}</div>
+            </summary>
+            <div class="log-list">
+              ${sortedEntries.map(item => renderLogCard(item, fingerprintCounts)).join('')}
+            </div>
+          </details>
         `;
       }).join('');
     }
@@ -426,10 +963,14 @@
     function exportCurrentLogs() {
       const dateKey = dateInput.value || todayKey();
       const payload = {
+        schemaVersion: 1,
         exportedAt: new Date().toISOString(),
         date: dateKey,
+        group: groupSelect.value,
         system: systemSelect.value,
         level: levelSelect.value,
+        source: sourceSelect.value,
+        search: searchInput.value.trim(),
         count: currentLogs.length,
         logs: currentLogs
       };
@@ -446,12 +987,27 @@
       URL.revokeObjectURL(url);
     }
 
+    populateFilters();
     dateInput.value = todayKey();
     refreshBtn.addEventListener('click', loadLogs);
     exportBtn.addEventListener('click', exportCurrentLogs);
+    groupSelect.addEventListener('change', () => {
+      if (groupSelect.value !== 'all') {
+        const selectedSystem = getSystemDefinition(systemSelect.value);
+        if (systemSelect.value !== 'all' && selectedSystem.group !== groupSelect.value) {
+          systemSelect.value = 'all';
+        }
+      }
+      loadLogs();
+    });
     systemSelect.addEventListener('change', loadLogs);
     levelSelect.addEventListener('change', loadLogs);
+    sourceSelect.addEventListener('change', loadLogs);
     dateInput.addEventListener('change', loadLogs);
+    searchInput.addEventListener('change', loadLogs);
+    searchInput.addEventListener('keydown', event => {
+      if (event.key === 'Enter') loadLogs();
+    });
     loadLogs();
   </script>
 </body>

@@ -57,7 +57,10 @@
       return null;
     }
     if (!_supabaseClient || win._RESET_SUPABASE_FOR_TEST) {
-      _supabaseClient = create(config.url, config.anonKey);
+      const options = typeof win.__LKC_OBSERVABILITY_SUPABASE_OPTIONS__ === 'function'
+        ? win.__LKC_OBSERVABILITY_SUPABASE_OPTIONS__({ system: 'LKC_SundayserviceAttendance' })
+        : undefined;
+      _supabaseClient = create(config.url, config.anonKey, options);
     }
     return _supabaseClient;
   }

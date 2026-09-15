@@ -18,7 +18,10 @@
       return null;
     }
     const create = (window.supabase && window.supabase.createClient) || createClient;
-    _supabaseClient = create(config.url, config.anonKey);
+    const options = typeof window.__LKC_OBSERVABILITY_SUPABASE_OPTIONS__ === 'function'
+      ? window.__LKC_OBSERVABILITY_SUPABASE_OPTIONS__({ system: 'LKC_MasterSchedule' })
+      : undefined;
+    _supabaseClient = create(config.url, config.anonKey, options);
     return _supabaseClient;
   }
 

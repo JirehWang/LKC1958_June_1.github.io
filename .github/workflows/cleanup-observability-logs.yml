@@ -1,0 +1,40 @@
+name: Retain observability logs for three months
+
+on:
+  schedule:
+    # 每日 03:25 UTC（台灣時間 11:25）清理三個日曆月以前的日期節點
+    - cron: '25 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: observability-log-retention
+  cancel-in-progress: false
+
+jobs:
+  cleanup-observability-logs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Delete observability log buckets older than three months
+        env:
+          FIREBASE_DATABASE_URL: https://lkc1958june1-default-rtdb.asia-southeast1.firebasedatabase.app
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${FIREBASE_SERVICE_ACCOUNT_JSON}" ]]; then
+            echo "::warning::FIREBASE_SERVICE_ACCOUNT_JSON is not configured; retention cleanup was skipped."
+            exit 0
+          fi
+          node scripts/cleanup-observability-logs.mjs

@@ -2,6 +2,7 @@ import { rtdb } from './firebase-config.js';
 import {
   ref, push, set
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-database.js";
+import { normalizeLogEntry } from './observability-registry.js';
 
 const ROOT = 'logs';
 const MAX_META_TEXT = 500;
@@ -32,31 +33,28 @@ function _sanitizeMeta(value, depth = 0) {
   return out;
 }
 
-export async function writeLog(entry) {
+export async function writeLog(entry = {}) {
   const now = new Date();
-  const system = String(entry.system || 'unknown').replace(/[.#$/\[\]\u0000-\u001f\u007f]/g, '_');
-  const level = entry.level || 'info';
+  const normalized = normalizeLogEntry({
+    ...entry,
+    page: entry.page || (typeof location !== 'undefined' ? location.pathname + location.search : '')
+  }, { now });
+  const system = normalized.systemStorageKey || normalized.system;
+  const systemName = normalized.system;
   const dateKey = _localDateKey(now);
   const logRef = push(ref(rtdb, `${ROOT}/${system}/${dateKey}`));
-  const meta = _sanitizeMeta(entry.meta || {});
+  const meta = _sanitizeMeta(normalized.meta || {});
 
   await set(logRef, {
-    time: now.toISOString(),
-    system,
-    level,
-    requestId: entry.requestId || (meta && meta.requestId) || '',
-    environment: entry.environment || (meta && meta.environment) || '',
-    appVersion: entry.appVersion || (meta && meta.appVersion) || '',
-    sessionId: entry.sessionId || (meta && meta.sessionId) || '',
-    action: entry.action || '',
-    message: entry.message || '',
-    errorType: entry.errorType || (meta && meta.errorType) || '',
-    durationMs: entry.durationMs ?? null,
-    source: entry.source || 'config.js',
-    page: typeof location !== 'undefined' ? location.pathname + location.search : '',
-    cache: _sanitizeMeta(entry.cache || (meta && meta.cache) || {}),
-    payload: _sanitizeMeta(entry.payload || (meta && meta.payload) || {}),
-    invalidation: _sanitizeMeta(entry.invalidation || (meta && meta.invalidation) || {}),
+    ...normalized,
+    schemaVersion: normalized.schemaVersion,
+    time: normalized.time || now.toISOString(),
+    system: systemName,
+    source: normalized.source,
+    fingerprint: normalized.fingerprint,
+    cache: _sanitizeMeta(normalized.cache || (meta && meta.cache) || {}),
+    payload: _sanitizeMeta(normalized.payload || (meta && meta.payload) || {}),
+    invalidation: _sanitizeMeta(normalized.invalidation || (meta && meta.invalidation) || {}),
     meta
   });
 }

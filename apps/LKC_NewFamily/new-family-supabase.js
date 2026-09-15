@@ -10,7 +10,10 @@
     const config = (typeof window !== 'undefined' && (window._SUPABASE_CONFIG || window.SUPABASE_CONFIG)) || {};
     const create = (typeof window !== 'undefined' && window.supabase && window.supabase.createClient) || (typeof supabase !== 'undefined' && supabase.createClient);
     if (config && config.url && config.anonKey && create) {
-      const client = create(config.url, config.anonKey);
+      const options = typeof window.__LKC_OBSERVABILITY_SUPABASE_OPTIONS__ === 'function'
+        ? window.__LKC_OBSERVABILITY_SUPABASE_OPTIONS__({ system: 'LKC_NewFamily' })
+        : undefined;
+      const client = create(config.url, config.anonKey, options);
       if (typeof window !== 'undefined') window._supabase = client;
       return client;
     }

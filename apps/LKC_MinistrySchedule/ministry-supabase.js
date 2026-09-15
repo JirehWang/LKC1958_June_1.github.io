@@ -8,7 +8,10 @@
     const config = window._SUPABASE_CONFIG || window.SUPABASE_CONFIG;
     const create = (window.supabase && window.supabase.createClient) || (typeof supabase !== 'undefined' && supabase.createClient);
     if (config && create) {
-      window._supabase = create(config.url, config.anonKey);
+      const options = typeof window.__LKC_OBSERVABILITY_SUPABASE_OPTIONS__ === 'function'
+        ? window.__LKC_OBSERVABILITY_SUPABASE_OPTIONS__({ system: 'LKC_MinistrySchedule' })
+        : undefined;
+      window._supabase = create(config.url, config.anonKey, options);
       return window._supabase;
     }
     return null;

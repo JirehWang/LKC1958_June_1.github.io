@@ -112,6 +112,16 @@
     console.log(`✅ [${currentKey}] 中央路由系統已就緒`);
   }
 
+  // Phase 2 browser observability：中央 config 頁面保留既有 API logger，
+  // 只開啟全域例外/console/resource 捕捉，避免 fetch wrapper 與 churchAPI 重複記錄。
+  window.__LKC_OBSERVABILITY_CONFIG__ = {
+    system: currentKey || undefined,
+    environment: _ENVIRONMENT,
+    captureConsole: true,
+    captureErrors: true,
+    captureFetch: false
+  };
+
   window.AUTH_TOKEN = _AUTH_TOKEN;
 
   // ============================================================
@@ -314,6 +324,14 @@
     return _firebaseLoggerPromise;
   }
 
+  let _browserObservabilityPromise = null;
+  function _getBrowserObservability() {
+    if (_browserObservabilityPromise) return _browserObservabilityPromise;
+    _browserObservabilityPromise = import('https://jirehwang.github.io/LKC1958_June_1.github.io/firebase/observability-browser.js')
+      .catch(err => { console.warn('[browser-observability] 載入失敗，略過全域錯誤捕捉:', err); return null; });
+    return _browserObservabilityPromise;
+  }
+
   function _logEvent(level, action, message, meta = {}) {
     if (!currentKey) return;
     const requestId = meta.requestId || '';
@@ -321,7 +339,7 @@
     const payload = meta.payload || null;
     const invalidation = meta.invalidation || null;
     const errorType = meta.errorType || meta.type || '';
-    _getFirebaseLogger().then(logger => {
+    return _getFirebaseLogger().then(logger => {
       if (!logger || !logger.writeLog) return;
       return logger.writeLog({
         system: currentKey,
@@ -334,7 +352,8 @@
         sessionId: _LOG_SESSION_ID,
         errorType,
         durationMs: meta.durationMs,
-        source: 'config.js',
+        source: meta.source || 'config.js',
+        endpoint: meta.endpoint || '',
         cache,
         payload,
         invalidation,
@@ -346,8 +365,15 @@
   }
 
   window.churchLog = function(entry = {}) {
-    _logEvent(entry.level || 'info', entry.action || '', entry.message || '', entry.meta || {});
+    const meta = Object.assign({}, entry.meta || {});
+    ['source', 'endpoint', 'errorType', 'requestId', 'environment', 'appVersion', 'sessionId', 'durationMs', 'cache', 'payload', 'invalidation']
+      .forEach(key => {
+        if (entry[key] !== undefined && meta[key] === undefined) meta[key] = entry[key];
+      });
+    return _logEvent(entry.level || 'info', entry.action || '', entry.message || '', meta);
   };
+
+  _getBrowserObservability();
 
   // 為帶 data 的 cache 計算 subkey（無 data → null 走 _default）
   // ⚠️ 不可截斷！之前用 substring(0, 24) 會讓 {year:'2026',quarter:'Q1'}
@@ -480,6 +506,8 @@
         environment: _ENVIRONMENT,
         appVersion: _APP_VERSION,
         sessionId: _LOG_SESSION_ID,
+        source: 'gas',
+        endpoint: window.GAS_URL,
         requestedAction: action,
         durationMs: Date.now() - startedAt,
         cacheable: Boolean(ttl),

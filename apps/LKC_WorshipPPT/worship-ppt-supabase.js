@@ -13,7 +13,10 @@
     const config = root._SUPABASE_CONFIG || root.SUPABASE_CONFIG;
     const create = (root.supabase && root.supabase.createClient) || (typeof supabase !== 'undefined' && supabase.createClient);
     if (config && create && config.url && config.anonKey) {
-      root._supabase = create(config.url, config.anonKey);
+      const options = typeof root.__LKC_OBSERVABILITY_SUPABASE_OPTIONS__ === 'function'
+        ? root.__LKC_OBSERVABILITY_SUPABASE_OPTIONS__({ system: 'LKC_WorshipPPT' })
+        : undefined;
+      root._supabase = create(config.url, config.anonKey, options);
       return root._supabase;
     }
     return null;
