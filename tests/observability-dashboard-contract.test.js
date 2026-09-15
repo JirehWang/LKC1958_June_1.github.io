@@ -6,6 +6,10 @@ const test = require('node:test');
 const repoRoot = path.join(__dirname, '..');
 const dashboardSource = fs.readFileSync(path.join(repoRoot, 'logs.html'), 'utf8');
 const loggerSource = fs.readFileSync(path.join(repoRoot, 'firebase', 'firebase-logger.js'), 'utf8');
+const fullDatabaseRules = JSON.parse(fs.readFileSync(
+  path.join(repoRoot, 'firebase', 'database.rules.full.json'),
+  'utf8'
+));
 
 test('dashboard uses the shared observability registry and grouped view', () => {
   assert.match(dashboardSource, /firebase\/observability-registry\.js/);
@@ -26,4 +30,8 @@ test('logger writes the shared event schema without removing legacy observabilit
   assert.match(loggerSource, /cache:/);
   assert.match(loggerSource, /payload:/);
   assert.match(loggerSource, /invalidation:/);
+});
+
+test('deployed RTDB rules allow the observability dashboard to read log buckets', () => {
+  assert.equal(fullDatabaseRules.rules.logs.$system.$date['.read'], true);
 });

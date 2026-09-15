@@ -57,7 +57,7 @@
     },
     "cache": { ".read": true, ".write": true },
     "logs": {
-      "$system": { "$date": { "$logId": { ".read": false, ".write": true } } }
+      "$system": { "$date": { ".read": true, "$logId": { ".write": true } } }
     }
   }
 }
