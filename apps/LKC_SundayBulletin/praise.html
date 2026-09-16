@@ -107,14 +107,14 @@
       opacity: 1;
       text-decoration: underline;
     }
-    .song-history-panel {
+    .song-title-lookup {
       margin: 0 0 20px;
       padding: 14px 16px;
       border: 1px solid #d8e3ee;
       border-radius: 9px;
       background: rgba(248, 251, 253, 0.95);
     }
-    .song-history-heading {
+    .song-title-lookup-heading {
       display: flex;
       justify-content: space-between;
       align-items: baseline;
@@ -128,18 +128,80 @@
       font-size: 12px;
       font-weight: 400;
     }
-    .song-history-controls {
+    .song-title-input-row {
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
       gap: 8px;
       margin-top: 10px;
     }
-    .song-history-controls .form-input,
-    .song-history-select {
+    .song-title-combobox {
+      position: relative;
       min-width: 0;
     }
-    .song-history-select {
-      margin-top: 8px;
+    .song-title-combobox .form-input {
+      padding-right: 44px;
+    }
+    .song-title-toggle {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      width: 36px;
+      height: calc(100% - 8px);
+      padding: 0;
+      border: 0;
+      border-radius: 5px;
+      background: transparent;
+      color: #2c5f8a;
+      font-size: 20px;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .song-title-toggle:hover,
+    .song-title-toggle:focus-visible {
+      background: #e8f1f8;
+      outline: none;
+    }
+    .song-title-toggle:disabled {
+      cursor: wait;
+      opacity: 0.55;
+    }
+    .song-history-list {
+      position: absolute;
+      z-index: 20;
+      top: calc(100% + 4px);
+      right: 0;
+      left: 0;
+      max-height: 260px;
+      overflow-y: auto;
+      border: 1px solid #b9cada;
+      border-radius: 7px;
+      background: #fff;
+      box-shadow: 0 8px 18px rgba(30, 64, 90, 0.16);
+    }
+    .song-history-option {
+      display: block;
+      width: 100%;
+      padding: 10px 12px;
+      border: 0;
+      border-bottom: 1px solid #edf2f6;
+      background: #fff;
+      color: #1f2937;
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+    .song-history-option:last-child {
+      border-bottom: 0;
+    }
+    .song-history-option:hover,
+    .song-history-option[aria-selected="true"] {
+      background: #eaf3fa;
+      color: #1a4d70;
+    }
+    .song-history-empty {
+      padding: 11px 12px;
+      color: #64748b;
+      font-size: 13px;
     }
     .song-history-help {
       margin: 8px 0 0;
@@ -148,7 +210,7 @@
       line-height: 1.5;
     }
     @media (max-width: 600px) {
-      .song-history-controls {
+      .song-title-input-row {
         grid-template-columns: 1fr;
       }
       .song-history-refresh {
@@ -189,24 +251,20 @@
         </div>
       </div>
 
-      <section class="song-history-panel" aria-labelledby="songHistoryHeading">
-        <div class="song-history-heading">
-          <span id="songHistoryHeading">📚 查詢過往歌曲並帶入</span>
+      <div class="form-group song-title-lookup" aria-labelledby="songTitleLookupHeading">
+        <div class="song-title-lookup-heading">
+          <label id="songTitleLookupHeading" for="songTitle" style="font-weight: bold;">讚美／聖歌隊詩名：</label>
           <span id="songHistoryStatus" class="song-history-status" role="status" aria-live="polite">正在載入歌曲清單...</span>
         </div>
-        <div class="song-history-controls">
-          <input type="search" id="songHistorySearch" class="form-input" aria-label="搜尋過往歌曲" placeholder="輸入歌名關鍵字" autocomplete="off">
+        <div class="song-title-input-row">
+          <div class="song-title-combobox">
+            <input type="text" id="songTitle" class="form-input" role="combobox" aria-autocomplete="list" aria-haspopup="listbox" aria-expanded="false" aria-controls="songHistoryListbox" placeholder="輸入歌名或關鍵字查找..." autocomplete="off" style="font-size: 16px; font-weight: bold;">
+            <button type="button" class="song-title-toggle" id="btnToggleSongHistory" aria-label="展開過往歌曲清單" aria-controls="songHistoryListbox" aria-expanded="false">⌄</button>
+            <div id="songHistoryListbox" class="song-history-list" role="listbox" hidden></div>
+          </div>
           <button type="button" class="btn btn-outline-white song-history-refresh" id="btnRefreshSongHistory" style="color: #2c5f8a; border-color: #2c5f8a;">↻ 重新查詢</button>
         </div>
-        <select id="songHistorySelect" class="form-input song-history-select" aria-label="選擇過往歌曲" disabled>
-          <option value="">請先載入歌曲清單</option>
-        </select>
-        <p class="song-history-help">選取歌曲會以 GAS 歌詞取代目前內容；輸入新歌名可建立歌名索引，選取舊歌後修改歌詞則沿用原歌名，不新增重複歌名。</p>
-      </section>
-
-      <div class="form-group">
-        <label for="songTitle" style="font-weight: bold;">讚美／聖歌隊詩名：</label>
-        <input type="text" id="songTitle" class="form-input" placeholder="請輸入本週獻詩歌名..." style="font-size: 16px; font-weight: bold;">
+        <p class="song-history-help">歌名輸入欄同時支援查找與下拉選取：輸入關鍵字即可篩選過往歌曲，選取後會以 GAS 歌詞取代目前內容；找不到時可直接建立新歌。</p>
       </div>
 
       <div class="form-group">
@@ -259,7 +317,10 @@
   const praiseHistory = {
     songs: [],
     gasRecords: null,
-    gasRecordsPromise: null
+    gasRecordsPromise: null,
+    dropdownOpen: false,
+    highlightedIndex: -1,
+    selectionRequestId: 0
   };
 
   document.addEventListener('DOMContentLoaded', () => {
@@ -281,22 +342,27 @@
       resetPraiseHistorySelection();
     });
 
-    document.getElementById('songHistorySearch').addEventListener('input', (e) => {
-      renderPraiseHistoryOptions(e.target.value);
-    });
-
-    document.getElementById('songHistorySelect').addEventListener('change', (e) => {
-      applyPraiseHistorySong(e.target.value);
-    });
-
     document.getElementById('btnRefreshSongHistory').addEventListener('click', () => {
       loadPraiseHistory();
     });
 
-    document.getElementById('songTitle').addEventListener('input', (e) => {
-      state.title = e.target.value;
-      markSongAsNewIfTitleChanged();
-      saveLocalBackup();
+    const songTitleInput = document.getElementById('songTitle');
+    songTitleInput.addEventListener('input', handleSongTitleInput);
+    songTitleInput.addEventListener('focus', () => {
+      renderPraiseHistoryOptions(songTitleInput.value);
+      setSongHistoryDropdownOpen(true);
+    });
+    songTitleInput.addEventListener('keydown', handleSongTitleKeydown);
+
+    document.getElementById('btnToggleSongHistory').addEventListener('click', () => {
+      toggleSongHistoryDropdown();
+    });
+
+    document.addEventListener('click', (event) => {
+      const lookup = document.querySelector('.song-title-lookup');
+      if (lookup && !lookup.contains(event.target)) {
+        setSongHistoryDropdownOpen(false);
+      }
     });
 
     document.getElementById('songKicker').addEventListener('input', (e) => {
@@ -411,54 +477,209 @@
       });
   }
 
-  function renderPraiseHistoryOptions(keyword = '') {
-    const select = document.getElementById('songHistorySelect');
-    const status = document.getElementById('songHistoryStatus');
-    if (!select || !status) return;
-
-    const normalizedKeyword = String(keyword || '').trim().toLocaleLowerCase('zh-TW');
-    const matches = praiseHistory.songs.filter((song) => {
+  function getMatchingPraiseHistorySongs(keyword = '') {
+    const normalizedKeyword = normalizeSongTitle(keyword);
+    return praiseHistory.songs.filter((song) => {
       if (!normalizedKeyword) return true;
       const searchable = normalizeSongTitle(song.title);
       return searchable.includes(normalizedKeyword);
     });
+  }
 
-    select.replaceChildren();
-    const placeholder = document.createElement('option');
-    placeholder.value = '';
-    placeholder.textContent = matches.length
-      ? '請選擇要帶入的過往歌曲...'
-      : (praiseHistory.songs.length ? '找不到符合關鍵字的歌曲' : '目前沒有可用的歷史歌曲');
-    select.appendChild(placeholder);
+  function findPraiseHistorySong(title) {
+    return praiseHistory.songs.find(
+      (song) => normalizeSongTitle(song.title) === normalizeSongTitle(title)
+    );
+  }
 
-    matches.forEach((song) => {
-      const option = document.createElement('option');
-      option.value = song.title;
-      option.textContent = song.title;
-      select.appendChild(option);
-    });
+  function renderPraiseHistoryOptions(keyword = '') {
+    const list = document.getElementById('songHistoryListbox');
+    const status = document.getElementById('songHistoryStatus');
+    if (!list || !status) return [];
 
-    select.disabled = matches.length === 0;
+    const normalizedKeyword = normalizeSongTitle(keyword);
+    const matches = getMatchingPraiseHistorySongs(keyword);
+    list.replaceChildren();
+
+    if (!matches.length) {
+      const empty = document.createElement('div');
+      empty.className = 'song-history-empty';
+      empty.setAttribute('role', 'option');
+      empty.setAttribute('aria-disabled', 'true');
+      empty.textContent = praiseHistory.songs.length
+        ? '找不到符合關鍵字的歌曲，可直接輸入新歌名'
+        : '目前沒有可用的歷史歌曲，可直接輸入新歌名';
+      list.appendChild(empty);
+    } else {
+      matches.forEach((song, index) => {
+        const option = document.createElement('button');
+        option.type = 'button';
+        option.id = 'songHistoryOption-' + index;
+        option.className = 'song-history-option';
+        option.setAttribute('role', 'option');
+        option.setAttribute('aria-selected', 'false');
+        option.dataset.title = song.title;
+        option.textContent = song.title;
+        option.addEventListener('mousedown', (event) => {
+          // 保留焦點，讓 click 事件可以完成帶入。
+          event.preventDefault();
+        });
+        option.addEventListener('click', () => {
+          applyPraiseHistorySong(song.title);
+        });
+        list.appendChild(option);
+      });
+    }
+
+    praiseHistory.highlightedIndex = -1;
     status.textContent = praiseHistory.songs.length
-      ? `找到 ${matches.length} / ${praiseHistory.songs.length} 筆`
+      ? (normalizedKeyword
+        ? '找到 ' + matches.length + ' / ' + praiseHistory.songs.length + ' 筆'
+        : '共 ' + praiseHistory.songs.length + ' 筆歷史歌曲')
       : '尚無歷史歌曲';
+    return matches;
+  }
+
+  function setSongHistoryDropdownOpen(open) {
+    const input = document.getElementById('songTitle');
+    const toggle = document.getElementById('btnToggleSongHistory');
+    const list = document.getElementById('songHistoryListbox');
+    if (!input || !toggle || !list) return;
+
+    praiseHistory.dropdownOpen = Boolean(open);
+    list.hidden = !praiseHistory.dropdownOpen;
+    input.setAttribute('aria-expanded', String(praiseHistory.dropdownOpen));
+    toggle.setAttribute('aria-expanded', String(praiseHistory.dropdownOpen));
+    toggle.setAttribute(
+      'aria-label',
+      praiseHistory.dropdownOpen ? '收合過往歌曲清單' : '展開過往歌曲清單'
+    );
+    toggle.textContent = praiseHistory.dropdownOpen ? '⌃' : '⌄';
+    if (!praiseHistory.dropdownOpen) {
+      praiseHistory.highlightedIndex = -1;
+      input.removeAttribute('aria-activedescendant');
+    }
+  }
+
+  function setSongHistoryHighlight(index) {
+    const input = document.getElementById('songTitle');
+    const list = document.getElementById('songHistoryListbox');
+    if (!input || !list) return;
+
+    const options = [...list.querySelectorAll('.song-history-option')];
+    if (!options.length) return;
+
+    const nextIndex = (index + options.length) % options.length;
+    praiseHistory.highlightedIndex = nextIndex;
+    options.forEach((option, optionIndex) => {
+      option.setAttribute('aria-selected', String(optionIndex === nextIndex));
+    });
+    input.setAttribute('aria-activedescendant', options[nextIndex].id);
+  }
+
+  function handleSongTitleInput(event) {
+    const input = event.currentTarget;
+    state.title = input.value;
+    markSongAsNewIfTitleChanged();
+    renderPraiseHistoryOptions(input.value);
+    setSongHistoryDropdownOpen(true);
+    saveLocalBackup();
+
+    const selected = findPraiseHistorySong(input.value);
+    if (!selected) return;
+
+    const alreadyLoaded = (
+      state.songOrigin === 'existing'
+      && normalizeSongTitle(state.sourceTitle) === normalizeSongTitle(selected.title)
+      && state.sourceLyrics === state.lyrics
+    );
+    if (!alreadyLoaded) {
+      applyPraiseHistorySong(selected.title);
+    }
+  }
+
+  function handleSongTitleKeydown(event) {
+    const input = event.currentTarget;
+    const options = () => [...document.querySelectorAll('#songHistoryListbox .song-history-option')];
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      if (!praiseHistory.dropdownOpen) {
+        renderPraiseHistoryOptions(input.value);
+        setSongHistoryDropdownOpen(true);
+      }
+      setSongHistoryHighlight(praiseHistory.highlightedIndex + 1);
+      return;
+    }
+
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      if (!praiseHistory.dropdownOpen) {
+        renderPraiseHistoryOptions(input.value);
+        setSongHistoryDropdownOpen(true);
+      }
+      setSongHistoryHighlight(
+        praiseHistory.highlightedIndex < 0
+          ? options().length - 1
+          : praiseHistory.highlightedIndex - 1
+      );
+      return;
+    }
+
+    if (event.key === 'Enter') {
+      const highlighted = options()[praiseHistory.highlightedIndex];
+      const exactMatch = findPraiseHistorySong(input.value);
+      const selectedTitle = highlighted?.dataset.title || exactMatch?.title;
+      if (selectedTitle) {
+        event.preventDefault();
+        applyPraiseHistorySong(selectedTitle);
+      } else {
+        setSongHistoryDropdownOpen(false);
+      }
+      return;
+    }
+
+    if (event.key === 'Escape') {
+      setSongHistoryDropdownOpen(false);
+    }
+  }
+
+  function toggleSongHistoryDropdown() {
+    const input = document.getElementById('songTitle');
+    if (!input) return;
+
+    if (praiseHistory.dropdownOpen) {
+      setSongHistoryDropdownOpen(false);
+      return;
+    }
+
+    renderPraiseHistoryOptions(input.value);
+    setSongHistoryDropdownOpen(true);
+    input.focus();
   }
 
   function resetPraiseHistorySelection() {
-    const select = document.getElementById('songHistorySelect');
-    if (select) select.value = '';
+    const input = document.getElementById('songTitle');
+    praiseHistory.highlightedIndex = -1;
+    setSongHistoryDropdownOpen(false);
+    renderPraiseHistoryOptions(input?.value || '');
   }
 
   async function applyPraiseHistorySong(title) {
-    const selected = praiseHistory.songs.find(
-      (song) => normalizeSongTitle(song.title) === normalizeSongTitle(title)
-    );
+    const selected = findPraiseHistorySong(title);
     if (!selected) return;
 
-    const select = document.getElementById('songHistorySelect');
+    const input = document.getElementById('songTitle');
+    const toggle = document.getElementById('btnToggleSongHistory');
     const status = document.getElementById('songHistoryStatus');
-    if (select) select.disabled = true;
-    if (status) status.textContent = `正在從 GAS 載入「${selected.title}」的完整歌詞...`;
+    const requestId = ++praiseHistory.selectionRequestId;
+    setSongHistoryDropdownOpen(false);
+    if (input) {
+      input.disabled = true;
+      input.setAttribute('aria-busy', 'true');
+    }
+    if (toggle) toggle.disabled = true;
+    if (status) status.textContent = '正在從 GAS 載入「' + selected.title + '」的完整歌詞...';
 
     // 先替換表單內容，避免上一首歌的歌詞殘留或與新歌詞串接。
     state.title = selected.title;
@@ -471,6 +692,7 @@
 
     try {
       const gasData = await findPraiseRecordFromGasByTitle(selected.title);
+      if (requestId !== praiseHistory.selectionRequestId) return;
       state.title = gasData.title || selected.title;
       state.kicker = gasData.kicker || '聖歌隊';
       state.lyrics = gasData.lyrics || '';
@@ -478,17 +700,24 @@
       state.sourceLyrics = state.lyrics;
       renderState();
       saveLocalBackup();
-      showToast(`📚 已從 GAS 帶入「${state.title}」的歌曲資料`, 'success');
-      if (status) status.textContent = `已從 GAS 載入「${state.title}」`;
+      showToast('📚 已從 GAS 帶入「' + state.title + '」的歌曲資料', 'success');
+      if (status) status.textContent = '已從 GAS 載入「' + state.title + '」';
     } catch (err) {
+      if (requestId !== praiseHistory.selectionRequestId) return;
       console.error('[praise.html] GAS 載入歷史歌曲失敗:', err);
       state.lyrics = '';
       state.sourceLyrics = '';
       renderState();
-      if (status) status.textContent = `歌詞載入失敗：${selected.title}`;
-      showToast(`❌ 無法從 GAS 載入「${selected.title}」的歌詞`, 'error');
+      if (status) status.textContent = '歌詞載入失敗：' + selected.title;
+      showToast('❌ 無法從 GAS 載入「' + selected.title + '」的歌詞', 'error');
     } finally {
-      if (select) select.disabled = false;
+      if (requestId === praiseHistory.selectionRequestId) {
+        if (input) {
+          input.disabled = false;
+          input.removeAttribute('aria-busy');
+        }
+        if (toggle) toggle.disabled = false;
+      }
     }
   }
 
@@ -514,7 +743,7 @@
           supabaseSongs = normalizePraiseHistory(listedSongs);
           if (supabaseSongs.length) {
             praiseHistory.songs = supabaseSongs;
-            renderPraiseHistoryOptions(document.getElementById('songHistorySearch')?.value || '');
+            renderPraiseHistoryOptions(document.getElementById('songTitle')?.value || '');
             if (status) status.textContent = '已載入 Supabase 歌名，正在同步 GAS 歷史歌名...';
           }
         } catch (sbErr) {
@@ -524,7 +753,7 @@
 
       const gasSongs = await loadPraiseHistoryFromGas();
       praiseHistory.songs = normalizePraiseHistory([...supabaseSongs, ...gasSongs]);
-      renderPraiseHistoryOptions(document.getElementById('songHistorySearch')?.value || '');
+      renderPraiseHistoryOptions(document.getElementById('songTitle')?.value || '');
       await syncMissingPraiseTitlesToSupabase(gasSongs, supabaseSongs);
       if (!gasSongs.length && !supabaseSongs.length && !silent) {
         showToast('目前找不到可帶入的歷史歌曲，仍可直接輸入新歌', 'info');
@@ -532,7 +761,7 @@
     } catch (err) {
       console.error('[praise.html] 載入歷史歌曲失敗:', err);
       praiseHistory.songs = supabaseSongs;
-      renderPraiseHistoryOptions(document.getElementById('songHistorySearch')?.value || '');
+      renderPraiseHistoryOptions(document.getElementById('songTitle')?.value || '');
       if (status) {
         status.textContent = supabaseSongs.length
           ? 'Supabase 歌名已載入，GAS 歷史同步失敗'
@@ -754,7 +983,7 @@
           ...praiseHistory.songs,
           { title: state.title }
         ]);
-        renderPraiseHistoryOptions(document.getElementById('songHistorySearch')?.value || '');
+        renderPraiseHistoryOptions(document.getElementById('songTitle')?.value || '');
         state.songOrigin = 'existing';
         state.sourceTitle = state.title;
         state.sourceLyrics = state.lyrics;
