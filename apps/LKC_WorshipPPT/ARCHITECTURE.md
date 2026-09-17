@@ -14,7 +14,7 @@
 - 將行事曆欄位轉成講題、講員、經文查詢、聖詩編號及啟應文編號。
 - 依模板查詢台語 `tghg`，或依序查詢台語 `tghg` 與華語 `unv` 聖經全文並分頁。
 - 從雲端索引配對聖詩／啟應文 PPTX，在瀏覽器解析 OOXML。
-- 將來源樂譜與啟應文保真地轉成透明 PNG，保留背景的可替換性。
+- 聖詩與啟應文的預覽可以使用透明 PNG；匯出直接合併原始 PPTX 投影片，保留原生物件與座標，背景依系統設定套用。
 - 產生固定禮文、標題頁、讚美歌詞、講道頁、報告頁及其他原生文字頁。
 - 提供整份投影片順序預覽、具名版面群組、背景、文字／圖片縮放與樂譜白底透明度設定。
 - 匯出真正的 `.pptx`，不是螢幕截圖集合。
@@ -74,7 +74,8 @@ flowchart LR
 | JSONP 唯讀回退 | `read-api.js` | 無法 POST 時仍能讀取必要資料 | 只允許明確的唯讀 action；60 秒逾時清理 callback |
 | JSZip 3.10.1 | `vendor-jszip.min.js`、PPTX 解析／匯出後處理 | 在瀏覽器解壓縮與重打包 OOXML | PPTX 是 ZIP；大型檔案會消耗記憶體 |
 | DOMParser + OOXML | `pptx-library.js` | 不依賴 PowerPoint 桌面程式，直接讀座標、文字、圖片、主題色與裁切 | 目前只解析本系統需要的 shape／picture 子集合 |
-| Canvas 2D | 樂譜／啟應文點陣化 | 避免不同 PowerPoint 字型與重排引擎破壞來源素材 | 點陣化頁失去文字可編輯性，但保留透明背景 |
+| Canvas 2D | 樂譜／啟應文預覽 | 提供網頁中的近似樣貌 | 不作為這些資料庫頁面的輸出來源 |
+| OOXML 原生合併 | `native-pptx.js` | 保留來源形狀、文字、座標、群組、母片、版面與圖片 | 來源尺寸須與輸出尺寸相容；字型仍由 PowerPoint 使用本機環境呈現 |
 | PptxGenJS 3.12.0 | `ppt-export.js` | 產生可編輯的 PowerPoint 原生文字與圖片物件 | 預覽與 PowerPoint 是兩套文字引擎，必須共用換行與座標規則 |
 | CSS container-width 單位 `cqw` | 預覽字級 | 讓 16:9 預覽縮放時維持與 960pt PowerPoint 畫布一致的比例 | 換算固定為 `1pt = 1/9.6cqw` |
 | localStorage | 草稿與離線版面備份 | 瀏覽器重開後可恢復內容；雲端故障仍有最後備份 | 不是跨裝置主資料源；資料量受瀏覽器限制 |
@@ -199,7 +200,7 @@ flowchart LR
 | `sermon-title` | 講道標題 | 「講道：題目」＋講員／經文，自動垂直置中 |
 | `report` | 本會／教界／關懷代禱 | 依實際 layout 動態分頁的原生文字 |
 | `score` | 尚未載入的樂譜端口 | 標題與 placeholder；正常流程會被 `ppt-import` 取代 |
-| `ppt-import` | Library 來源頁 | 目前樂譜／啟應文為透明整頁 PNG；解析器仍保留分層物件能力 |
+| `ppt-import` | Library 來源頁 | `objects` 供預覽；聖詩／啟應文以 `nativeExport` 和 `nativeSource` 指向原始封裝，輸出使用原生投影片 |
 
 `buildDeckEntries()` 將 section pages 攤平成單一 deck，補上 `id`、`sectionId`、`sectionIndex`、`pageIndex` 與連續 `deckNumber`。版面配置依賴穩定 page ID，例如 `hymn-1:section`、`scripture:1`、`announcements:2`。
 
@@ -349,14 +350,19 @@ PPTX 本質是 ZIP。`pptx-library.js` 使用 JSZip 與 DOMParser：
 8. 當 run 沒有字級時，從 slide layout placeholder 的 `lvl1pPr/defRPr` 繼承。
 9. 解析圖片 relationship 與 `<a:srcRect>` 裁切。
 
-### 11.4 為什麼樂譜與啟應文要點陣化
+### 11.4 預覽與原生匯出分離
 
-PowerPoint 在不同電腦可能缺字型、重算行高、移動文字框或替換圖片呈現。樂譜與啟應文是「來源版面比可編輯性重要」的內容，因此解析後在 1600px 寬透明 Canvas 重畫為一張整頁 PNG：
+Canvas 並非 PowerPoint 的文字排版引擎，依座標重畫也無法保證原檔呈現。所有 `kind: hymn` 與 `kind: response` 資料庫來源保留原始 ZIP；Canvas 僅產生近似預覽。此規則涵蓋會前聖詩、聖詩一／二、祈禱詩、奉獻詩、頌榮、阿們頌及啟應文，台語與聯合台語共用。
 
-- 圖片、文字與顏色先按來源座標繪製。
-- 啟應文標題在點陣化前統一垂直置中。
-- PNG 不含使用者背景，也不含樂譜白底；匯出時仍可更換全份背景。
+- 頁碼順序由 `presentation.xml` 的 `sldIdLst` 決定，而非 slide 檔名的數字順序。
+- 匯出前 `ensureNativeLibrarySources()` 補載來源。舊草稿不能將點陣圖片當成原檔；來源缺失時停止輸出。預覽繪製失敗不阻止有效原檔輸出。
+- PptxGenJS 為來源頁建立只含背景及既有白色遮罩的佔位頁。`native-pptx.js` 用原始 slide XML 取代內容，再把佔位頁背景及遮罩放在來源物件下方。
+- 原始物件 XML 不經座標、字級、行距、群組版面或全域文字／圖片縮放改寫；啟應文標題也保留原始設定。
+- 母片、版面、主題、媒體等依 relationship 複製並重接路徑。母片與版面使用不衝突的數字 ID；每個插入頁有獨立備忘稿及正確的 slide 反向關聯，支援同一聖詩重複出現。
+- 來源不透明物件仍維持不透明，原檔中的圖像不做去背；系統背景與白色遮罩規則維持原設定。
 - 一般首頁、標題、經文、禮文、報告、讚美與講道頁保持 PowerPoint 原生文字。
+
+驗收使用 `native-pptx.browser.test.cjs` 在瀏覽器中完成真實 ZIP 匯出，檢查原始物件 XML、頁序、背景／遮罩、母片 ID 唯一性、備忘稿反向關聯及所有內部關聯。`ppt-library-integration.test.js` 檢查兩個台語模板的所有資料庫段落、舊草稿補載、預覽失敗及原檔缺失。測試檔另以本機 PowerPoint 開啟、比對物件座標並渲染檢查。
 
 ### 11.5 `srcRect` 正負裁切
 
@@ -579,7 +585,7 @@ y or height = percent / 100 × 7.5
 - 行距按 `fontSize × lineSpacing` 計算。
 - 文字與圖片輸出比例以中心為基準縮放。
 
-匯入的非點陣文字物件可依 title／content role 的來源 bounding box 等比例映射到使用者版面群組，保留各 run 相對字級與顏色。現行 Library 樂譜／啟應文已點陣化，因此主要使用整頁 image path。
+舊的非原生匯入路徑仍可依 title／content role 映射版面。標記 `nativeExport` 的聖詩／啟應文輸出不經此路徑，直接保留來源物件；版面群組及全域文字／圖片縮放不會改動其原檔座標。
 
 PptxGenJS 產生 blob 後，若 JSZip 可用，系統會再次打開輸出 PPTX，清理同一 `<a:p>` 中重複的 `<a:pPr>`，再重打包下載，避免 PowerPoint XML 中出現多個 paragraph properties。
 

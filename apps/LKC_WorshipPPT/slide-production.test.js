@@ -140,14 +140,20 @@ test('vertically centers praise and sermon title groups by their detail line cou
     { title: '建造百倍成長的生命', kicker: '陳志聰牧師', body: '路加福音八章' }
   );
 
-  [praise, sermon].forEach(params => {
-    const groupCenter = (params.titleY + params.contentY + params.contentH) / 2;
-    assert.ok(Math.abs(groupCenter - 50) < 0.1);
-    assert.equal(params.contentSize, 36);
-    assert.equal(params.contentAlign, 'center');
-    assert.equal(params.lineSpacing, 1.2);
-  });
-  assert.equal(sermon.contentH, praise.contentH);
+  const praiseCenter = (praise.titleY + praise.secondaryContentY + praise.secondaryContentH) / 2;
+  assert.ok(Math.abs(praiseCenter - 50) < 0.1);
+  assert.equal(praise.contentSize, 36);
+  assert.equal(praise.contentAlign, 'center');
+  assert.equal(praise.lineSpacing, 1.2);
+  assert.equal(praise.secondaryContentSize, 36);
+  assert.equal(praise.secondaryContentAlign, 'center');
+
+  const sermonCenter = (sermon.titleY + sermon.contentY + sermon.contentH) / 2;
+  assert.ok(Math.abs(sermonCenter - 50) < 0.1);
+  assert.equal(sermon.contentSize, 36);
+  assert.equal(sermon.contentAlign, 'center');
+  assert.equal(sermon.lineSpacing, 1.2);
+  assert.equal(sermon.contentH, praise.contentH + praise.secondaryContentH);
 });
 
 test('converts PowerPoint points to the 16:9 canvas without enlarging text', () => {

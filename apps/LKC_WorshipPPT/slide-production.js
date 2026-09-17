@@ -355,12 +355,64 @@
         lineSpacing: 1.2
       };
     }
-    if (page.kind === 'praise-title' || page.kind === 'sermon-title') {
+    if (page.kind === 'car-notice') {
+      return {
+        ...defaults,
+        titleSize: 60,
+        titleX: 6.9,
+        titleY: 28.9,
+        titleW: 86.2,
+        titleH: 23.8,
+        titleAlign: 'center',
+        titleColor: '#111111'
+      };
+    }
+    if (page.kind === 'praise-title') {
+      const song = page.title || (item && item.title) || '';
+      const performer = page.kicker || (item && item.kicker) || '';
+      const songLines = song ? wrapTextForBox(song, { fontSize: 36, boxWidth: 84, bold: true }).split('\n').filter(line => line.trim()).length : 0;
+      const performerLines = performer ? wrapTextForBox(performer, { fontSize: 36, boxWidth: 84, bold: true }).split('\n').filter(line => line.trim()).length : 0;
+      const hasDetails = Boolean(songLines || performerLines);
+      const songH = songLines * 10.8;
+      const performerH = performerLines * 10.8;
+      const detailH = songH + performerH;
+      const titleH = 17.8;
+      const titleY = hasDetails
+        ? Number(((100 - titleH - 4.5 - detailH) / 2).toFixed(1))
+        : 41;
+      const contentY = hasDetails
+        ? Number((titleY + titleH + 4.5).toFixed(1))
+        : 55.8;
+      const secondaryContentY = hasDetails
+        ? Number((contentY + songH).toFixed(1))
+        : 66.6;
+      return {
+        ...defaults,
+        titleY,
+        titleH,
+        titleAlign: 'center',
+        contentSize: 36,
+        contentX: 8,
+        contentY,
+        contentW: 84,
+        contentH: songH || 10.8,
+        contentAlign: 'center',
+        contentColor: '#111111',
+        lineSpacing: 1.2,
+        secondaryContentSize: 36,
+        secondaryContentX: 8,
+        secondaryContentY,
+        secondaryContentW: 84,
+        secondaryContentH: performerH || 10.8,
+        secondaryContentAlign: 'center',
+        secondaryContentColor: '#111111',
+        secondaryLineSpacing: 1.2
+      };
+    }
+    if (page.kind === 'sermon-title') {
       const topic = page.title || (item && item.title) || '';
-      const titleText = page.kind === 'sermon-title' ? ['講道', topic].filter(Boolean).join('：') : '讚美';
-      const details = page.kind === 'praise-title'
-        ? [topic, page.kicker || (item && item.kicker)]
-        : [page.kicker || (item && item.kicker), page.body || (item && item.body)];
+      const titleText = ['講道', topic].filter(Boolean).join('：');
+      const details = [page.kicker || (item && item.kicker), page.body || (item && item.body)];
       const detailText = details.filter(Boolean).join('\n');
       const wrappedTitle = wrapTextForBox(titleText, {
         fontSize: defaults.titleSize,

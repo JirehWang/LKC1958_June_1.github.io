@@ -6,6 +6,12 @@
   const PPT_WIDTH_EMU = 12192000;
   const PPT_HEIGHT_EMU = 6858000;
   const PPT_ASPECT_RATIO = 16 / 9;
+  const nativePackages = new Map();
+  let nativePackageSequence = 0;
+
+  function getNativeSource(ref) {
+    return ref && ref.packageId ? nativePackages.get(ref.packageId) || null : null;
+  }
 
   function isSixteenByNine(width, height, tolerance = 0.001) {
     const slideWidth = Number(width);
@@ -204,6 +210,33 @@
     return !style.fontSize && size > 0 ? { ...style, fontSize: size } : style;
   }
 
+  function parseTextBodyProperties(bodyProperties, slideWidth, slideHeight) {
+    const width = Number(slideWidth) || PPT_WIDTH_EMU;
+    const height = Number(slideHeight) || PPT_HEIGHT_EMU;
+    const attribute = (name, fallback) => {
+      const value = Number(bodyProperties && bodyProperties.getAttribute(name));
+      return Number.isFinite(value) && value >= 0 ? value : fallback;
+    };
+    const insetToPercent = (value, total) => round(value / total * 100);
+    const autoFit = bodyProperties && directChild(bodyProperties, 'spAutoFit')
+      ? 'shape'
+      : bodyProperties && directChild(bodyProperties, 'normAutofit')
+        ? 'text'
+        : 'none';
+    const wrap = bodyProperties && bodyProperties.getAttribute('wrap') || 'square';
+    return {
+      wrap,
+      autoFit,
+      fitText: autoFit !== 'none' || wrap === 'none',
+      textInsets: {
+        left: insetToPercent(attribute('lIns', 91440), width),
+        top: insetToPercent(attribute('tIns', 45720), height),
+        right: insetToPercent(attribute('rIns', 91440), width),
+        bottom: insetToPercent(attribute('bIns', 45720), height)
+      }
+    };
+  }
+
   function parseTextShape(shape, transform, slideWidth, slideHeight, colorContext, inheritedFontSizes) {
     const txBody = directChild(shape, 'txBody');
     const rect = shapeRect(shape, transform);
@@ -229,6 +262,7 @@
     const alignmentMap = { l: 'left', ctr: 'center', r: 'right', just: 'justify', dist: 'justify' };
     const bodyProperties = directChild(txBody, 'bodyPr');
     const firstStyledRun = runs.find(run => run.fontSize || run.fontFamily || run.color || run.bold);
+    const textBodyLayout = parseTextBodyProperties(bodyProperties, slideWidth, slideHeight);
     const percent = rectToPercent(rect, slideWidth, slideHeight);
     return {
       type: 'text', text, runs, ...percent,
@@ -238,7 +272,8 @@
       fontSize: (firstStyledRun && firstStyledRun.fontSize) || 18,
       fontFamily: (firstStyledRun && firstStyledRun.fontFamily) || 'Microsoft JhengHei',
       color: (firstStyledRun && firstStyledRun.color) || '#000000',
-      bold: Boolean(firstStyledRun && firstStyledRun.bold)
+      bold: Boolean(firstStyledRun && firstStyledRun.bold),
+      ...textBodyLayout
     };
   }
 
@@ -270,11 +305,16 @@
   }
 
   function resolvePartPath(basePath, target) {
-    const parts = basePath.split('/');
-    parts.pop();
-    String(target || '').split('/').forEach(part => {
+    const rawTarget = String(target || '').trim();
+    const isRoot = rawTarget.startsWith('/') || (rawTarget.startsWith('ppt/') && String(basePath || '').startsWith('ppt/'));
+    const parts = isRoot ? [] : String(basePath || '').split('/').slice(0, -1);
+    rawTarget.split('/').forEach(part => {
       if (!part || part === '.') return;
-      if (part === '..') parts.pop(); else parts.push(part);
+      if (part === '..') {
+        if (parts.length) parts.pop();
+      } else {
+        parts.push(part);
+      }
     });
     return parts.join('/');
   }
@@ -338,7 +378,29 @@
     const themeColors = themePath ? parseThemeColors(await xml(themePath)) : {};
     const colorMap = masterPath ? parseColorMap(await xml(masterPath)) : { ...defaultColorMap };
     const colorContext = { themeColors, colorMap };
-    const slidePaths = Object.keys(zip.files).filter(path => /^ppt\/slides\/slide\d+\.xml$/.test(path)).sort((a, b) => Number(a.match(/slide(\d+)/)[1]) - Number(b.match(/slide(\d+)/)[1]));
+
+    const presentationRelsFile = zip.file('ppt/_rels/presentation.xml.rels');
+    const presentationRelationships = presentationRelsFile
+      ? parseRelationships(new DOMParser().parseFromString(await presentationRelsFile.async('text'), 'application/xml'), 'ppt/presentation.xml')
+      : {};
+    const sldIdNodes = Array.from(presentation.getElementsByTagNameNS('*', 'sldId'));
+    let slidePaths = [];
+    if (sldIdNodes.length && Object.keys(presentationRelationships).length) {
+      slidePaths = sldIdNodes.map(node => {
+        const rId = node.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id') || node.getAttribute('r:id');
+        return presentationRelationships[rId];
+      }).filter(Boolean);
+    }
+    if (!slidePaths.length) {
+      slidePaths = Object.keys(zip.files)
+        .filter(path => /^ppt\/slides\/slide\d+\.xml$/.test(path))
+        .sort((a, b) => Number(a.match(/slide(\d+)/)[1]) - Number(b.match(/slide(\d+)/)[1]));
+    }
+
+    const packageId = (options && options.packageId)
+      || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'pkg_' + Date.now() + '_' + Math.random().toString(36).slice(2));
+    nativePackages.set(packageId, { zip });
+
     const mediaCache = {};
     const layoutFontSizeCache = {};
     const pages = [];
@@ -365,7 +427,14 @@
         object.src = mediaCache[object.mediaPath];
         delete object.mediaPath;
       }
-      pages.push({ id: `imported:${index + 1}`, kind: 'ppt-import', objects, sourceWidth: slideWidth, sourceHeight: slideHeight });
+      pages.push({
+        id: `imported:${index + 1}`,
+        kind: 'ppt-import',
+        objects,
+        sourceWidth: slideWidth,
+        sourceHeight: slideHeight,
+        nativeSource: { packageId, slidePath }
+      });
     }
     return pages;
   }
@@ -396,10 +465,26 @@
     return lines;
   }
 
-  function canvasFont(run, object, pixelsPerPoint) {
-    const size = (Number(run.fontSize) || Number(object.fontSize) || 18) * pixelsPerPoint;
+  function canvasFont(run, object, pixelsPerPoint, fontScale = 1) {
+    const size = (Number(run.fontSize) || Number(object.fontSize) || 18) * pixelsPerPoint * fontScale;
     const family = run.fontFamily || object.fontFamily || 'Microsoft JhengHei';
-    return `${run.italic ? 'italic ' : ''}${run.bold || object.bold ? '700 ' : ''}${size}px "${family}"`;
+    return (run.italic ? 'italic ' : '') + (run.bold || object.bold ? '700 ' : '') + size + 'px "' + family + '"';
+  }
+
+  function measureTextLines(context, lines, object, pixelsPerPoint, fontScale) {
+    const lineSpacing = Number(object.lineSpacing) > 0 ? Number(object.lineSpacing) : 1.15;
+    return lines.map(line => {
+      const parts = line.map(run => {
+        context.font = canvasFont(run, object, pixelsPerPoint, fontScale);
+        return {
+          run,
+          width: context.measureText(run.text).width,
+          size: (Number(run.fontSize) || Number(object.fontSize) || 18) * pixelsPerPoint * fontScale
+        };
+      });
+      const maxSize = Math.max(...parts.map(part => part.size), (Number(object.fontSize) || 18) * pixelsPerPoint * fontScale);
+      return { parts, width: parts.reduce((sum, part) => sum + part.width, 0), height: maxSize * lineSpacing, maxSize };
+    });
   }
 
   function drawTextObject(context, object, canvasWidth, canvasHeight, pixelsPerPoint) {
@@ -407,31 +492,37 @@
     const y = Number(object.y) / 100 * canvasHeight;
     const width = Number(object.w) / 100 * canvasWidth;
     const height = Number(object.h) / 100 * canvasHeight;
+    const insets = object.textInsets || {};
+    const inset = (value, total) => Math.max(0, Number(value) || 0) / 100 * total;
+    const contentX = x + inset(insets.left, canvasWidth);
+    const contentY = y + inset(insets.top, canvasHeight);
+    const contentWidth = Math.max(1, width - inset(insets.left, canvasWidth) - inset(insets.right, canvasWidth));
+    const contentHeight = Math.max(1, height - inset(insets.top, canvasHeight) - inset(insets.bottom, canvasHeight));
     const lines = textLines(Array.isArray(object.runs) && object.runs.length ? object.runs : [{ text: object.text || '' }]);
-    const measured = lines.map(line => {
-      const parts = line.map(run => {
-        context.font = canvasFont(run, object, pixelsPerPoint);
-        return {
-          run,
-          width: context.measureText(run.text).width,
-          size: (Number(run.fontSize) || Number(object.fontSize) || 18) * pixelsPerPoint
-        };
-      });
-      const maxSize = Math.max(...parts.map(part => part.size), (Number(object.fontSize) || 18) * pixelsPerPoint);
-      return { parts, width: parts.reduce((sum, part) => sum + part.width, 0), height: maxSize * 1.15, maxSize };
-    });
+    const shouldFitText = object.fitText === true || ['shape', 'text'].includes(object.autoFit);
+    let fontScale = 1;
+    let measured = measureTextLines(context, lines, object, pixelsPerPoint, fontScale);
+    if (shouldFitText) {
+      const longestLine = Math.max(0, ...measured.map(line => line.width));
+      const totalHeight = measured.reduce((sum, line) => sum + line.height, 0);
+      const widthScale = longestLine > 0 ? contentWidth / longestLine : 1;
+      const heightScale = totalHeight > 0 ? contentHeight / totalHeight : 1;
+      fontScale = Math.min(1, widthScale, heightScale);
+      if (!Number.isFinite(fontScale) || fontScale <= 0) fontScale = 1;
+      measured = measureTextLines(context, lines, object, pixelsPerPoint, fontScale);
+    }
     const totalHeight = measured.reduce((sum, line) => sum + line.height, 0);
-    let top = y;
-    if (object.verticalAlign === 'center') top += Math.max(0, (height - totalHeight) / 2);
-    if (object.verticalAlign === 'end') top += Math.max(0, height - totalHeight);
+    let top = contentY;
+    if (object.verticalAlign === 'center') top += Math.max(0, (contentHeight - totalHeight) / 2);
+    if (object.verticalAlign === 'end') top += Math.max(0, contentHeight - totalHeight);
     context.textBaseline = 'alphabetic';
     measured.forEach(line => {
-      let cursorX = x;
-      if (object.align === 'center') cursorX += Math.max(0, (width - line.width) / 2);
-      if (object.align === 'right') cursorX += Math.max(0, width - line.width);
+      let cursorX = contentX;
+      if (object.align === 'center') cursorX += Math.max(0, (contentWidth - line.width) / 2);
+      if (object.align === 'right') cursorX += Math.max(0, contentWidth - line.width);
       const baseline = top + line.maxSize;
       line.parts.forEach(part => {
-        context.font = canvasFont(part.run, object, pixelsPerPoint);
+        context.font = canvasFont(part.run, object, pixelsPerPoint, fontScale);
         context.fillStyle = part.run.color || object.color || '#000000';
         context.fillText(part.run.text, cursorX, baseline);
         if (part.run.underline && context.beginPath) {
@@ -495,11 +586,32 @@
     };
   }
 
+  async function waitForCanvasFonts(pages) {
+    if (typeof document === 'undefined' || !document.fonts) return;
+    if (document.fonts.ready && typeof document.fonts.ready.then === 'function') {
+      await document.fonts.ready;
+    }
+    if (typeof document.fonts.load !== 'function') return;
+    const families = new Set();
+    (pages || []).forEach(page => (page.objects || []).forEach(object => {
+      if (object.type !== 'text') return;
+      if (object.fontFamily) families.add(object.fontFamily);
+      (object.runs || []).forEach(run => {
+        if (run.fontFamily) families.add(run.fontFamily);
+      });
+    }));
+    await Promise.all(Array.from(families).map(family => {
+      const safeFamily = String(family).replace(/"/g, '\\\"');
+      return document.fonts.load('700 48px "' + safeFamily + '"').catch(() => []);
+    }));
+  }
+
   async function rasterizeImportedPages(pages, options = {}) {
     const width = Math.max(640, Number(options.width) || 1600);
     const createCanvas = options.createCanvas || browserCanvas;
     const loadImage = options.loadImage || browserImage;
     const result = [];
+    await waitForCanvasFonts(pages);
     for (const page of pages || []) {
       const sourceWidth = Number(page.sourceWidth) || PPT_WIDTH_EMU;
       const sourceHeight = Number(page.sourceHeight) || PPT_HEIGHT_EMU;
@@ -569,13 +681,13 @@
 
   function isPptProxyTransportError(error) {
     if (!error) return false;
-    if (['INVALID_RESPONSE', 'TIMEOUT', 'GAS_TIMEOUT'].includes(error.type)) return true;
+    if (['INVALID_RESPONSE', 'TIMEOUT', 'GAS_TIMEOUT', 'GAS_HTML_ERROR'].includes(error.type)) return true;
     if (error.name === 'SyntaxError') return true;
-    return /GAS|健康檢查|非 JSON|not valid json|failed to fetch|network|load failed|逾時|timeout|未知的指令/i
+    return /GAS|健康檢查|非 JSON|not valid json|failed to fetch|network|load failed|逾時|timeout|未知的指令|html/i
       .test(String(error.message || error));
   }
 
-  async function fetchAndParsePptx(url, jszip) {
+  async function fetchAndParsePptx(url, jszip, options) {
     let response;
     try {
       response = await fetch(url);
@@ -583,7 +695,7 @@
       throw new Error(`PPTX 下載失敗：${error && error.message ? error.message : error}`);
     }
     if (!response.ok) throw new Error(`PPTX 下載失敗（${response.status}）`);
-    return parsePptx(await response.arrayBuffer(), jszip);
+    return parsePptx(await response.arrayBuffer(), jszip, options);
   }
 
   async function downloadAndParse(entry, JSZipImplementation, readApi) {
@@ -591,8 +703,9 @@
     const jszip = await resolveJSZip(JSZipImplementation);
     const storageUrl = [entry.storageUrl, entry.downloadUrl].find(isFirebaseStorageUrl);
     const directUrl = entry.downloadUrl || entry.storageUrl;
+    const parseOptions = { packageId: entry.fileId };
     if (storageUrl) {
-      return fetchAndParsePptx(storageUrl, jszip);
+      return fetchAndParsePptx(storageUrl, jszip, parseOptions);
     }
 
     let proxyError = null;
@@ -607,23 +720,35 @@
       if (!proxyError) {
         const payload = result && result.data;
         if (payload && payload.base64) {
-          return parsePptx(base64ToArrayBuffer(payload.base64), jszip);
+          return parsePptx(base64ToArrayBuffer(payload.base64), jszip, parseOptions);
         }
         proxyError = new Error('PPTX 雲端代理未回傳檔案內容');
       }
     }
 
+    const isBrowser = typeof window !== 'undefined' && typeof window.document !== 'undefined';
+    const isGoogleDrive = url => /drive\.(?:google|usercontent\.google)\.com/i.test(String(url || ''));
+
     if (directUrl) {
-      try {
-        return await fetchAndParsePptx(directUrl, jszip);
-      } catch (directError) {
-        if (!proxyError) throw directError;
-        throw new Error(`PPTX 下載失敗：${directError.message}；GAS 代理：${proxyError.message}`);
+      if (isBrowser && isGoogleDrive(directUrl)) {
+        if (proxyError) throw proxyError;
+      } else {
+        try {
+          return await fetchAndParsePptx(directUrl, jszip, parseOptions);
+        } catch (directError) {
+          if (!proxyError) throw directError;
+          throw new Error(`PPTX 下載失敗：${directError.message}；GAS 代理：${proxyError.message}`);
+        }
       }
     }
 
+    if (isBrowser) {
+      if (proxyError) throw proxyError;
+      throw new Error('瀏覽器環境無法直接由 Google Drive 下載 PPTX，且後端代理無法使用');
+    }
+
     const fallbackUrl = `https://drive.usercontent.google.com/download?id=${encodeURIComponent(entry.fileId)}&export=download&confirm=t`;
-    return fetchAndParsePptx(fallbackUrl, jszip);
+    return fetchAndParsePptx(fallbackUrl, jszip, parseOptions);
   }
 
   return {
@@ -637,9 +762,12 @@
     parseSourceRect,
     calculateCroppedImageDraw,
     resolveSchemeColor,
+    parseTextBodyProperties,
     inheritRunStyle,
     base64ToArrayBuffer,
     ensureJSZip: resolveJSZip,
+    getNativeSource,
+    resolvePartPath,
     parsePptx,
     rasterObject,
     rasterizeImportedPages,

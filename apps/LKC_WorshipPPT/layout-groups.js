@@ -11,12 +11,14 @@
     fallbackExcludedSectionIds: templateProfile.layoutFallbackExcludedSections
   });
   let liveParams = null;
+  let activeLayoutTab = 'title';
   let layoutUnlocked = false;
   let cloudLayoutFound = false;
   let cloudLayoutLoadPromise = null;
   let layoutSyncPending = false;
   window.worshipLayoutState = layoutState;
   window.isWorshipLayoutUnlocked = () => layoutUnlocked;
+  window.setWorshipLayoutUnlocked = val => { layoutUnlocked = Boolean(val); applyLayoutLockUI(); };
 
   const html = value => String(value == null ? '' : value).replace(/[&<>"']/g, character => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -83,9 +85,20 @@
 
   function sectionDecks() {
     return sections.map(([sectionId, label]) => {
-      const generatedPages = slidePages(model[sectionId], sectionId);
+      const item = model[sectionId];
+      const generatedPages = slidePages(item, sectionId);
       const pages = generatedPages.length ? generatedPages : [{ kind: 'section', body: '' }];
-      return { sectionId, label, pages: pages.map((page, index) => ({ ...page, id: page.id || `${sectionId}:${index + 1}` })) };
+      const includeInExport = item ? item.includeInExport !== false : true;
+      return {
+        sectionId,
+        label,
+        includeInExport,
+        pages: pages.map((page, index) => ({
+          ...page,
+          id: page.id || `${sectionId}:${index + 1}`,
+          includeInExport
+        }))
+      };
     });
   }
 
@@ -101,6 +114,17 @@
     return Array.from(pendingSelection);
   }
 
+  function currentSelectionKind() {
+    const selected = selectedIds();
+    const allEntries = deckEntries();
+    if (selected.length > 0) {
+      const match = allEntries.find(entry => selected.includes(entry.id));
+      if (match) return match.kind;
+    }
+    const current = currentDeckEntry();
+    return current ? current.kind : '';
+  }
+
   function showDeckEntry(entry) {
     if (!entry) return;
     active = entry.sectionId;
@@ -108,6 +132,11 @@
     previewPage = entry.pageIndex;
     preview();
     updateDeckNavigator();
+    const panel = document.getElementById('layout-floating-panel');
+    if (panel && !panel.classList.contains('is-hidden') && !liveParams) {
+      renderFloatingPanel();
+      populateForm(canvasParams());
+    }
   }
 
   window.navigateDeck = function(delta) {
@@ -127,13 +156,37 @@
     const decks = sectionDecks();
     document.getElementById('flow-list').innerHTML = `<div class="deck-chapters">${decks.map((section, sectionIndex) => `
       <details class="deck-chapter" data-deck-section="${section.sectionId}" ${section.sectionId === active ? 'open' : ''}>
-        <summary><input type="checkbox" data-layout-section="${section.sectionId}" aria-label="勾選 ${section.label} 全章" ${section.pages.every(page => pendingSelection.has(page.id)) ? 'checked' : ''}><span><b>${String(sectionIndex + 1).padStart(2, '0')}</b>${section.label}</span><small>${section.pages.length} 頁</small></summary>
+        <summary><input type="checkbox" data-layout-section="${section.sectionId}" aria-label="勾選 ${section.label} 全章" ${section.pages.every(page => pendingSelection.has(page.id)) ? 'checked' : ''}><span><b>${String(sectionIndex + 1).padStart(2, '0')}</b>${section.label}</span><small>${section.sectionId === 'car-notice' ? `<button type="button" class="deck-export-toggle" data-export-section="${section.sectionId}" style="border:1px solid ${section.includeInExport === false ? '#c93b2b' : '#315f4c'};background:${section.includeInExport === false ? '#fdf2f2' : '#edf5f0'};color:${section.includeInExport === false ? '#c93b2b' : '#234a3b'};border-radius:4px;padding:1px 6px;font-size:11px;cursor:pointer;" title="點擊切換是否匯出">${section.includeInExport === false ? '✕ 不匯出' : '✓ 匯出'}</button>` : (section.includeInExport === false ? '<span style="color:#a12d27">不匯出</span>' : `${section.pages.length} 頁`)}</small></summary>
         <div class="deck-page-list">${section.pages.map((page, pageIndex) => `<div class="deck-page-row${pendingSelection.has(page.id) ? ' is-selected' : ''}" data-deck-page-row="${page.id}"><input type="checkbox" data-layout-page="${page.id}" aria-label="選取 ${html(section.label)}第 ${pageIndex + 1} 頁進行版面調整" ${pendingSelection.has(page.id) ? 'checked' : ''}><button type="button" data-deck-page="${page.id}" aria-label="預覽 ${html(section.label)}第 ${pageIndex + 1} 頁">第 ${pageIndex + 1} 頁</button><small>${html(groupLabel(page.id))}</small></div>`).join('')}</div>
       </details>`).join('')}</div>`;
 
     document.querySelectorAll('[data-deck-page-row]').forEach(row => row.onclick = event => {
       if (event.target.closest('input')) return;
       showDeckEntry(deckEntries().find(entry => entry.id === row.dataset.deckPageRow));
+    });
+    document.querySelectorAll('.deck-chapter summary').forEach(summary => summary.onclick = event => {
+      if (event.target.closest('input') || event.target.closest('button')) return;
+      const chapter = summary.closest('[data-deck-section]');
+      const sectionId = chapter && chapter.dataset.deckSection;
+      if (sectionId) {
+        const first = deckEntries().find(entry => entry.sectionId === sectionId);
+        if (first) showDeckEntry(first);
+      }
+    });
+    document.querySelectorAll('[data-export-section]').forEach(button => button.onclick = event => {
+      event.stopPropagation();
+      event.preventDefault();
+      const sectionId = button.dataset.exportSection;
+      if (model[sectionId]) {
+        model[sectionId].includeInExport = model[sectionId].includeInExport === false;
+        const centerToggle = document.getElementById('car-notice-export-toggle');
+        if (centerToggle) centerToggle.checked = model[sectionId].includeInExport;
+        const floatingToggle = document.getElementById('lg-car-notice-export');
+        if (floatingToggle) floatingToggle.checked = model[sectionId].includeInExport;
+        renderDeckNavigator();
+        preview();
+        status(model[sectionId].includeInExport ? `已設定匯出「${model[sectionId].label || sectionId}」` : `已設定不匯出「${model[sectionId].label || sectionId}」`);
+      }
     });
     document.querySelectorAll('[data-layout-page]').forEach(box => box.onchange = () => {
       if (box.checked) pendingSelection.add(box.dataset.layoutPage); else pendingSelection.delete(box.dataset.layoutPage);
@@ -188,10 +241,30 @@
     return Number(input.value);
   }
 
+  function inputValue(id, fallback) {
+    const input = document.getElementById(id);
+    if (!input || input.value === '') return fallback;
+    return input.value;
+  }
+
   function paramsFromForm() {
+    const isCar = currentSelectionKind() === 'car-notice';
     const params = {
-      titleSize: numberValue('lg-title-size', 60), titleX: numberValue('lg-title-x', 10), titleY: numberValue('lg-title-y', 6), titleW: numberValue('lg-title-w', 80), titleH: numberValue('lg-title-h', 16), titleAlign: document.getElementById('lg-title-align').value, titleColor: production.normalizeColor(document.getElementById('lg-title-color').value, '#111111'),
-      contentSize: numberValue('lg-content-size', 48), contentX: numberValue('lg-content-x', 8), contentY: numberValue('lg-content-y', 24), contentW: numberValue('lg-content-w', 84), contentH: numberValue('lg-content-h', 68), contentAlign: document.getElementById('lg-content-align').value, contentColor: production.normalizeColor(document.getElementById('lg-content-color').value, '#111111'), lineSpacing: numberValue('lg-line-spacing', 1.5)
+      titleSize: numberValue('lg-title-size', 60),
+      titleX: numberValue('lg-title-x', isCar ? 6.9 : 10),
+      titleY: numberValue('lg-title-y', isCar ? 28.9 : 6),
+      titleW: numberValue('lg-title-w', isCar ? 86.2 : 80),
+      titleH: numberValue('lg-title-h', isCar ? 23.8 : 16),
+      titleAlign: inputValue('lg-title-align', 'center'),
+      titleColor: production.normalizeColor(inputValue('lg-title-color', '#111111'), '#111111'),
+      contentSize: numberValue('lg-content-size', 48),
+      contentX: numberValue('lg-content-x', 8),
+      contentY: numberValue('lg-content-y', 24),
+      contentW: numberValue('lg-content-w', 84),
+      contentH: numberValue('lg-content-h', 68),
+      contentAlign: inputValue('lg-content-align', 'left'),
+      contentColor: production.normalizeColor(inputValue('lg-content-color', '#111111'), '#111111'),
+      lineSpacing: numberValue('lg-line-spacing', 1.5)
     };
     if (document.getElementById('lg-secondary-content-size')) {
       Object.assign(params, {
@@ -200,8 +273,8 @@
         secondaryContentY: numberValue('lg-secondary-content-y', 23.3),
         secondaryContentW: numberValue('lg-secondary-content-w', 43),
         secondaryContentH: numberValue('lg-secondary-content-h', 66.5),
-        secondaryContentAlign: document.getElementById('lg-secondary-content-align').value,
-        secondaryContentColor: production.normalizeColor(document.getElementById('lg-secondary-content-color').value, '#0070C0'),
+        secondaryContentAlign: inputValue('lg-secondary-content-align', 'left'),
+        secondaryContentColor: production.normalizeColor(inputValue('lg-secondary-content-color', '#0070C0'), '#0070C0'),
         secondaryLineSpacing: numberValue('lg-secondary-line-spacing', 1.5)
       });
     }
@@ -315,8 +388,16 @@
             : {})
       };
     };
-    const titleFallback = { titleSize: 60, titleX: 10, titleY: 6, titleW: 80, titleH: 16, titleAlign: 'center', titleColor: '#111111' };
-    const contentFallback = { contentSize: 48, contentX: 8, contentY: 24, contentW: 84, contentH: 68, contentAlign: 'left', contentColor: '#111111', lineSpacing: 1.5 };
+    const isCarNotice = currentSelectionKind() === 'car-notice';
+    const isPraise = currentSelectionKind() === 'praise-title';
+    const titleFallback = isCarNotice
+      ? { titleSize: 60, titleX: 6.9, titleY: 28.9, titleW: 86.2, titleH: 23.8, titleAlign: 'center', titleColor: '#111111' }
+      : isPraise
+        ? { titleSize: 60, titleX: 10, titleY: 28.1, titleW: 80, titleH: 17.8, titleAlign: 'center', titleColor: '#111111' }
+        : { titleSize: 60, titleX: 10, titleY: 6, titleW: 80, titleH: 16, titleAlign: 'center', titleColor: '#111111' };
+    const contentFallback = isPraise
+      ? { contentSize: 36, contentX: 8, contentY: 50.4, contentW: 84, contentH: 10.8, contentAlign: 'center', contentColor: '#111111', lineSpacing: 1.2 }
+      : { contentSize: 48, contentX: 8, contentY: 24, contentW: 84, contentH: 68, contentAlign: 'left', contentColor: '#111111', lineSpacing: 1.5 };
     const importedObjects = Array.from(content.querySelectorAll('.ppt-object-text'));
     if (importedObjects.length) {
       const measureImported = (role, prefix, fallback) => {
@@ -347,7 +428,11 @@
     }
     const primaryBody = content.querySelector('.body-primary, .body, p');
     const secondaryBody = content.querySelector('.body-secondary');
-    const secondaryFallback = {
+    const secondaryFallback = isPraise ? {
+      secondaryContentSize: 36, secondaryContentX: 8, secondaryContentY: 61.2,
+      secondaryContentW: 84, secondaryContentH: 10.8, secondaryContentAlign: 'center',
+      secondaryContentColor: '#111111', secondaryLineSpacing: 1.2
+    } : {
       secondaryContentSize: 48, secondaryContentX: 51.1, secondaryContentY: 23.3,
       secondaryContentW: 43, secondaryContentH: 66.5, secondaryContentAlign: 'left',
       secondaryContentColor: '#0070C0', secondaryLineSpacing: 1.5
@@ -367,10 +452,39 @@
   }
 
   function parameterFields() {
-    const supportsSecondary = templateId === 'joint-mandarin';
-    return `<div class="layout-parameter-tabs"><button type="button" class="is-active" data-layout-tab="title">標題</button><button type="button" data-layout-tab="content">${supportsSecondary ? '台語內文' : '內文'}</button>${supportsSecondary ? '<button type="button" data-layout-tab="secondary-content">華語內文</button>' : ''}</div>
+    const kind = currentSelectionKind();
+    const isCarNotice = kind === 'car-notice';
+    const isPraise = kind === 'praise-title';
+    const isDual = templateId === 'joint-mandarin' || kind === 'dual-liturgical';
+    const hasSecondary = isPraise || isDual;
+
+    if (isCarNotice) {
+      const isExported = model['car-notice'] ? model['car-notice'].includeInExport !== false : true;
+      return `<div class="layout-parameter-tabs"><button type="button" class="is-active" data-layout-tab="title">標題</button></div>
+      <div class="layout-params" data-layout-pane="title"><label>字級<input id="lg-title-size" type="number" value="60"></label><label>X<input id="lg-title-x" type="number" value="6.9"></label><label>Y<input id="lg-title-y" type="number" value="28.9"></label><label>寬<input id="lg-title-w" type="number" value="86.2"></label><label>高<input id="lg-title-h" type="number" value="23.8"></label><label>對齊<select id="lg-title-align"><option value="center">置中</option><option value="left">靠左</option><option value="right">靠右</option></select></label><label>文字顏色<input id="lg-title-color" type="color" value="#111111"></label></div>
+      <div style="margin-top:12px;padding:9px 12px;background:#f4f7f5;border:1px solid #cbd8cf;border-radius:6px;display:flex;align-items:center;justify-content:space-between;font-size:13px;">
+        <span style="font-weight:600;color:#243a30;">PPTX 匯出設定</span>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin:0;font-weight:normal;">
+          <input id="lg-car-notice-export" type="checkbox" ${isExported ? 'checked' : ''}> 包含此頁
+        </label>
+      </div>`;
+    }
+
+    const contentTabLabel = isPraise ? '歌名' : isDual ? '台語內文' : '內文';
+    const secondaryTabLabel = isPraise ? '演唱者' : '華語內文';
+
+    const secondaryColorDefault = isPraise ? '#111111' : '#0070c0';
+    const secondaryAlignDefault = isPraise ? 'center' : 'left';
+    const secondaryXDefault = isPraise ? '8' : '51.1';
+    const secondaryYDefault = isPraise ? '61.2' : '23.3';
+    const secondaryWDefault = isPraise ? '84' : '43';
+    const secondaryHDefault = isPraise ? '10.8' : '66.5';
+    const secondarySizeDefault = isPraise ? '36' : '48';
+    const secondarySpacingDefault = isPraise ? '1.2' : '1.5';
+
+    return `<div class="layout-parameter-tabs"><button type="button" class="is-active" data-layout-tab="title">標題</button><button type="button" data-layout-tab="content">${contentTabLabel}</button>${hasSecondary ? `<button type="button" data-layout-tab="secondary-content">${secondaryTabLabel}</button>` : ''}</div>
       <div class="layout-params" data-layout-pane="title"><label>字級<input id="lg-title-size" type="number" value="60"></label><label>X<input id="lg-title-x" type="number" value="10"></label><label>Y<input id="lg-title-y" type="number" value="6"></label><label>寬<input id="lg-title-w" type="number" value="80"></label><label>高<input id="lg-title-h" type="number" value="16"></label><label>對齊<select id="lg-title-align"><option value="center">置中</option><option value="left">靠左</option><option value="right">靠右</option></select></label><label>文字顏色<input id="lg-title-color" type="color" value="#111111"></label></div>
-      <div class="layout-params is-hidden" data-layout-pane="content"><label>字級<input id="lg-content-size" type="number" value="48"></label><label>X<input id="lg-content-x" type="number" value="8"></label><label>Y<input id="lg-content-y" type="number" value="24"></label><label>寬<input id="lg-content-w" type="number" value="84"></label><label>高<input id="lg-content-h" type="number" value="68"></label><label>對齊<select id="lg-content-align"><option value="left">靠左</option><option value="center">置中</option><option value="right">靠右</option></select></label><label>行距<input id="lg-line-spacing" type="number" value="1.5" step="0.1"></label><label>文字顏色<input id="lg-content-color" type="color" value="#111111"></label></div>${supportsSecondary ? '<div class="layout-params is-hidden" data-layout-pane="secondary-content"><label>字級<input id="lg-secondary-content-size" type="number" value="48"></label><label>X<input id="lg-secondary-content-x" type="number" value="51.1"></label><label>Y<input id="lg-secondary-content-y" type="number" value="23.3"></label><label>寬<input id="lg-secondary-content-w" type="number" value="43"></label><label>高<input id="lg-secondary-content-h" type="number" value="66.5"></label><label>對齊<select id="lg-secondary-content-align"><option value="left">靠左</option><option value="center">置中</option><option value="right">靠右</option></select></label><label>行距<input id="lg-secondary-line-spacing" type="number" value="1.5" step="0.1"></label><label>文字顏色<input id="lg-secondary-content-color" type="color" value="#0070c0"></label></div>' : ''}`;
+      <div class="layout-params is-hidden" data-layout-pane="content"><label>字級<input id="lg-content-size" type="number" value="${isPraise ? '36' : '48'}"></label><label>X<input id="lg-content-x" type="number" value="8"></label><label>Y<input id="lg-content-y" type="number" value="${isPraise ? '50.4' : '24'}"></label><label>寬<input id="lg-content-w" type="number" value="84"></label><label>高<input id="lg-content-h" type="number" value="${isPraise ? '10.8' : '68'}"></label><label>對齊<select id="lg-content-align"><option value="${isPraise ? 'center' : 'left'}">${isPraise ? '置中' : '靠左'}</option><option value="${isPraise ? 'left' : 'center'}">${isPraise ? '靠左' : '置中'}</option><option value="right">靠右</option></select></label><label>行距<input id="lg-line-spacing" type="number" value="${isPraise ? '1.2' : '1.5'}" step="0.1"></label><label>文字顏色<input id="lg-content-color" type="color" value="#111111"></label></div>${hasSecondary ? `<div class="layout-params is-hidden" data-layout-pane="secondary-content"><label>字級<input id="lg-secondary-content-size" type="number" value="${secondarySizeDefault}"></label><label>X<input id="lg-secondary-content-x" type="number" value="${secondaryXDefault}"></label><label>Y<input id="lg-secondary-content-y" type="number" value="${secondaryYDefault}"></label><label>寬<input id="lg-secondary-content-w" type="number" value="${secondaryWDefault}"></label><label>高<input id="lg-secondary-content-h" type="number" value="${secondaryHDefault}"></label><label>對齊<select id="lg-secondary-content-align"><option value="${secondaryAlignDefault}">${secondaryAlignDefault === 'center' ? '置中' : '靠左'}</option><option value="${secondaryAlignDefault === 'center' ? 'left' : 'center'}">${secondaryAlignDefault === 'center' ? '靠左' : '置中'}</option><option value="right">靠右</option></select></label><label>行距<input id="lg-secondary-line-spacing" type="number" value="${secondarySpacingDefault}" step="0.1"></label><label>文字顏色<input id="lg-secondary-content-color" type="color" value="${secondaryColorDefault}"></label></div>` : ''}`;
   }
 
   function renderFloatingPanel() {
@@ -384,9 +498,22 @@
 
     document.getElementById('layout-panel-close').onclick = () => panel.classList.add('is-hidden');
     enablePanelDragging(panel);
-    document.querySelectorAll('[data-layout-tab]').forEach(button => button.onclick = () => {
-      document.querySelectorAll('[data-layout-tab]').forEach(item => item.classList.toggle('is-active', item === button));
-      document.querySelectorAll('[data-layout-pane]').forEach(pane => pane.classList.toggle('is-hidden', pane.dataset.layoutPane !== button.dataset.layoutTab));
+    let targetTab = activeLayoutTab;
+    if (targetTab === 'secondary-content' && !panel.querySelector('[data-layout-tab="secondary-content"]')) {
+      targetTab = 'title';
+    }
+    if (targetTab === 'content' && !panel.querySelector('[data-layout-tab="content"]')) {
+      targetTab = 'title';
+    }
+    const targetButton = panel.querySelector(`[data-layout-tab="${targetTab}"]`);
+    if (targetButton) {
+      panel.querySelectorAll('[data-layout-tab]').forEach(item => item.classList.toggle('is-active', item === targetButton));
+      panel.querySelectorAll('[data-layout-pane]').forEach(pane => pane.classList.toggle('is-hidden', pane.dataset.layoutPane !== targetTab));
+    }
+    panel.querySelectorAll('[data-layout-tab]').forEach(button => button.onclick = () => {
+      activeLayoutTab = button.dataset.layoutTab;
+      panel.querySelectorAll('[data-layout-tab]').forEach(item => item.classList.toggle('is-active', item === button));
+      panel.querySelectorAll('[data-layout-pane]').forEach(pane => pane.classList.toggle('is-hidden', pane.dataset.layoutPane !== button.dataset.layoutTab));
     });
     document.querySelectorAll('.layout-params input, .layout-params select').forEach(input => input.addEventListener('input', () => {
       liveParams = paramsFromForm();
@@ -399,6 +526,19 @@
     document.getElementById('layout-group-existing').onchange = event => loadGroup(event.target.value);
     document.getElementById('layout-save-group').onclick = saveGroup;
     document.getElementById('layout-detach').onclick = detachSelection;
+    const floatingExportToggle = document.getElementById('lg-car-notice-export');
+    if (floatingExportToggle) {
+      floatingExportToggle.onchange = event => {
+        if (model['car-notice']) {
+          model['car-notice'].includeInExport = event.target.checked;
+          const centerToggle = document.getElementById('car-notice-export-toggle');
+          if (centerToggle) centerToggle.checked = event.target.checked;
+          renderDeckNavigator();
+          preview();
+          status(event.target.checked ? '已設定匯出此移車提醒頁' : '已設定不匯出此移車提醒頁');
+        }
+      };
+    }
     applyLayoutLockUI();
   }
 
@@ -422,6 +562,7 @@
   }
 
   function openFloatingPanel(syncWithCanvas = true) {
+    renderFloatingPanel();
     const panel = document.getElementById('layout-floating-panel');
     panel.classList.remove('is-hidden');
     if (syncWithCanvas) {
@@ -696,8 +837,15 @@
       status(cloudLayoutFound ? '版面配置已解鎖' : '版面配置已解鎖；雲端尚無共用設定');
     } catch (unlockError) {
       console.warn('版面配置解鎖失敗', unlockError);
-      error.textContent = unlockError.message || '解鎖失敗，請稍後再試';
-      status(`版面配置解鎖失敗：${error.textContent}`);
+      const msg = String(unlockError && (unlockError.message || unlockError.code) || '解鎖失敗，請稍後再試');
+      if (/requests-from-referer|127\.0\.0\.1/i.test(msg)) {
+        const localhostUrl = window.location.href.replace('//127.0.0.1:', '//localhost:');
+        error.innerHTML = `本機網址 (127.0.0.1) 受到 Firebase 網域限制，請改用 <a href="${localhostUrl}" style="color:#0070c0;font-weight:bold;text-decoration:underline;">localhost 網址 (點此切換)</a> 開啟，即可正常解鎖雲端設定。`;
+        status('解鎖失敗：受到 Firebase 網域限制，請切換至 localhost');
+      } else {
+        error.textContent = msg;
+        status(`版面配置解鎖失敗：${msg}`);
+      }
     } finally {
       submit.disabled = false;
     }

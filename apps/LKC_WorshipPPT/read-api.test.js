@@ -185,6 +185,49 @@ test('uses JSONP on GitHub Pages and falls back after invalid JSON POST response
   }
 });
 
+test('falls back to JSONP when churchAPI throws GAS_HTML_ERROR', async () => {
+  const previous = {
+    ensureAPIReady: global.ensureAPIReady,
+    churchAPI: global.churchAPI,
+    GAS_URL: global.GAS_URL,
+    AUTH_TOKEN: global.AUTH_TOKEN,
+    location: global.location,
+    document: global.document
+  };
+
+  global.ensureAPIReady = async () => {};
+  let churchApiCalls = 0;
+  global.churchAPI = async () => {
+    churchApiCalls += 1;
+    const err = new Error('後端服務 (GAS) 回傳 HTML 頁面，可能是權限不足或後端執行逾時');
+    err.type = 'GAS_HTML_ERROR';
+    err.status = 200;
+    throw err;
+  };
+  global.GAS_URL = 'https://script.google.com/macros/s/example/exec';
+  global.AUTH_TOKEN = 'ChurchApp-2026';
+  global.location = { protocol: 'http:', hostname: '127.0.0.1' };
+  global.document = {
+    createElement() {
+      return { remove() {} };
+    },
+    head: {
+      appendChild(script) {
+        const callback = new URL(script.src).searchParams.get('callback');
+        queueMicrotask(() => global[callback]({ success: true, data: { base64: 'payload' } }));
+      }
+    }
+  };
+
+  try {
+    const result = await read('cal_getPptLibraryFile', { fileId: 'test-id' });
+    assert.deepEqual(result, { success: true, data: { base64: 'payload' } });
+    assert.equal(churchApiCalls, 1);
+  } finally {
+    Object.assign(global, previous);
+  }
+});
+
 test('uses the existing source API instead of a duplicated Firebase content mirror', async () => {
   const previous = {
     firebaseContent: global.worshipFirebaseContent,

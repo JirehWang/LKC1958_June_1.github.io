@@ -67,5 +67,5 @@ test('formats the popup as a readable source-by-source reminder', () => {
   assert.equal(formatMissingSourceReminder([
     '行事曆「金句」欄位空白',
     '週報「教界消息」空白'
-  ]), '提醒：下列來源尚未有資料，請補齊後再確認投影片：\n\n• 行事曆「金句」欄位空白\n• 週報「教界消息」空白');
+  ]), '提醒：請確認以下來源狀態；讀取失敗可重新帶入，空白欄位請確認當週是否有內容：\n\n• 行事曆「金句」欄位空白\n• 週報「教界消息」空白');
 });

@@ -70,3 +70,21 @@ test('reflows report pagination from effective layout changes and cloud state', 
   assert.match(sourceBetween('async function saveOutputScale()', 'function computedColor('), /reflowReportPagesForLayout\(\)/);
   assert.match(sourceBetween('async function initializeCloudLayout()', 'function openUnlockDialog()'), /replaceLayoutState\([\s\S]*reflowReportPagesForLayout\(\)/);
 });
+
+test('extracts layout form parameters safely when content inputs are absent for car-notice', () => {
+  const paramsExtractor = sourceBetween(
+    'function paramsFromForm()',
+    'function reportPageForLayout()'
+  );
+  assert.match(paramsExtractor, /inputValue\('lg-title-align'/);
+  assert.match(paramsExtractor, /inputValue\('lg-content-align'/);
+  assert.match(paramsExtractor, /inputValue\('lg-content-color'/);
+  assert.match(paramsExtractor, /currentSelectionKind\(\) === 'car-notice'/);
+});
+
+test('chapter summary navigates to first page and car-notice includes quick export toggle', () => {
+  assert.match(source, /summary\.onclick = event =>/);
+  assert.match(source, /data-export-section="\$\{section\.sectionId\}"/);
+  assert.match(source, /model\[sectionId\]\.includeInExport = /);
+  assert.match(source, /id="lg-car-notice-export"/);
+});

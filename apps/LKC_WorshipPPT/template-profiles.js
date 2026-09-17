@@ -132,7 +132,8 @@
         ['sermon', '講道', 'sermon'], ['prayer-2', '祈禱', 'title'], ['hymn-2', '聖詩二', 'hymn'],
         ['announcements', '報告', 'manual'], ['verse', '金句', 'calendar'], ['offering', '奉獻', 'fixed-title'],
         ['doxology', '頌榮', 'calendar'], ['blessing', '祝禱', 'title'], ['amen', '阿們頌', 'fixed-title'],
-        ['postlude', '後奏', 'title'], ['peace', '平安禮', 'title']
+        ['postlude', '後奏', 'title'], ['peace', '平安禮', 'title'],
+        ['car-notice', '移車提醒', 'car-notice', { title: '敬請停在車道的車主儘快移車', includeInExport: true }]
       ]
     },
     'joint-mandarin': {
@@ -185,7 +186,8 @@
         ['offering', '奉獻', 'static', { pptPages: [{ kind: 'full-image', assetKey: 'offering' }] }],
         ['thanksgiving', '獻上感恩', 'static', { pptPages: [{ kind: 'full-image', assetKey: 'thanksgiving' }] }],
         ['blessing', '祝禱', 'title'],
-        ['peace', '平安禮', 'title', { kicker: '請兄弟姊妹互相行平安禮' }]
+        ['peace', '平安禮', 'title', { kicker: '請兄弟姊妹互相行平安禮' }],
+        ['car-notice', '移車提醒', 'car-notice', { title: '敬請停在車道的車主儘快移車', includeInExport: true }]
       ]
     }
   };

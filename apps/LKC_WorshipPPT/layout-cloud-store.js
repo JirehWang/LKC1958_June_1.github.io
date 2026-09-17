@@ -159,8 +159,12 @@
         return isUnlocked();
       } catch (error) {
         const code = String(error && error.code || '');
+        const message = String(error && error.message || error || '');
         if (/invalid-credential|wrong-password|invalid-login-credentials|user-not-found/.test(code)) {
           throw new Error('版面配置解鎖密碼錯誤');
+        }
+        if (/requests-from-referer/i.test(code) || /requests-from-referer/i.test(message)) {
+          throw new Error('本機網址 (127.0.0.1) 受到 Firebase 網域限制，請改以 http://localhost:8766/ 網址開啟，或於 Google Cloud 控制台將 127.0.0.1 加入 API 金鑰的已授權 HTTP 參照位址');
         }
         throw error;
       }

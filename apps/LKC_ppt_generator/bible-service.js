@@ -254,13 +254,13 @@
     }
 
     // 7. FHL API 單次經文網路請求 (自動補全 "來"、處理 "上帝版" 置換，並回傳相容資料格式)
-    async function fetchScripture(queryObj, version = 'unv') {
+    async function fetchScripture(queryObj, version = 'unv', options = {}) {
         const fhlBook = queryObj.eng === 'Heb' ? '來' : queryObj.short;
         const qstr = `${fhlBook} ${queryObj.chap}${queryObj.sec ? ':' + queryObj.sec : ''}`;
         const apiVersion = version === 'unv_god' ? 'unv' : version;
         const apiUrl = `https://bible.fhl.net/json/qsb.php?qstr=${encodeURIComponent(qstr)}&version=${apiVersion}&gb=0`;
 
-        const response = await fetch(apiUrl);
+        const response = await fetch(apiUrl, options);
         if (!response.ok) {
             throw new Error(`HTTP 錯誤: ${response.status}`);
         }
@@ -299,14 +299,14 @@
     }
 
     // 8. 批次查詢與回傳 (支援 Promise.all 並行載入)
-    async function query(queryString, version = 'unv') {
+    async function query(queryString, version = 'unv', options = {}) {
         const queries = parseQuery(queryString);
         if (queries.length === 0) {
             throw new Error(`無法識別經文格式: "${queryString}"`);
         }
 
         const fetchPromises = queries.map(async (queryObj) => {
-            const res = await fetchScripture(queryObj, version);
+            const res = await fetchScripture(queryObj, version, options);
             return {
                 queryObj: queryObj,
                 record: res.record,

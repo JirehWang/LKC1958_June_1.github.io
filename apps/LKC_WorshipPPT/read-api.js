@@ -88,9 +88,9 @@
 
   function isJsonTransportError(error) {
     if (!error) return false;
-    if (error.name === 'SyntaxError' || ['INVALID_RESPONSE', 'TIMEOUT', 'GAS_TIMEOUT'].includes(error.type)) return true;
+    if (error.name === 'SyntaxError' || ['INVALID_RESPONSE', 'TIMEOUT', 'GAS_TIMEOUT', 'GAS_HTML_ERROR'].includes(error.type)) return true;
     const message = String(error.message || error).toLowerCase();
-    return /failed to fetch|network|load failed|unexpected token|not valid json|http\s+4\d\d|http\s+5\d\d/.test(message);
+    return /failed to fetch|network|load failed|unexpected token|not valid json|http\s+4\d\d|http\s+5\d\d|html|健康檢查|gas/.test(message);
   }
 
   function isTimeoutError(error) {

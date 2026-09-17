@@ -248,7 +248,8 @@
     const response = await fetchImpl(buildBulletinCloudUrl(endpoint, kind, date));
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const json = await response.json();
-    return json && json.success && json.data
+    if (!json || json.success !== true) throw new Error(json && (json.message || json.error) || '週報服務回應無效');
+    return json.data
       ? { state: 'loaded', data: json.data }
       : { state: 'missing', data: null };
   }

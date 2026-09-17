@@ -225,3 +225,31 @@ test('index.html includes vendor-jszip before pptx-library.js', () => {
   assert.ok(pptxLibraryIndex !== -1, 'pptx-library.js must be present in index.html');
   assert.ok(jszipIndex < pptxLibraryIndex, 'vendor-jszip.min.js must be loaded before pptx-library.js');
 });
+
+test('retries a GAS_HTML_ERROR PPTX once and recovers if second attempt succeeds', async () => {
+  const entries = [
+    { kind: 'hymn', number: '261', title: '祈禱詩', fileId: 'file-261', fileName: '261.pptx' }
+  ];
+  let attempt = 0;
+  const { window, model } = loadIntegration({
+    librarySections: [['prayer-song', 'hymn']]
+  }, {}, {
+    pptRetryDelayMs: 0,
+    worshipReadAPI: async () => ({ data: entries }),
+    downloadAndParse: async () => {
+      attempt += 1;
+      if (attempt === 1) {
+        const error = new Error('後端服務 (GAS) 回傳 HTML 頁面，可能是權限不足或後端執行逾時');
+        error.type = 'GAS_HTML_ERROR';
+        throw error;
+      }
+      return [{ objects: [{ type: 'text', text: 'recovered' }] }];
+    }
+  });
+
+  const result = await window.loadPptLibraryContent(['prayer-song']);
+  assert.equal(attempt, 2);
+  assert.equal(result[0].state, 'loaded');
+  assert.equal(model['prayer-song'].pptPages[0].objects[0].text, 'recovered');
+});
+

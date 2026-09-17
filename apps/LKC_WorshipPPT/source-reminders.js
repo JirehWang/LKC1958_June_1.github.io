@@ -57,7 +57,9 @@
       });
       requiredBibleSections.forEach(([sectionId, label]) => {
         const item = items[sectionId];
-        if (clean(item && item.sourceValue) && !hasPages(item)) {
+        if (item && Array.isArray(item.bibleErrors) && item.bibleErrors.length) {
+          reminders.push(`${bibleLabel}「${label}」讀取失敗，請重新帶入：${item.bibleErrors.map(error => error.message).join('；')}`);
+        } else if (clean(item && item.sourceValue) && !hasPages(item)) {
           reminders.push(`${bibleLabel}「${label}」查無經文：${clean(item.sourceValue)}`);
         }
       });
@@ -97,7 +99,7 @@
   function formatMissingSourceReminder(reminders) {
     const items = Array.isArray(reminders) ? reminders.filter(clean) : [];
     if (!items.length) return '';
-    return `提醒：下列來源尚未有資料，請補齊後再確認投影片：\n\n${items.map(item => `• ${item}`).join('\n')}`;
+    return `提醒：請確認以下來源狀態；讀取失敗可重新帶入，空白欄位請確認當週是否有內容：\n\n${items.map(item => `• ${item}`).join('\n')}`;
   }
 
   return { buildMissingSourceReminders, formatMissingSourceReminder };

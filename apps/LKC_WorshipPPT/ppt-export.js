@@ -200,7 +200,13 @@
     pptx.layout = 'LAYOUT_WIDE';
 
     if (typeof reflowReportPagesFn === 'function') reflowReportPagesFn();
-    const deck = getDeckEntriesFn();
+    const rawDeck = getDeckEntriesFn();
+    const deck = (rawDeck || []).filter(entry => {
+      if (entry && entry.includeInExport === false) return false;
+      const modelEntry = model && model[entry.sectionId];
+      if (modelEntry && modelEntry.includeInExport === false) return false;
+      return true;
+    });
     if (!deck || !deck.length) {
       throw new Error('沒有可匯出的投影片');
     }
@@ -453,7 +459,7 @@
           bold: true,
           margin: 0
         });
-        const titlePageContent = titlePageDetails.join('\n');
+        const titlePageContent = entry.kind === 'praise-title' ? titlePageTopic : titlePageDetails.join('\n');
         if (titlePageContent) slide.addText(wrapNativeText(titlePageContent, params, 'content'), {
           x: slideX(params.contentX),
           y: slideY(params.contentY),
@@ -468,6 +474,18 @@
           lineSpacing: params.lineSpacing ? Math.round(scaledFont(params.contentSize) * params.lineSpacing) : undefined,
           margin: 0
         });
+        if (entry.kind === 'praise-title') {
+          const performer = entry.kicker || (modelEntry && modelEntry.kicker) || '';
+          if (performer) slide.addText(wrapNativeText(performer, params, 'secondaryContent'), {
+            x: slideX(params.secondaryContentX == null ? 8 : params.secondaryContentX),
+            y: slideY(params.secondaryContentY == null ? Number(params.contentY) + 10.8 : params.secondaryContentY),
+            w: slideX(params.secondaryContentW || 84), h: slideY(params.secondaryContentH || 10.8),
+            fontSize: scaledFont(params.secondaryContentSize || 36),
+            color: (params.secondaryContentColor || '#111111').replace('#', ''),
+            fontFace: 'Microsoft JhengHei', align: params.secondaryContentAlign || 'center',
+            valign: 'top', bold: true, margin: 0
+          });
+        }
       } else if (entry.kind === 'praise-lyrics') {
         slide.addText(wrapNativeText(entry.body || '', params, 'content'), {
           x: slideX(params.contentX),
@@ -481,6 +499,21 @@
           valign: 'top',
           bold: true,
           lineSpacing: params.lineSpacing ? Math.round(scaledFont(params.contentSize) * params.lineSpacing) : undefined,
+          margin: 0
+        });
+      } else if (entry.kind === 'car-notice') {
+        const noticeText = entry.title || (modelEntry && modelEntry.title) || '敬請停在車道的車主儘快移車';
+        slide.addText(wrapNativeText(noticeText, params, 'title', 1 / 0.92), {
+          x: slideX(params.titleX != null ? params.titleX : 6.9),
+          y: slideY(params.titleY != null ? params.titleY : 28.9),
+          w: slideX(params.titleW != null ? params.titleW : 86.2),
+          h: slideY(params.titleH != null ? params.titleH : 23.8),
+          fontSize: scaledFont(params.titleSize || 60),
+          color: (params.titleColor || '#111111').replace('#', ''),
+          fontFace: 'Microsoft JhengHei',
+          align: params.titleAlign || 'center',
+          valign: 'middle',
+          bold: true,
           margin: 0
         });
       } else if (entry.kind === 'score') {

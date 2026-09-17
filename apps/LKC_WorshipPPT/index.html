@@ -2,17 +2,25 @@
 <html lang="zh-TW">
 <head>
   <meta charset="utf-8">
+  <script>
+    if (window.location.hostname === '127.0.0.1') {
+      window.location.replace(window.location.href.replace('//127.0.0.1:', '//localhost:'));
+    }
+    window._GAS_KEY = 'LKC_MasterSchedule';
+    window._FORCE_PRODUCTION_GAS = true;
+    window.LKC_GAS_REQUEST_TIMEOUT_MS = 65000;
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>禮拜PPT產生器</title>
-  <link rel="stylesheet" href="style.css?v=20260812a">
-  <link rel="stylesheet" href="format.css?v=20260716a">
-  <link rel="stylesheet" href="reference-layout.css?v=20260714b">
-  <link rel="stylesheet" href="color-controls.css?v=20260713a">
-  <link rel="stylesheet" href="layout-groups.css?v=20260716a">
-  <link rel="stylesheet" href="pptx-library.css?v=20260714c">
-  <link rel="stylesheet" href="sync-opacity.css?v=20260714b">
-  <link rel="stylesheet" href="theme.css?v=20260716c">
-  <link rel="stylesheet" href="template-switch.css?v=20260719a">
+  <link rel="stylesheet" href="style.css?v=20260917d">
+  <link rel="stylesheet" href="format.css?v=20260917d">
+  <link rel="stylesheet" href="reference-layout.css?v=20260917d">
+  <link rel="stylesheet" href="color-controls.css?v=20260917d">
+  <link rel="stylesheet" href="layout-groups.css?v=20260917d">
+  <link rel="stylesheet" href="pptx-library.css?v=20260917d">
+  <link rel="stylesheet" href="sync-opacity.css?v=20260917d">
+  <link rel="stylesheet" href="theme.css?v=20260917d">
+  <link rel="stylesheet" href="template-switch.css?v=20260917d">
 </head>
 <body>
   <div id="operation-overlay" class="operation-overlay" aria-hidden="true"><div class="operation-loader"><div class="operation-loader-icon" aria-hidden="true">📖</div><div class="operation-loader-text">運作中…</div></div></div>
@@ -51,33 +59,33 @@
       <footer><button type="button" class="button quiet" id="layout-unlock-cancel">取消</button><button type="submit" class="button primary">解鎖</button></footer>
     </form>
   </dialog>
-  <script>window._GAS_KEY = 'LKC_MasterSchedule'; window._FORCE_PRODUCTION_GAS = true;</script>
-  <script src="../../config.js?v=20260914a"></script>
+  <script src="../../config.js?v=20260917d"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="../../supabase/supabase-config.js"></script>
-  <script src="worship-ppt-supabase.js?v=20260910"></script>
-  <script src="../LKC_SundayBulletin/js/bulletin-supabase.js?v=20260910"></script>
-  <script src="../../firebase/firebase-config-values.js?v=20260719a"></script>
-  <script src="read-api.js?v=20260831_v1"></script>
+  <script src="../../supabase/supabase-config.js?v=20260917d"></script>
+  <script src="worship-ppt-supabase.js?v=20260917d"></script>
+  <script src="../LKC_SundayBulletin/js/bulletin-supabase.js?v=20260917d"></script>
+  <script src="../../firebase/firebase-config-values.js?v=20260917d"></script>
+  <script src="read-api.js?v=20260917d"></script>
   <script src="vendor-jszip.min.js?v=3.10.1"></script>
-  <script src="../LKC_ppt_generator/bible-service.js"></script>
-  <script src="calendar-adapter.js?v=20260719a"></script>
-  <script src="pptx-library.js?v=20260914a"></script>
-  <script src="slide-production.js?v=20260812a"></script>
-  <script src="template-profiles.js?v=20260720b"></script>
-  <script src="bulletin-content.js?v=20260910a"></script>
-  <script src="source-reminders.js?v=20260719a"></script>
-  <script src="app.js?v=20260812a"></script>
-  <script src="content-generators.js?v=20260719a"></script>
-  <script src="ppt-library-integration.js?v=20260910b"></script>
-  <script src="calendar-integration.js?v=20260802b"></script>
-  <script src="ppt-format-preview.js?v=20260812a"></script>
-  <script src="fixed-page-editor.js?v=20260719a"></script>
-  <script src="production-editor.js?v=20260719a"></script>
-  <script src="bulletin-integration.js?v=20260719a"></script>
-  <script src="layout-cloud-store.js?v=20260720b"></script>
-  <script src="layout-groups.js?v=20260720b"></script>
-  <script src="ppt-export.js?v=20260812a"></script>
+  <script src="../LKC_ppt_generator/bible-service.js?v=20260917d"></script>
+  <script src="calendar-adapter.js?v=20260917d"></script>
+  <script src="pptx-library.js?v=20260918a"></script>
+  <script src="slide-production.js?v=20260918a"></script>
+  <script src="template-profiles.js?v=20260918a"></script>
+  <script src="bulletin-content.js?v=20260918a"></script>
+  <script src="source-reminders.js?v=20260918a"></script>
+  <script src="app.js?v=20260918a"></script>
+  <script src="content-generators.js?v=20260918a"></script>
+  <script src="ppt-library-integration.js?v=20260918a"></script>
+  <script src="calendar-integration.js?v=20260918a"></script>
+  <script src="ppt-format-preview.js?v=20260918a"></script>
+  <script src="fixed-page-editor.js?v=20260918a"></script>
+  <script src="production-editor.js?v=20260918a"></script>
+  <script src="bulletin-integration.js?v=20260918a"></script>
+  <script src="layout-cloud-store.js?v=20260918a"></script>
+  <script src="layout-groups.js?v=20260918a"></script>
+  <script src="native-pptx.js?v=20260918a"></script>
+  <script src="ppt-export.js?v=20260918a"></script>
   <script>
       const globalHymnOpacitySync = document.getElementById('sync-hymn-opacity-global');
       if (globalHymnOpacitySync) globalHymnOpacitySync.onchange = event => {

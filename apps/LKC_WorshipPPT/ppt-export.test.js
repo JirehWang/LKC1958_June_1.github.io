@@ -504,16 +504,20 @@ test('keeps praise and sermon title pages vertically centered and identical to t
     serviceDate: '2026-07-19'
   });
 
-  assert.deepEqual(slides[0].texts.map(item => item.text), ['讚美', '新的事將要成就\n聖歌隊']);
+  assert.deepEqual(slides[0].texts.map(item => item.text), ['讚美', '新的事將要成就', '聖歌隊']);
   assert.deepEqual(slides[1].texts.map(item => item.text), ['講道：建造百倍成長的生命', '陳志聰牧師\n路加福音八章']);
-  slides.forEach(slide => {
-    const groupTop = slide.texts[0].opts.y;
-    const groupBottom = slide.texts[1].opts.y + slide.texts[1].opts.h;
-    assert.ok(Math.abs((groupTop + groupBottom) / 2 - 3.75) < 0.01);
-    assert.equal(slide.texts[1].opts.fontSize, 36);
-    assert.equal(slide.texts[1].opts.valign, 'top');
-  });
-  assert.equal(slides[1].texts[1].opts.h, slides[0].texts[1].opts.h);
+  const praiseTop = slides[0].texts[0].opts.y;
+  const praiseBottom = slides[0].texts[2].opts.y + slides[0].texts[2].opts.h;
+  assert.ok(Math.abs((praiseTop + praiseBottom) / 2 - 3.75) < 0.01);
+  assert.equal(slides[0].texts[1].opts.fontSize, 36);
+  assert.equal(slides[0].texts[2].opts.fontSize, 36);
+
+  const sermonTop = slides[1].texts[0].opts.y;
+  const sermonBottom = slides[1].texts[1].opts.y + slides[1].texts[1].opts.h;
+  assert.ok(Math.abs((sermonTop + sermonBottom) / 2 - 3.75) < 0.01);
+  assert.equal(slides[1].texts[1].opts.fontSize, 36);
+  assert.equal(slides[1].texts[1].opts.valign, 'top');
+  assert.equal(slides[1].texts[1].opts.h, slides[0].texts[1].opts.h + slides[0].texts[2].opts.h);
 
   const previewSource = fs.readFileSync(path.join(__dirname, 'ppt-format-preview.js'), 'utf8');
   assert.match(previewSource, /item\.type === 'sermon'.*composeSermonPages/s);
@@ -725,4 +729,86 @@ test('deduplicates identical PPTX media without changing slide relationships', a
   assert.equal(result.removed, 1);
   assert.equal(entries.has('ppt/media/image2.png'), false);
   assert.match(entries.get('ppt/slides/_rels/slide1.xml.rels'), /Target="\.\.\/media\/image1\.png"/);
+});
+
+test('exports car-notice slide when includeInExport is true and excludes it when false', async () => {
+  const slides = [];
+  class MockPptx {
+    addSlide() {
+      const slide = {
+        texts: [],
+        addText(text, opts) { this.texts.push({ text, opts }); },
+        addShape() {},
+        addImage() {}
+      };
+      slides.push(slide);
+      return slide;
+    }
+    writeFile() { return Promise.resolve(); }
+  }
+
+  // 1. When included in export
+  await exportWorshipPPTX({
+    PptxGenJS: MockPptx,
+    getDeckEntries: () => [
+      { kind: 'cover', sectionId: 'cover', sectionLabel: '封面' },
+      { kind: 'car-notice', sectionId: 'car-notice', sectionLabel: '移車提醒', title: '敬請停在車道的車主儘快移車', includeInExport: true }
+    ],
+    layoutState: { groups: {}, pageAssignments: {} },
+    production: require('./slide-production.js'),
+    model: {
+      'car-notice': { title: '敬請停在車道的車主儘快移車', includeInExport: true }
+    },
+    backgroundColor: '#ffffff',
+    serviceDate: '2026-09-13'
+  });
+
+  assert.equal(slides.length, 2);
+  const carSlide = slides[1];
+  assert.equal(carSlide.texts.length, 1);
+  assert.equal(carSlide.texts[0].text, '敬請停在車道的車主儘快移車');
+  assert.equal(carSlide.texts[0].opts.fontSize, 60);
+  assert.equal(carSlide.texts[0].opts.bold, true);
+  assert.equal(carSlide.texts[0].opts.align, 'center');
+  assert.equal(carSlide.texts[0].opts.valign, 'middle');
+  assert.equal(carSlide.texts[0].opts.fontFace, 'Microsoft JhengHei');
+
+  // 2. When excluded via model.includeInExport: false
+  slides.length = 0;
+  await exportWorshipPPTX({
+    PptxGenJS: MockPptx,
+    getDeckEntries: () => [
+      { kind: 'cover', sectionId: 'cover', sectionLabel: '封面' },
+      { kind: 'car-notice', sectionId: 'car-notice', sectionLabel: '移車提醒', title: '敬請停在車道的車主儘快移車' }
+    ],
+    layoutState: { groups: {}, pageAssignments: {} },
+    production: require('./slide-production.js'),
+    model: {
+      'car-notice': { title: '敬請停在車道的車主儘快移車', includeInExport: false }
+    },
+    backgroundColor: '#ffffff',
+    serviceDate: '2026-09-13'
+  });
+
+  assert.equal(slides.length, 1);
+  assert.equal(slides[0].texts[0].text, '台語主日禮拜');
+
+  // 3. When excluded via entry.includeInExport: false
+  slides.length = 0;
+  await exportWorshipPPTX({
+    PptxGenJS: MockPptx,
+    getDeckEntries: () => [
+      { kind: 'cover', sectionId: 'cover', sectionLabel: '封面' },
+      { kind: 'car-notice', sectionId: 'car-notice', sectionLabel: '移車提醒', title: '敬請停在車道的車主儘快移車', includeInExport: false }
+    ],
+    layoutState: { groups: {}, pageAssignments: {} },
+    production: require('./slide-production.js'),
+    model: {
+      'car-notice': { title: '敬請停在車道的車主儘快移車' }
+    },
+    backgroundColor: '#ffffff',
+    serviceDate: '2026-09-13'
+  });
+
+  assert.equal(slides.length, 1);
 });

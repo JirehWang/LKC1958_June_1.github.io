@@ -253,6 +253,19 @@ test('uses an inherited slide-layout font size when a placeholder run omits sz',
   assert.deepEqual(library.inheritRunStyle({ fontSize: 48 }, 60), { fontSize: 48 });
 });
 
+test('preserves PowerPoint text auto-fit and body margins', () => {
+  const bodyProperties = {
+    childNodes: [{ nodeType: 1, localName: 'spAutoFit' }],
+    getAttribute: name => ({ wrap: 'none', lIns: '91440', tIns: '45720', rIns: '91440', bIns: '45720' }[name] || null)
+  };
+  const result = library.parseTextBodyProperties(bodyProperties, 12192000, 6858000);
+
+  assert.equal(result.autoFit, 'shape');
+  assert.equal(result.wrap, 'none');
+  assert.equal(result.fitText, true);
+  assert.deepEqual(result.textInsets, { left: 0.75, top: 0.6667, right: 0.75, bottom: 0.6667 });
+});
+
 test('rasterizes an imported library page into one transparent full-slide image', async () => {
   const calls = [];
   const context = {
@@ -292,6 +305,54 @@ test('rasterizes an imported library page into one transparent full-slide image'
   assert.equal(result[0].rasterized, true);
   assert.ok(calls.some(call => call[0] === 'drawImage'));
   assert.ok(calls.some(call => call[0] === 'fillText' && call[1] === '歌詞'));
+});
+
+test('fits imported text inside its source box before rasterizing', async () => {
+  const fills = [];
+  let currentFont = '';
+  const context = {
+    clearRect() {},
+    fillText: (text, x, y) => fills.push({ text, x, y, font: currentFont }),
+    measureText: text => {
+      const size = Number((currentFont.match(/([0-9.]+)px/) || [])[1]) || 0;
+      return { width: String(text).length * size * 1.2 };
+    },
+    set font(value) { currentFont = value; },
+    get font() { return currentFont; },
+    set fillStyle(_) {},
+    set textBaseline(_) {}
+  };
+  const canvas = {
+    width: 0,
+    height: 0,
+    getContext: () => context,
+    toDataURL: () => 'data:image/png;base64,rasterized'
+  };
+
+  await library.rasterizeImportedPages([{
+    sourceWidth: 12192000,
+    sourceHeight: 6858000,
+    objects: [{
+      type: 'text',
+      x: 10,
+      y: 10,
+      w: 10,
+      h: 12,
+      align: 'left',
+      verticalAlign: 'start',
+      fitText: true,
+      fontSize: 36,
+      runs: [{ text: '超長歌詞', fontSize: 36 }]
+    }]
+  }], {
+    width: 1600,
+    createCanvas: () => canvas
+  });
+
+  assert.equal(fills.length, 1);
+  const renderedSize = Number((fills[0].font.match(/([0-9.]+)px/) || [])[1]);
+  const renderedWidth = fills[0].text.length * renderedSize * 1.2;
+  assert.ok(fills[0].x + renderedWidth <= 320.01, 'text must stay inside the source box');
 });
 
 test('rasterizes cropped score images with Canvas source and target rectangles', async () => {
@@ -376,3 +437,12 @@ test('throws PPTX 解析元件尚未載入 when no JSZip implementation is avail
     global.JSZip = previousJSZip;
   }
 });
+
+test('resolves relative and root-relative OPC part paths correctly', () => {
+  assert.equal(library.resolvePartPath('ppt/slides/slide1.xml', '../slideLayouts/slideLayout1.xml'), 'ppt/slideLayouts/slideLayout1.xml');
+  assert.equal(library.resolvePartPath('ppt/slides/slide1.xml', '/ppt/slideLayouts/slideLayout14.xml'), 'ppt/slideLayouts/slideLayout14.xml');
+  assert.equal(library.resolvePartPath('ppt/presentation.xml', '/ppt/slides/slide1.xml'), 'ppt/slides/slide1.xml');
+  assert.equal(library.resolvePartPath('ppt/presentation.xml', 'ppt/slides/slide1.xml'), 'ppt/slides/slide1.xml');
+  assert.equal(library.resolvePartPath('ppt/presentation.xml', 'slides/slide1.xml'), 'ppt/slides/slide1.xml');
+});
+

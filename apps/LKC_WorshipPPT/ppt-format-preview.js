@@ -41,6 +41,7 @@ function slidePages(item, sectionId) {
   if (item.type === 'hymn') return [{ kind:'section' }, { kind:'score' }];
   if (item.type === 'fixed-title') return item.includeSectionTitle === false ? [{ kind:'score' }] : [{ kind:'section' }, { kind:'score' }];
   if (item.type === 'title') return [{ kind:'section' }];
+  if (item.type === 'car-notice') return [{ kind:'car-notice', title: item.title || '敬請停在車道的車主儘快移車' }];
   return [{ kind:'content', body:item.body || '' }];
 }
 preview = function() {
@@ -50,7 +51,8 @@ preview = function() {
   const page = pages[previewPage];
   const frame = document.querySelector('.slide-frame');
   const background = document.querySelector('.slide-background');
-  document.getElementById('preview-name').textContent = item.label;
+  const exportSuffix = item && item.includeInExport === false ? '（不匯出）' : '';
+  document.getElementById('preview-name').textContent = `${item.label}${exportSuffix}`;
   document.getElementById('slide-count').textContent = `${previewPage + 1} / ${pages.length}`;
   const isDarkTemplatePage = page.kind === 'offering-guide' || page.kind === 'thanksgiving';
   const applyBackground = page.applyBackground !== false;
@@ -108,9 +110,8 @@ preview = function() {
     content.innerHTML = `<div class="body">${safeHtml(page.body)}</div><h1>${title}</h1>`;
   }
   else if (page.kind === 'praise-title') {
-    const details = [page.title || item.title, page.kicker || item.kicker].filter(Boolean).join('\n');
     content.className = 'slide-content template-section';
-    content.innerHTML = `<h1>讚美</h1><div class="body">${safeHtml(details)}</div>`;
+    content.innerHTML = `<h1>讚美</h1><div class="body body-primary">${safeHtml(page.title || item.title || '')}</div><div class="body-secondary">${safeHtml(page.kicker || item.kicker || '')}</div>`;
   }
   else if (page.kind === 'sermon-title') {
     const sermonTitle = ['講道', page.title || item.title].filter(Boolean).join('：');
@@ -120,6 +121,10 @@ preview = function() {
   }
   else if (page.kind === 'praise-lyrics') content.className = 'slide-content template-praise', content.innerHTML = `<div class="body">${safeHtml(page.body)}</div>`;
   else if (page.kind === 'score') content.className = `slide-content template-score${hasHymnWhiteOverlay ? ' has-hymn-white-overlay' : ''}`, content.innerHTML = `<h1>${title}</h1><p>${kicker}</p><div class="score-slot"></div>`;
+  else if (page.kind === 'car-notice') {
+    content.className = 'slide-content template-section without-subtitle template-car-notice';
+    content.innerHTML = `<h1>${title}</h1>`;
+  }
   else {
     const subtitles = { '會前領唱':'請準備心今天的禮拜', '靜默一分鐘':'請將手機關機或靜音', '後奏':'請後奏結束後再起身或交談', '平安禮':'請兄弟姊妹互相行平安禮' };
     content.className = 'slide-content template-section';

@@ -8,9 +8,9 @@
 
   function isRetryablePptError(error) {
     if (!error) return false;
-    if (['TIMEOUT', 'GAS_TIMEOUT', 'INVALID_RESPONSE'].includes(error.type)) return true;
+    if (['TIMEOUT', 'GAS_TIMEOUT', 'INVALID_RESPONSE', 'GAS_HTML_ERROR'].includes(error.type)) return true;
     const message = String(error.message || error).toLowerCase();
-    return /逾時|timeout|timed out|failed to fetch|network|(?:^|[^a-z])load failed|無法連線|not valid json|gas/.test(message);
+    return /逾時|timeout|timed out|failed to fetch|network|(?:^|[^a-z])load failed|無法連線|not valid json|gas|html/.test(message);
   }
 
   function waitForPptRetry() {
@@ -27,10 +27,16 @@
     for (let attempt = 1; attempt <= PPT_MAX_ATTEMPTS; attempt += 1) {
       try {
         const pages = await library.downloadAndParse(entry, window.JSZip, window.worshipReadAPI);
-        return await library.rasterizeImportedPages(
-          pages,
-          entry.kind === 'response' ? { titleVerticalAlign: 'center' } : {}
-        );
+        const nativeExport = entry.kind === 'hymn' || entry.kind === 'response';
+        let previewPages;
+        try {
+          previewPages = await library.rasterizeImportedPages(pages);
+        } catch (error) {
+          if (!nativeExport) throw error;
+          // Preview support must not prevent exporting a valid original deck.
+          previewPages = pages.map(page => ({ ...page, previewError: String(error.message || error) }));
+        }
+        return previewPages.map(page => ({ ...page, nativeExport }));
       } catch (error) {
         lastError = error;
         if (attempt >= PPT_MAX_ATTEMPTS || !isRetryablePptError(error)) throw error;
@@ -118,7 +124,8 @@
       item.libraryError = `資料庫找不到 ${kind === 'hymn' ? '聖詩' : '啟應文'} ${number}`;
       return { sectionId, state: 'missing', message: item.libraryError };
     }
-    if (item.libraryFileId === entry.fileId && Array.isArray(item.pptPages) && item.pptPages.length) {
+    if (item.libraryFileId === entry.fileId && Array.isArray(item.pptPages) && item.pptPages.length
+      && item.pptPages.every(page => page.nativeExport && library.getNativeSource && library.getNativeSource(page.nativeSource))) {
       return { sectionId, state: 'cached', pageCount: item.pptPages.length };
     }
     let pages;
@@ -185,6 +192,13 @@
   };
 
   window.worshipExternalPresentationsReady = Promise.resolve([]);
+
+  window.ensureNativeLibrarySources = async function() {
+    const results = await window.loadPptLibraryContent();
+    const failed = results.filter(result => ['error', 'missing'].includes(result.state));
+    if (failed.length) throw new Error(failed.map(result => result.message).join('；'));
+    return results;
+  };
 
   window.reloadCurrentPptLibrarySection = async function() {
     const result = await window.loadPptLibraryContent([active]);

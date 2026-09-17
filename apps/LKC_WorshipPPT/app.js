@@ -11,6 +11,7 @@ window.activeWorshipTemplateProfile = activeWorshipTemplateProfile;
 window.worshipDraftKey = draftKey;
 window.hymnOpacitySectionIds = hymnOpacitySectionIds;
 window.worshipTemplateAssets = {};
+window.model = model;
 document.body.dataset.template = activeTemplateId;
 
 let active = activeWorshipTemplateProfile.activeSectionId || sections[0][0];
@@ -36,6 +37,9 @@ try {
     });
     if (typeof saved.pastorPptApplyBackground === 'boolean') {
       model[id].pastorPptApplyBackground = saved.pastorPptApplyBackground;
+    }
+    if (typeof saved.includeInExport === 'boolean') {
+      model[id].includeInExport = saved.includeInExport;
     }
   });
 } catch (error) {
@@ -154,6 +158,8 @@ function editor() {
     html = `${field('講道題目', 'title', item.title)}<div class="form-row">${field('講員', 'kicker', item.kicker)}${field('經文', 'body', item.body)}</div><label class="field"><span>牧師講道 PPT（選填）</span><input id="pastor-ppt-upload" type="file" accept=".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation">${pastorPptStatus}</label><label class="field checkbox-field"><span>牧師 PPT 背景</span><span><input id="pastor-ppt-apply-background" type="checkbox" ${item.pastorPptApplyBackground !== false ? 'checked' : ''}> 套用禮拜背景</span></label>`;
   } else if (item.type === 'manual') {
     html = `${field('標題', 'title', item.title)}${field('報告內容', 'body', item.body, 'textarea', '請直接貼入報告內容。')}`;
+  } else if (item.type === 'car-notice') {
+    html = `<label class="field checkbox-field" style="margin-bottom:12px;padding:10px 12px;background:var(--card-bg,#f4f7f5);border:1px solid var(--border-color,#d3ded7);border-radius:8px;"><span>匯出設定</span><span><input id="car-notice-export-toggle" type="checkbox" ${item.includeInExport !== false ? 'checked' : ''}> 匯出 PPTX 時包含此頁</span></label>${field('提醒文字', 'title', item.title, 'text', '預設為「敬請停在車道的車主儘快移車」，可依需要自行修改')}`;
   } else {
     html = `${field('標題', 'title', item.title)}${field('副標題（選填）', 'kicker', item.kicker)}${field('內容（選填）', 'body', item.body, 'textarea')}`;
   }
@@ -167,6 +173,15 @@ function editor() {
   form.querySelectorAll('[data-key]').forEach(element => {
     element.oninput = event => { item[event.target.dataset.key] = event.target.value; preview(); };
   });
+  const carNoticeExportToggle = $('#car-notice-export-toggle');
+  if (carNoticeExportToggle) carNoticeExportToggle.onchange = event => {
+    item.includeInExport = event.target.checked;
+    const floatingExportToggle = document.getElementById('lg-car-notice-export');
+    if (floatingExportToggle) floatingExportToggle.checked = event.target.checked;
+    flow();
+    preview();
+    status(item.includeInExport ? '已設定匯出此移車提醒頁' : '已設定不匯出此移車提醒頁');
+  };
   const pastorPptUpload = $('#pastor-ppt-upload');
   if (pastorPptUpload) pastorPptUpload.onchange = handlePastorPptUpload;
   const pastorPptApplyBackground = $('#pastor-ppt-apply-background');
@@ -275,6 +290,7 @@ $('#export-ppt').onclick = async () => {
     status('正在匯出 PPTX 簡報檔…');
     await window.worshipTemplateAssetsReady;
     await (window.worshipExternalPresentationsReady || Promise.resolve([]));
+    await window.ensureNativeLibrarySources();
     await window.TaiwaneseWorshipPptExport.exportWorshipPPTX({model,backgroundColor,backgroundImage});
     status('PPTX 簡報檔已成功下載！');
   } catch (error) {

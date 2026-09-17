@@ -173,6 +173,21 @@ test('passes the entered password to Firebase Auth and keeps auth in memory', as
   const store = createLayoutCloudStore({ loadFirebase: async () => fixture.api });
 
   await assert.rejects(() => store.unlock('wrong'), /密碼錯誤/);
+
+  fixture.api.signInWithEmailAndPassword = async () => {
+    throw Object.assign(new Error('requests from referer http://127.0.0.1:8766 are blocked'), {
+      code: 'auth/requests-from-referer-http://127.0.0.1:8766-are-blocked.'
+    });
+  };
+  await assert.rejects(() => store.unlock('any'), /本機網址 \(127\.0\.0\.1\) 受到 Firebase 網域限制/);
+
+  fixture.api.signInWithEmailAndPassword = async (_auth, email, password) => {
+    if (password !== 'test-secret') throw Object.assign(new Error('wrong password'), {
+      code: 'auth/invalid-credential'
+    });
+    fixture.api.auth.currentUser = { uid: 'editor-1', email };
+    return { user: fixture.api.auth.currentUser };
+  };
   assert.equal(await store.unlock('test-secret'), true);
   assert.equal(await store.isUnlocked(), true);
 

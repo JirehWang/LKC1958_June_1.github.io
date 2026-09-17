@@ -74,7 +74,8 @@ test('defines the joint Mandarin flow from the supplied 33-slide template', () =
   assert.deepEqual(sectionIds, [
     'cover', 'silence', 'prelude', 'call', 'worship-moment', 'creed',
     'scripture', 'prayer-1', 'lord-prayer', 'sermon', 'response-song',
-    'announcements', 'offering', 'thanksgiving', 'blessing', 'peace'
+    'announcements', 'offering', 'thanksgiving', 'blessing', 'peace',
+    'car-notice'
   ]);
 
   const sourceImageSections = [
