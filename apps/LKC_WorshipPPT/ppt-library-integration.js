@@ -22,6 +22,54 @@
     return new Promise(resolve => setTimeout(resolve, delay));
   }
 
+  function extractIndexRows(result) {
+    if (Array.isArray(result)) return result;
+    if (!result || typeof result !== 'object') return null;
+
+    const candidates = [result.data, result.records, result.entries, result.items, result.rows, result.index];
+    for (const candidate of candidates) {
+      if (Array.isArray(candidate)) return candidate;
+      if (!candidate || typeof candidate !== 'object') continue;
+      for (const nestedKey of ['entries', 'items', 'rows', 'records', 'index']) {
+        if (Array.isArray(candidate[nestedKey])) return candidate[nestedKey];
+      }
+      const grouped = ['hymn', 'response']
+        .flatMap(kind => Array.isArray(candidate[kind]) ? candidate[kind] : []);
+      if (grouped.length) return grouped;
+    }
+    return null;
+  }
+
+  function normalizeIndexEntry(entry) {
+    const source = entry && typeof entry === 'object' ? entry : {};
+    const fileName = String(source.fileName || source.file_name || source.name || '').trim();
+    const fileId = source.fileId || source.file_id || source.gasFileId || source.gas_file_id || source.id;
+    let kind = String(source.kind || '').trim().toLowerCase();
+    if (!['hymn', 'response'].includes(kind)) {
+      const declaredType = String(source.type || '').trim().toLowerCase();
+      kind = ['hymn', 'response'].includes(declaredType) ? declaredType : '';
+    }
+    let number = String(source.number || source.no || source.songNumber || source.song_number || '').trim();
+    if ((!kind || !number) && library.parseLibraryFilename && fileName) {
+      for (const candidateKind of ['hymn', 'response']) {
+        const parsed = library.parseLibraryFilename(fileName, candidateKind);
+        if (parsed) {
+          kind = kind || parsed.kind;
+          number = number || parsed.number;
+          break;
+        }
+      }
+    }
+    if (!fileId || !kind || !number) return null;
+    return {
+      fileId: String(fileId),
+      kind,
+      number,
+      title: String(source.title || source.displayName || '').trim(),
+      fileName
+    };
+  }
+
   async function downloadAndRasterize(entry) {
     let lastError;
     for (let attempt = 1; attempt <= PPT_MAX_ATTEMPTS; attempt += 1) {
@@ -50,8 +98,9 @@
     if (!indexPromise) {
       indexPromise = (async function() {
         const result = await window.worshipReadAPI('cal_getPptLibraryIndex', {});
-        if (!result || !Array.isArray(result.data)) throw new Error('PPT 資料庫索引格式不正確');
-        return result.data;
+        const rows = extractIndexRows(result);
+        if (!rows) throw new Error('PPT 資料庫索引格式不正確');
+        return rows.map(normalizeIndexEntry).filter(Boolean);
       })().catch(error => {
         indexPromise = null;
         throw error;

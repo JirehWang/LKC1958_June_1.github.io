@@ -61,6 +61,7 @@ test('does not fall back to direct POST after a JSONP timeout', async () => {
     ensureAPIReady: global.ensureAPIReady,
     churchAPI: global.churchAPI,
     GAS_URL: global.GAS_URL,
+    LKC_WORSHIP_PPT_LIBRARY_GAS_URL: global.LKC_WORSHIP_PPT_LIBRARY_GAS_URL,
     AUTH_TOKEN: global.AUTH_TOKEN,
     location: global.location,
     document: global.document,
@@ -76,6 +77,7 @@ test('does not fall back to direct POST after a JSONP timeout', async () => {
     return { success: true, data: [{ fileId: 'wrong-fallback' }] };
   };
   global.GAS_URL = 'https://script.google.com/macros/s/example/exec';
+  global.LKC_WORSHIP_PPT_LIBRARY_GAS_URL = 'https://script.google.com/macros/s/library/exec';
   global.AUTH_TOKEN = 'ChurchApp-2026';
   global.location = { protocol: 'https:', hostname: 'jirehwang.github.io' };
   global.LKC_JSONP_TIMEOUT_MS = 5;
@@ -166,20 +168,201 @@ test('uses JSONP on GitHub Pages and falls back after invalid JSON POST response
     head: {
       appendChild(script) {
         const callback = new URL(script.src).searchParams.get('callback');
-        queueMicrotask(() => global[callback]({ success: true, data: [{ fileId: 'fallback' }] }));
+        queueMicrotask(() => global[callback]({ success: true, data: ['fallback'] }));
       }
     }
   };
 
   try {
-    const result = await read('cal_getPptLibraryIndex', {});
-    assert.deepEqual(result, { success: true, data: [{ fileId: 'fallback' }] });
+    const result = await read('cal_getEvents', {});
+    assert.deepEqual(result, { success: true, data: ['fallback'] });
     assert.equal(churchApiCalls, 0);
 
     global.location = { protocol: 'https:', hostname: 'example.com' };
-    const fallbackResult = await read('cal_getPptLibraryIndex', {});
-    assert.deepEqual(fallbackResult, { success: true, data: [{ fileId: 'fallback' }] });
+    const fallbackResult = await read('cal_getEvents', {});
+    assert.deepEqual(fallbackResult, { success: true, data: ['fallback'] });
     assert.equal(churchApiCalls, 1);
+  } finally {
+    Object.assign(global, previous);
+  }
+});
+
+test('uses Supabase for the PPT Library index and GAS for PPTX bytes', async () => {
+  const previous = {
+    WorshipPptSupabaseService: global.WorshipPptSupabaseService,
+    ensureAPIReady: global.ensureAPIReady,
+    churchAPI: global.churchAPI,
+    GAS_URL: global.GAS_URL,
+    LKC_WORSHIP_PPT_LIBRARY_GAS_URL: global.LKC_WORSHIP_PPT_LIBRARY_GAS_URL,
+    AUTH_TOKEN: global.AUTH_TOKEN,
+    location: global.location,
+    document: global.document
+  };
+  const directEndpoints = [];
+  const jsonpEndpoints = [];
+  let supabaseIndexCalls = 0;
+  global.WorshipPptSupabaseService = {
+    async cal_getPptLibraryIndex() {
+      supabaseIndexCalls += 1;
+      return { success: true, data: [{ fileId: 'library-entry' }] };
+    }
+  };
+  global.ensureAPIReady = async () => {};
+  global.churchAPI = async action => {
+    directEndpoints.push(action);
+    return { success: true, records: [{ text: 'main-gas' }] };
+  };
+  global.GAS_URL = 'https://script.google.com/macros/s/unified-main/exec';
+  global.LKC_WORSHIP_PPT_LIBRARY_GAS_URL = 'https://script.google.com/macros/s/master-schedule/exec';
+  global.AUTH_TOKEN = 'ChurchApp-2026';
+  global.location = { protocol: 'https:', hostname: 'example.com' };
+  global.document = {
+    createElement() {
+      return { remove() {} };
+    },
+    head: {
+      appendChild(script) {
+        const url = new URL(script.src);
+        jsonpEndpoints.push({ action: url.searchParams.get('action'), endpoint: url.origin + url.pathname });
+        const callback = url.searchParams.get('callback');
+        queueMicrotask(() => global[callback]({ success: true, data: { base64: 'payload' } }));
+      }
+    }
+  };
+
+  try {
+    const index = await read('cal_getPptLibraryIndex', {});
+    const file = await read('cal_getPptLibraryFile', { fileId: 'library-entry' });
+    const bible = await read('cal_queryBible', { book: '太', chap: 13, sec: '1-2', version: 'tghg' });
+    assert.deepEqual(index, { success: true, data: [{ fileId: 'library-entry' }] });
+    assert.deepEqual(file, { success: true, data: { base64: 'payload' } });
+    assert.deepEqual(bible, { success: true, records: [{ text: 'main-gas' }] });
+    assert.equal(supabaseIndexCalls, 1);
+    assert.deepEqual(jsonpEndpoints, [{
+      action: 'cal_getPptLibraryFile',
+      endpoint: 'https://script.google.com/macros/s/master-schedule/exec'
+    }]);
+    assert.deepEqual(directEndpoints, ['cal_queryBible']);
+  } finally {
+    Object.assign(global, previous);
+  }
+});
+
+test('uses the same PPT Library GAS bridge for index fallback and file retrieval', async () => {
+  const previous = {
+    WorshipPptSupabaseService: global.WorshipPptSupabaseService,
+    GAS_URL: global.GAS_URL,
+    LKC_WORSHIP_PPT_LIBRARY_GAS_URL: global.LKC_WORSHIP_PPT_LIBRARY_GAS_URL,
+    AUTH_TOKEN: global.AUTH_TOKEN,
+    location: global.location,
+    document: global.document
+  };
+  const jsonpRequests = [];
+  global.WorshipPptSupabaseService = {
+    async cal_getPptLibraryIndex() { return null; }
+  };
+  global.GAS_URL = 'https://script.google.com/macros/s/unified-main/exec';
+  global.LKC_WORSHIP_PPT_LIBRARY_GAS_URL = 'https://script.google.com/macros/s/ppt-library/exec';
+  global.AUTH_TOKEN = 'ChurchApp-2026';
+  global.location = { protocol: 'https:', hostname: 'example.com' };
+  global.document = {
+    createElement() { return { remove() {} }; },
+    head: {
+      appendChild(script) {
+        const url = new URL(script.src);
+        const callback = url.searchParams.get('callback');
+        jsonpRequests.push({
+          action: url.searchParams.get('action'),
+          endpoint: url.origin + url.pathname,
+          data: JSON.parse(url.searchParams.get('data'))
+        });
+        queueMicrotask(() => global[callback](
+          jsonpRequests.at(-1).action === 'cal_getPptLibraryIndex'
+            ? { success: true, data: [{ fileId: 'library-entry', kind: 'hymn', number: '247' }] }
+            : { success: true, data: { base64: 'payload' } }
+        ));
+      }
+    }
+  };
+
+  try {
+    const index = await read('cal_getPptLibraryIndex', {});
+    const file = await read('cal_getPptLibraryFile', { fileId: index.data[0].fileId });
+    assert.equal(file.data.base64, 'payload');
+    assert.deepEqual(jsonpRequests, [
+      {
+        action: 'cal_getPptLibraryIndex',
+        endpoint: 'https://script.google.com/macros/s/ppt-library/exec',
+        data: {}
+      },
+      {
+        action: 'cal_getPptLibraryFile',
+        endpoint: 'https://script.google.com/macros/s/ppt-library/exec',
+        data: { fileId: 'library-entry' }
+      }
+    ]);
+  } finally {
+    Object.assign(global, previous);
+  }
+});
+
+test('uses the CORS-enabled GAS JSONP payload through fetch in a browser', async () => {
+  const previous = {
+    window: global.window,
+    fetch: global.fetch,
+    WorshipPptSupabaseService: global.WorshipPptSupabaseService,
+    GAS_URL: global.GAS_URL,
+    LKC_WORSHIP_PPT_LIBRARY_GAS_URL: global.LKC_WORSHIP_PPT_LIBRARY_GAS_URL,
+    AUTH_TOKEN: global.AUTH_TOKEN,
+    location: global.location,
+    document: global.document
+  };
+  global.window = global;
+  global.WorshipPptSupabaseService = undefined;
+  global.GAS_URL = 'https://script.google.com/macros/s/unified-main/exec';
+  global.LKC_WORSHIP_PPT_LIBRARY_GAS_URL = 'https://script.google.com/macros/s/ppt-library/exec';
+  global.AUTH_TOKEN = 'ChurchApp-2026';
+  global.location = { protocol: 'http:', hostname: 'localhost' };
+  global.document = {
+    createElement() {
+      throw new Error('script JSONP should be the fallback, not the first transport');
+    }
+  };
+  global.fetch = async requestUrl => {
+    const callback = new URL(requestUrl).searchParams.get('callback');
+    return {
+      ok: true,
+      text: async () => `${callback}(${JSON.stringify({ success: true, data: { base64: 'fetch-payload' } })});`
+    };
+  };
+
+  try {
+    const result = await read('cal_getPptLibraryFile', { fileId: 'library-entry' });
+    assert.deepEqual(result, { success: true, data: { base64: 'fetch-payload' } });
+  } finally {
+    if (previous.window === undefined) delete global.window;
+    else global.window = previous.window;
+    Object.assign(global, previous);
+  }
+});
+
+test('does not silently send a PPT Library action to the main GAS when its bridge is missing', async () => {
+  const previous = {
+    WorshipPptSupabaseService: global.WorshipPptSupabaseService,
+    GAS_URL: global.GAS_URL,
+    LKC_WORSHIP_PPT_LIBRARY_GAS_URL: global.LKC_WORSHIP_PPT_LIBRARY_GAS_URL
+  };
+  global.WorshipPptSupabaseService = {
+    async cal_getPptLibraryIndex() { return null; }
+  };
+  global.GAS_URL = 'https://script.google.com/macros/s/unified-main/exec';
+  delete global.LKC_WORSHIP_PPT_LIBRARY_GAS_URL;
+
+  try {
+    await assert.rejects(
+      read('cal_getPptLibraryIndex', {}),
+      /PPT Library GAS 備援網址尚未就緒/
+    );
   } finally {
     Object.assign(global, previous);
   }
@@ -214,14 +397,14 @@ test('falls back to JSONP when churchAPI throws GAS_HTML_ERROR', async () => {
     head: {
       appendChild(script) {
         const callback = new URL(script.src).searchParams.get('callback');
-        queueMicrotask(() => global[callback]({ success: true, data: { base64: 'payload' } }));
+        queueMicrotask(() => global[callback]({ success: true, data: ['fallback'] }));
       }
     }
   };
 
   try {
-    const result = await read('cal_getPptLibraryFile', { fileId: 'test-id' });
-    assert.deepEqual(result, { success: true, data: { base64: 'payload' } });
+    const result = await read('cal_getEvents', { startDate: '2026-09-20', endDate: '2026-09-20' });
+    assert.deepEqual(result, { success: true, data: ['fallback'] });
     assert.equal(churchApiCalls, 1);
   } finally {
     Object.assign(global, previous);

@@ -224,6 +224,7 @@ test('index.html includes vendor-jszip before pptx-library.js', () => {
   assert.ok(jszipIndex !== -1, 'vendor-jszip.min.js must be present in index.html');
   assert.ok(pptxLibraryIndex !== -1, 'pptx-library.js must be present in index.html');
   assert.ok(jszipIndex < pptxLibraryIndex, 'vendor-jszip.min.js must be loaded before pptx-library.js');
+  assert.match(indexHtml, /ppt-library-integration\.js\?v=20260918b/);
 });
 
 test('retries a GAS_HTML_ERROR PPTX once and recovers if second attempt succeeds', async () => {
@@ -251,5 +252,29 @@ test('retries a GAS_HTML_ERROR PPTX once and recovers if second attempt succeeds
   assert.equal(attempt, 2);
   assert.equal(result[0].state, 'loaded');
   assert.equal(model['prayer-song'].pptPages[0].objects[0].text, 'recovered');
+});
+
+test('accepts the legacy GAS index envelope and normalizes snake_case file metadata', async () => {
+  const { window, model, requestedEntries } = loadIntegration({
+    librarySections: [['prayer-song', 'hymn']]
+  }, {}, {
+    worshipReadAPI: async () => ({
+      success: true,
+      records: [{
+        kind: 'hymn',
+        number: '261',
+        file_id: 'file-261',
+        title: '祈禱詩',
+        file_name: '第261首 祈禱詩.pptx'
+      }]
+    }),
+    downloadAndParse: async entry => [{ objects: [{ type: 'text', text: entry.fileId }] }]
+  });
+
+  const result = await window.loadPptLibraryContent(['prayer-song']);
+
+  assert.equal(result[0].state, 'loaded');
+  assert.equal(requestedEntries[0].fileId, 'file-261');
+  assert.equal(model['prayer-song'].pptPages[0].objects[0].text, 'file-261');
 });
 

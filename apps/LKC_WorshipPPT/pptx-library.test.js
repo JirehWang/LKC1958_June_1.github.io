@@ -159,7 +159,7 @@ test('resolves PowerPoint theme text colors so responsive-reading roles stay dis
   assert.equal(library.resolveSchemeColor('tx2', theme, colorMap), '#0E2841');
 });
 
-test('prefers a Firebase Storage download URL over the GAS Base64 endpoint', async () => {
+test('uses the GAS file bridge even when the index has a storage reference', async () => {
   const previousFetch = global.fetch;
   let fetchedUrl = '';
   let gasCalls = 0;
@@ -173,11 +173,14 @@ test('prefers a Firebase Storage download URL over the GAS Base64 endpoint', asy
       library.downloadAndParse(
         { fileId: 'h65', downloadUrl: 'https://firebasestorage.googleapis.com/example.pptx' },
         jszip,
-        async () => { gasCalls += 1; throw new Error('GAS must not run'); }
+        async () => {
+          gasCalls += 1;
+          return { data: { base64: Buffer.from([80, 75, 3, 4]).toString('base64') } };
+        }
       )
     );
-    assert.equal(fetchedUrl, 'https://firebasestorage.googleapis.com/example.pptx');
-    assert.equal(gasCalls, 0);
+    assert.equal(fetchedUrl, '');
+    assert.equal(gasCalls, 1);
   } finally {
     global.fetch = previousFetch;
   }
@@ -210,6 +213,37 @@ test('routes Google Drive download URLs through the GAS Base64 proxy', async () 
     assert.equal(gasCalls, 1);
   } finally {
     global.fetch = previousFetch;
+  }
+});
+
+test('does not use an indexed Storage URL in the browser when the GAS file bridge fails', async () => {
+  const previousFetch = global.fetch;
+  const previousWindow = global.window;
+  const fetchedUrls = [];
+  global.fetch = async url => {
+    fetchedUrls.push(url);
+    throw new Error('Storage URL must not be fetched in browser');
+  };
+  global.window = { document: {} };
+  const jszip = { loadAsync: async () => { throw new Error('parser must not run'); } };
+  try {
+    await assert.rejects(
+      library.downloadAndParse(
+        { fileId: 'h65', storageUrl: 'https://firebasestorage.googleapis.com/example.pptx' },
+        jszip,
+        async () => {
+          const error = new Error('GAS bridge unavailable');
+          error.type = 'INVALID_RESPONSE';
+          throw error;
+        }
+      ),
+      /GAS bridge unavailable/
+    );
+    assert.deepEqual(fetchedUrls, []);
+  } finally {
+    global.fetch = previousFetch;
+    if (previousWindow === undefined) delete global.window;
+    else global.window = previousWindow;
   }
 });
 
@@ -445,4 +479,3 @@ test('resolves relative and root-relative OPC part paths correctly', () => {
   assert.equal(library.resolvePartPath('ppt/presentation.xml', 'ppt/slides/slide1.xml'), 'ppt/slides/slide1.xml');
   assert.equal(library.resolvePartPath('ppt/presentation.xml', 'slides/slide1.xml'), 'ppt/slides/slide1.xml');
 });
-

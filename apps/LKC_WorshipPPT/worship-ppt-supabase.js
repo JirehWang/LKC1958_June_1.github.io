@@ -22,6 +22,21 @@
     return null;
   }
 
+  function normalizePptLibraryEntry(row) {
+    const source = row && typeof row === 'object' ? row : {};
+    const fileId = source.fileId || source.file_id || source.gasFileId || source.gas_file_id || source.sourceFileId || source.source_file_id;
+    const kind = String(source.kind || '').trim();
+    const number = String(source.number || '').trim();
+    if (!fileId || !kind || !number) return null;
+    return {
+      fileId: String(fileId),
+      kind,
+      number,
+      title: String(source.title || '').trim(),
+      fileName: String(source.fileName || source.file_name || '').trim()
+    };
+  }
+
   const WorshipPptSupabaseService = {
     // ── 1. 行事曆主日講道事件查詢 (cal_getEvents) ────────────────
     async cal_getEvents(data = {}) {
@@ -103,7 +118,26 @@
       };
     },
 
-    // ── 2. 雲端版面讀取 (loadLayout) ─────────────────────────────
+    // ── 2. PPT Library 索引查詢 ──────────────────────────────────
+    // Supabase 只保存檔案索引與 fileId，不保存 PPTX 二進位內容。
+    // 沒有可用索引時回傳 null，讓 read-api.js 轉交 GAS 索引備援。
+    async cal_getPptLibraryIndex() {
+      const sb = getSupabase();
+      if (!sb) return null;
+
+      const { data, error } = await sb
+        .from('worship_ppt_library_index')
+        .select('*')
+        .order('number', { ascending: true });
+
+      if (error) throw error;
+      const entries = (Array.isArray(data) ? data : [])
+        .map(normalizePptLibraryEntry)
+        .filter(Boolean);
+      return entries.length ? { success: true, data: entries } : null;
+    },
+
+    // ── 3. 雲端版面讀取 (loadLayout) ─────────────────────────────
     async loadLayout(templateId = 'taiwanese') {
       const sb = getSupabase();
       if (!sb) return null;
@@ -119,7 +153,7 @@
       return data.layout_state;
     },
 
-    // ── 3. 雲端版面儲存 (saveLayout) ─────────────────────────────
+    // ── 4. 雲端版面儲存 (saveLayout) ─────────────────────────────
     async saveLayout(templateId = 'taiwanese', layoutState = {}, userIdentifier = 'worship-admin') {
       const sb = getSupabase();
       if (!sb) return null;

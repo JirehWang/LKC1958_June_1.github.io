@@ -701,12 +701,8 @@
   async function downloadAndParse(entry, JSZipImplementation, readApi) {
     if (!entry || !entry.fileId) throw new Error('找不到對應的雲端 PPTX');
     const jszip = await resolveJSZip(JSZipImplementation);
-    const storageUrl = [entry.storageUrl, entry.downloadUrl].find(isFirebaseStorageUrl);
     const directUrl = entry.downloadUrl || entry.storageUrl;
     const parseOptions = { packageId: entry.fileId };
-    if (storageUrl) {
-      return fetchAndParsePptx(storageUrl, jszip, parseOptions);
-    }
 
     let proxyError = null;
     if (typeof readApi === 'function') {
@@ -727,18 +723,15 @@
     }
 
     const isBrowser = typeof window !== 'undefined' && typeof window.document !== 'undefined';
-    const isGoogleDrive = url => /drive\.(?:google|usercontent\.google)\.com/i.test(String(url || ''));
 
-    if (directUrl) {
-      if (isBrowser && isGoogleDrive(directUrl)) {
-        if (proxyError) throw proxyError;
-      } else {
-        try {
-          return await fetchAndParsePptx(directUrl, jszip, parseOptions);
-        } catch (directError) {
-          if (!proxyError) throw directError;
-          throw new Error(`PPTX 下載失敗：${directError.message}；GAS 代理：${proxyError.message}`);
-        }
+    // 瀏覽器中的 PPT Library 永遠只走 GAS file bridge。索引中的 URL 僅保留給
+    // 非瀏覽器相容工具使用，避免前端再次形成 Supabase/Storage 的第二條檔案路由。
+    if (directUrl && !isBrowser) {
+      try {
+        return await fetchAndParsePptx(directUrl, jszip, parseOptions);
+      } catch (directError) {
+        if (!proxyError) throw directError;
+        throw new Error(`PPTX 下載失敗：${directError.message}；GAS 代理：${proxyError.message}`);
       }
     }
 

@@ -20,6 +20,9 @@
     "LKC_worship":                      "https://script.google.com/macros/s/AKfycbyk_6tUucVg-U4rRQjYHvk632teZyxufDkNX_X1WRUXPMGgsTaemVXD_mv9kBDjuSwOnA/exec",
     "LKC_MasterSchedule":               "https://script.google.com/macros/s/AKfycbwiYYWgKxmLRAEaE_pbp_kWyAzlRPcwYVQfvmJVamRJvosvt5wTTkvwebbFBkP8rMqX/exec",
     "LKC_WorshipPPT":                   "https://script.google.com/macros/s/AKfycbxBOFeLiXu23kBMGU8iSvRyJci6fruTfk7HdahhcQFY777sCPSgasuNM7Z1CeuzuS-r/exec",
+    // 禮拜 PPT Library 唯讀橋接：只處理 index fallback 與 fileId -> PPTX binary，
+    // 不代表 Supabase 儲存 PPTX，也不應被主行事曆／聖經 action 共用。
+    "LKC_WorshipPPT_LIBRARY":            "https://script.google.com/macros/s/AKfycbwiYYWgKxmLRAEaE_pbp_kWyAzlRPcwYVQfvmJVamRJvosvt5wTTkvwebbFBkP8rMqX/exec",
     "LKC_PrayerPPT":                    "https://script.google.com/macros/s/AKfycbxBOFeLiXu23kBMGU8iSvRyJci6fruTfk7HdahhcQFY777sCPSgasuNM7Z1CeuzuS-r/exec",
     "LKC_MinistrySchedule":             "https://script.google.com/macros/s/AKfycbxBOFeLiXu23kBMGU8iSvRyJci6fruTfk7HdahhcQFY777sCPSgasuNM7Z1CeuzuS-r/exec",
     "LKC_Group":                        "https://script.google.com/macros/s/AKfycbxBOFeLiXu23kBMGU8iSvRyJci6fruTfk7HdahhcQFY777sCPSgasuNM7Z1CeuzuS-r/exec",
@@ -111,6 +114,10 @@
   } else {
     window.GAS_URL = _URL_ROUTER[currentKey];
     console.log(`✅ [${currentKey}] 中央路由系統已就緒`);
+  }
+
+  if (window._WORSHIP_PPT_LIBRARY_GAS_KEY && _URL_ROUTER[window._WORSHIP_PPT_LIBRARY_GAS_KEY]) {
+    window.LKC_WORSHIP_PPT_LIBRARY_GAS_URL = _URL_ROUTER[window._WORSHIP_PPT_LIBRARY_GAS_KEY];
   }
 
   // Phase 2 browser observability：中央 config 頁面保留既有 API logger，

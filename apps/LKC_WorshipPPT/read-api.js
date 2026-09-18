@@ -13,6 +13,15 @@
     'cal_getPptLibraryFile',
     'cal_queryBible'
   ]);
+  const PPT_LIBRARY_ACTIONS = new Set([
+    'cal_getPptLibraryIndex',
+    'cal_getPptLibraryFile'
+  ]);
+
+  function endpointForAction(action) {
+    if (PPT_LIBRARY_ACTIONS.has(action)) return root.LKC_WORSHIP_PPT_LIBRARY_GAS_URL || null;
+    return root.GAS_URL;
+  }
 
   function buildJsonpUrl(endpoint, action, data, token, callbackName) {
     const url = new URL(endpoint);
@@ -76,6 +85,37 @@
     });
   }
 
+  function parseJsonpPayload(body, callbackName) {
+    const text = String(body || '').trim();
+    if (text.startsWith('{')) return JSON.parse(text);
+    const prefix = `${callbackName}(`;
+    const start = text.indexOf(prefix);
+    const end = text.lastIndexOf(')');
+    if (start < 0 || end <= start) {
+      const error = new Error('GAS 回應不是可解析的 JSONP');
+      error.type = 'INVALID_RESPONSE';
+      throw error;
+    }
+    return JSON.parse(text.slice(start + prefix.length, end).replace(/;\s*$/, '').trim());
+  }
+
+  async function fetchJsonp(endpoint, action, data, token) {
+    if (typeof root.fetch !== 'function') throw new Error('瀏覽器 fetch 尚未載入');
+    const callbackName = `__lkcWorshipFetch_${Date.now()}_${++callbackSequence}`;
+    const response = await root.fetch(
+      buildJsonpUrl(endpoint, action, data, token, callbackName),
+      { credentials: 'omit' }
+    );
+    if (!response || !response.ok) {
+      const error = new Error(`GAS 回傳 HTTP ${response && response.status || 0}`);
+      error.type = 'INVALID_RESPONSE';
+      throw error;
+    }
+    const result = parseJsonpPayload(await response.text(), callbackName);
+    if (result && result.success === false) throw new Error(result.message || '雲端資料讀取失敗');
+    return result;
+  }
+
   function isGithubPages() {
     const hostname = String(root.location && root.location.hostname || '').toLowerCase();
     return hostname === 'github.io' || hostname.endsWith('.github.io');
@@ -99,6 +139,10 @@
     return /timeout|timed out|逾時/i.test(String(error.message || error));
   }
 
+  function isBrowserWindow() {
+    return typeof root.window !== 'undefined' && root.window === root;
+  }
+
   async function read(action, data) {
     if (root.WorshipPptSupabaseService && typeof root.WorshipPptSupabaseService[action] === 'function') {
       try {
@@ -109,19 +153,36 @@
       }
     }
 
-    if (!root.GAS_URL) throw new Error('行事曆雲端網址尚未就緒');
-    const useJsonpFirst = shouldPreferJsonp(action);
+    const endpoint = endpointForAction(action);
+    if (!endpoint) {
+      throw new Error(PPT_LIBRARY_ACTIONS.has(action)
+        ? 'PPT Library GAS 備援網址尚未就緒'
+        : '行事曆雲端網址尚未就緒');
+    }
+    // PPT Library 是獨立的唯讀 GAS 橋接服務；不要用 URL 相等與否推斷路由，
+    // 否則未來兩個部署暫時共用網址時，索引／檔案可能誤落到主 GAS POST。
+    const usesDedicatedEndpoint = PPT_LIBRARY_ACTIONS.has(action);
+    const useJsonpFirst = usesDedicatedEndpoint || shouldPreferJsonp(action);
     let jsonpError = null;
+    if (usesDedicatedEndpoint && isBrowserWindow()) {
+      try {
+        // Library GAS 的 JSONP 回應允許 CORS；先用 fetch 取得同一份 payload，
+        // 可避開部分本機瀏覽器會阻擋跨來源 script tag 的情況。
+        return await fetchJsonp(endpoint, action, data || {}, root.AUTH_TOKEN || 'ChurchApp-2026');
+      } catch (error) {
+        jsonpError = error;
+      }
+    }
     if (useJsonpFirst) {
       try {
-        return await jsonp(root.GAS_URL, action, data || {}, root.AUTH_TOKEN || 'ChurchApp-2026');
+        return await jsonp(endpoint, action, data || {}, root.AUTH_TOKEN || 'ChurchApp-2026');
       } catch (error) {
         jsonpError = error;
         if (isTimeoutError(error)) throw error;
         if (root.location && root.location.protocol === 'file:') throw error;
       }
     }
-    if (!useJsonpFirst || jsonpError) {
+    if (!usesDedicatedEndpoint && (!useJsonpFirst || jsonpError)) {
       try {
         if (root.ensureAPIReady) await root.ensureAPIReady();
         if (typeof root.churchAPI === 'function') {
@@ -133,8 +194,8 @@
       }
     }
     if (jsonpError) throw jsonpError;
-    return jsonp(root.GAS_URL, action, data || {}, root.AUTH_TOKEN || 'ChurchApp-2026');
+    return jsonp(endpoint, action, data || {}, root.AUTH_TOKEN || 'ChurchApp-2026');
   }
 
-  return { buildJsonpUrl, jsonp, read };
+  return { buildJsonpUrl, jsonp, fetchJsonp, parseJsonpPayload, read };
 });

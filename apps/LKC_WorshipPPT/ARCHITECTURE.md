@@ -18,13 +18,13 @@
 - 產生固定禮文、標題頁、讚美歌詞、講道頁、報告頁及其他原生文字頁。
 - 提供整份投影片順序預覽、具名版面群組、背景、文字／圖片縮放與樂譜白底透明度設定。
 - 匯出真正的 `.pptx`，不是螢幕截圖集合。
-- 直接連接既有的行事曆、週報、PPT Library 與聖經唯讀來源；週報優先讀取 Supabase，缺資料或讀取失敗時回退既有 GAS `load`，其他 GAS POST 被 CORS 阻擋或由 `file://` 開啟時提供安全的 JSONP 回退。
+- 直接連接既有的行事曆、週報、PPT Library 與聖經唯讀來源；行事曆與 PPT Library 索引優先讀取 Supabase，缺資料或讀取失敗時回退既有 GAS。PPTX binary 一律由 Library GAS bridge 依 fileId 取回；週報優先讀取 Supabase，缺資料或讀取失敗時回退既有 GAS `load`，其他 GAS POST 被 CORS 阻擋或由 `file://` 開啟時提供安全的 JSONP 回退。
 
 目前不負責的範圍：
 
 - 不寫回行事曆、週報、聖經或 Drive 資料庫。
 - 牧師講道 PPT 僅接受瀏覽器上傳的 `.pptx`；解析時強制驗證 16:9，通過後轉成 `ppt-import` 頁面接在講道標題頁之後，並可逐頁選擇是否套用禮拜背景。
-- 不在瀏覽器端建立或管理 Drive PPTX 資料庫。
+- 不在瀏覽器端建立或管理 Drive PPTX 資料庫；瀏覽器只保存 Supabase 索引的 fileId。
 - 不在前端保存版面解鎖密碼。
 - 不建立行事曆／週報的 Firebase 內容鏡像；前端只讀既有來源 API。Firebase 僅保留版面共用設定用途。
 
@@ -36,9 +36,12 @@ flowchart LR
     UI --> Profile[template-profiles.js]
     Profile --> Model[sections + model]
 
-    Calendar[Master Schedule] --> Read[read-api.js]
+    Calendar[行事曆] --> Read[read-api.js / Supabase service]
     Bulletin[Sunday Bulletin] --> BulletinAdapter[bulletin-integration.js]
-    Drive[(Google Drive / Storage PPTX)] --> Library[pptx-library.js]
+    LibraryIndex[(Supabase PPT Library index)] --> LibraryRoute[PPT Library route]
+    LibraryRoute -->|索引缺資料| LibraryGas[GAS Library bridge]
+    LibraryGas -->|fileId| Drive[(Google Drive PPTX)]
+    LibraryGas -->|Base64 PPTX| Library[pptx-library.js]
     Bible[台語／華語聖經查詢] --> Generator[content-generators.js]
 
     Read --> CalendarAdapter[calendar-adapter.js]
@@ -249,7 +252,10 @@ sequenceDiagram
 
 WorshipPPT 不複製行事曆與週報內容到 Firebase；資料直接由既有唯讀入口取得：
 
-- 行事曆、PPT Library、聖經：`LKC_MasterSchedule` 的 `churchAPI` action。
+- 行事曆：先讀 `WorshipPptSupabaseService.cal_getEvents`，缺資料或讀取失敗時由主 GAS `LKC_WorshipPPT` 的 `churchAPI`／JSONP 備援。
+- 聖經：由主 GAS `LKC_WorshipPPT` 的 `cal_queryBible` action 讀取，沿用 `read-api.js` 的 POST／JSONP 備援。
+- PPT Library：索引先讀 Supabase `worship_ppt_library_index`；索引缺資料時才呼叫 `LKC_WorshipPPT_LIBRARY` 的 GAS bridge。索引只保存 `fileId`、類型、編號與顯示資訊，不保存 PPTX binary。
+- PPTX 檔案：取得索引 entry 後，只以 `fileId` 呼叫同一個 PPT Library GAS bridge 的 `cal_getPptLibraryFile`；瀏覽器不直接讀 Storage／Drive URL。
 - 週報報告與讚美：`SundayBulletinSupabaseService.loadReports/loadPraise` 讀取 Supabase；`bulletin-content.js` 將服務結果交給 PPT model。
 
 ### 8.2 週報回退順序
@@ -330,9 +336,10 @@ cal_queryBible({ book, chap, sec, version })
 
 ### 11.2 下載策略
 
-1. `downloadUrl`／`storageUrl` 是 Firebase Storage 或 Google Cloud Storage URL：瀏覽器直接下載 binary。
-2. 聯合華語三張固定成品頁直接載入同站 `templates/` PNG，不呼叫 GAS。
-3. 只有沒有 read API 時才嘗試 Drive usercontent URL。
+1. Supabase 索引只提供 `fileId` 與比對聖詩／啟應文的欄位，不提供 binary URL。
+2. 瀏覽器以 `cal_getPptLibraryFile({ fileId })` 呼叫 `LKC_WorshipPPT_LIBRARY` GAS bridge，再解析回傳的 Base64 PPTX。
+3. 聯合華語三張固定成品頁直接載入同站 `templates/` PNG，不呼叫 GAS。
+4. 非瀏覽器相容工具才保留 indexed Drive URL 的最後備援；瀏覽器不建立第二條 Storage／Drive 檔案路由。
 
 Drive URL不直接優先 fetch，因為 GitHub Pages 瀏覽器常受 CORS 或確認頁阻擋。
 
@@ -790,7 +797,7 @@ worshipPpt/content/services/{date}/{templateId}/praise
 - 不要在 preview 與 export 各修一次座標；修 `slide-production.js` 的 shared layout。
 - 不要為特定聖詩檔名寫裁切特例；修通用 OOXML／crop 算法並加 fixture test。
 - 不要把行事曆 `sourceValue` 當成投影片正文。
-- 不要把大型 PPTX Base64 存入 RTDB；用 Storage 或即時 GAS proxy。
+- 不要把大型 PPTX Base64 存入 Supabase／RTDB；用 Library GAS proxy 依 fileId 讀取原始檔案。
 - 不要讓 Firebase 讀取失敗阻止 GAS fallback。
 - 不要在雲端保存成功前清除 local pending。
 - 不要用每頁固定項目數處理報告。
