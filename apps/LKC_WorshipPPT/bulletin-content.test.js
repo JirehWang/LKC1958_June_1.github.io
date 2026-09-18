@@ -86,6 +86,54 @@ test('prefers the shared Sunday Bulletin Supabase service and preserves its fiel
   }
 });
 
+test('retries a stale GAS redirect with a cache-busted request', async () => {
+  const requests = [];
+  let attempt = 0;
+  const fetchImpl = async (url, options) => {
+    requests.push({ url, options });
+    attempt += 1;
+    if (attempt === 1) return { ok: false, status: 404 };
+    return {
+      ok: true,
+      async json() {
+        return {
+          success: true,
+          data: {
+            date: '2026-10-04',
+            announcements: ['GAS 備援成功'],
+            churchNews: [],
+            prayer: {}
+          }
+        };
+      }
+    };
+  };
+
+  const result = await loadCloudRecord(
+    'https://example.test/gas',
+    'reports',
+    '2026-10-04',
+    fetchImpl
+  );
+
+  assert.deepEqual(result, {
+    state: 'loaded',
+    data: {
+      date: '2026-10-04',
+      announcements: ['GAS 備援成功'],
+      churchNews: [],
+      prayer: {}
+    }
+  });
+  assert.equal(requests.length, 2);
+  assert.notEqual(
+    new URL(requests[0].url).searchParams.get('_lkc'),
+    new URL(requests[1].url).searchParams.get('_lkc')
+  );
+  assert.equal(requests[0].options.cache, 'no-store');
+  assert.equal(requests[1].options.cache, 'no-store');
+});
+
 test('keeps announcements, church news, and pastoral prayer in report-page order', () => {
   const pages = buildReportPages({
     announcements: ['消息一', '消息二', '消息三', '消息四'],

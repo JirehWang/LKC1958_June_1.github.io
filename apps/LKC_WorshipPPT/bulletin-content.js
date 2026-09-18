@@ -16,10 +16,11 @@
   });
   const SLIDE_HEIGHT_PX = 720;
 
-  function buildBulletinCloudUrl(endpoint, kind, date) {
+  function buildBulletinCloudUrl(endpoint, kind, date, requestNonce = '') {
     const prefix = kind === 'praise' ? 'praise_songs_' : 'reports_';
     const separator = String(endpoint).includes('?') ? '&' : '?';
-    return `${endpoint}${separator}action=load&key=${encodeURIComponent(prefix + clean(date))}`;
+    const nonce = clean(requestNonce) || `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    return `${endpoint}${separator}action=load&key=${encodeURIComponent(prefix + clean(date))}&_lkc=${encodeURIComponent(`bulletin_${nonce}`)}`;
   }
 
   function normalizeReports(data) {
@@ -245,13 +246,33 @@
         // Fallback to fetchImpl
       }
     }
-    const response = await fetchImpl(buildBulletinCloudUrl(endpoint, kind, date));
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const json = await response.json();
-    if (!json || json.success !== true) throw new Error(json && (json.message || json.error) || '週報服務回應無效');
-    return json.data
-      ? { state: 'loaded', data: json.data }
-      : { state: 'missing', data: null };
+    const fetchRecord = async attempt => {
+      const requestNonce = `${Date.now()}_${attempt}_${Math.random().toString(36).slice(2)}`;
+      const response = await fetchImpl(
+        buildBulletinCloudUrl(endpoint, kind, date, requestNonce),
+        { cache: 'no-store' }
+      );
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const json = await response.json();
+      if (!json || json.success !== true) {
+        throw new Error(json && (json.message || json.error) || '週報服務回應無效');
+      }
+      return json.data
+        ? { state: 'loaded', data: json.data }
+        : { state: 'missing', data: null };
+    };
+
+    try {
+      return await fetchRecord(0);
+    } catch (firstError) {
+      // Google Apps Script 的 script.googleusercontent.com redirect 可能短暫過期；
+      // 用新的 cache-busting URL 重試一次，避免把瞬時 404 當成週報不存在。
+      try {
+        return await fetchRecord(1);
+      } catch (_) {
+        throw firstError;
+      }
+    }
   }
 
   return {
