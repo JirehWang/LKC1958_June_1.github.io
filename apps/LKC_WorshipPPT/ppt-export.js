@@ -178,6 +178,8 @@
     const templateProfile = options.templateProfile || root.activeWorshipTemplateProfile || {};
     const templateAssets = options.templateAssets || root.worshipTemplateAssets || {};
     const reflowReportPagesFn = options.reflowReportPages || root.reflowReportPagesForLayout;
+    const nativePptx = options.nativePptx || root.WorshipNativePptx;
+    const pptxLibrary = options.pptxLibrary || root.TaiwaneseWorshipPptxLibrary;
     const serviceDate = options.serviceDate || (document.getElementById('service-date') && document.getElementById('service-date').value) || '';
     const outputScale = layoutState && layoutState.outputScale || {};
     const normalizeScale = value => Math.max(80, Math.min(120, Number(value) || 100));
@@ -210,6 +212,7 @@
     if (!deck || !deck.length) {
       throw new Error('沒有可匯出的投影片');
     }
+    const hasNativeEntries = deck.some(entry => entry && entry.nativeExport);
 
     const bgFill = (backgroundColor || '#ffffff').replace('#', '');
     
@@ -308,7 +311,10 @@
       const contentColor = (params.contentColor || '#111111').replace('#', '');
 
       // 4. Render Slide Content by kind
-      if (entry.kind === 'ppt-import') {
+      if (entry.nativeExport) {
+        // The original slide XML is merged back after PptxGenJS creates the
+        // surrounding package. Do not rebuild source objects from the preview.
+      } else if (entry.kind === 'ppt-import') {
         const finalObjects = getImportedSlideObjects(entry, params, production);
         finalObjects.forEach(obj => {
           if (obj.type === 'image' && obj.src) {
@@ -613,35 +619,48 @@
     if (typeof pptx.write === 'function' && typeof document !== 'undefined') {
       return pptx.write({ outputType: 'blob', compression: true }).then(async (blob) => {
         const JSZipLib = options.JSZip || root.JSZip;
-        if (JSZipLib) {
-          const zip = await JSZipLib.loadAsync(blob);
-          const files = Object.keys(zip.files);
-          for (const name of files) {
-            if (name.startsWith('ppt/slides/slide') && name.endsWith('.xml')) {
-              const originalXml = await zip.file(name).async('text');
-              const cleanedXml = cleanParagraphProperties(originalXml);
-              zip.file(name, cleanedXml);
-            }
-          }
-          await deduplicatePptxMedia(zip);
-          const cleanedBlob = await zip.generateAsync({
-            type: 'blob',
-            mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-            compression: 'DEFLATE'
-          });
-          const url = URL.createObjectURL(cleanedBlob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = fileName;
-          document.body.appendChild(a);
-          a.click();
-          setTimeout(() => {
-            URL.revokeObjectURL(url);
-            document.body.removeChild(a);
-          }, 100);
-          return;
+        if (!JSZipLib) {
+          if (hasNativeEntries) throw new Error('原生 PPTX 匯出元件尚未載入');
+          return options.returnBlob ? blob : pptx.writeFile({ fileName: fileName });
         }
-        return pptx.writeFile({ fileName: fileName });
+
+        const zip = await JSZipLib.loadAsync(blob);
+        if (hasNativeEntries) {
+          if (!nativePptx || typeof nativePptx.merge !== 'function') {
+            throw new Error('原生 PPTX 合併元件尚未載入');
+          }
+          if (!pptxLibrary || typeof pptxLibrary.getNativeSource !== 'function') {
+            throw new Error('原始 PPTX 來源尚未載入');
+          }
+          await nativePptx.merge(zip, deck, ref => pptxLibrary.getNativeSource(ref));
+        }
+
+        const files = Object.keys(zip.files);
+        for (const name of files) {
+          if (name.startsWith('ppt/slides/slide') && name.endsWith('.xml')) {
+            const originalXml = await zip.file(name).async('text');
+            const cleanedXml = cleanParagraphProperties(originalXml);
+            zip.file(name, cleanedXml);
+          }
+        }
+        await deduplicatePptxMedia(zip);
+        const cleanedBlob = await zip.generateAsync({
+          type: 'blob',
+          mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+          compression: 'DEFLATE'
+        });
+        if (options.returnBlob) return cleanedBlob;
+        const url = URL.createObjectURL(cleanedBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+          URL.revokeObjectURL(url);
+          document.body.removeChild(a);
+        }, 100);
+        return;
       });
     }
 
