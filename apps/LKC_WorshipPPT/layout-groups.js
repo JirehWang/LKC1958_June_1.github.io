@@ -12,6 +12,7 @@
   });
   let liveParams = null;
   let activeLayoutTab = 'title';
+  let activeLayoutGroupId = '';
   let layoutUnlocked = false;
   let cloudLayoutFound = false;
   let cloudLayoutLoadPromise = null;
@@ -492,7 +493,7 @@
     const groups = Object.values(layoutState.groups);
     panel.innerHTML = `<header><div><small>版面參數</small><strong>調整勾選頁面</strong></div><button type="button" id="layout-panel-close" aria-label="關閉版面參數">×</button></header>
       <p class="layout-lock-note" data-layout-lock-note>${layoutUnlocked ? '已解鎖：變更會寫入全教會共用雲端配置。' : '目前已鎖定；解鎖後才能修改全教會共用配置。'}</p>
-      <div class="floating-group-fields"><label>群組名稱<input id="layout-group-name" placeholder="例如：經文頁"></label><label>載入群組<select id="layout-group-existing"><option value="">新增群組</option>${groups.map(group => `<option value="${html(group.id)}">${html(group.name || group.id)}</option>`).join('')}</select></label></div>
+      <div class="floating-group-fields"><label>群組名稱<input id="layout-group-name" placeholder="例如：經文頁"></label><label>載入群組<select id="layout-group-existing"><option value="">新增群組</option>${groups.map(group => `<option value="${html(group.id)}" ${group.id === activeLayoutGroupId ? 'selected' : ''}>${html(group.name || group.id)}</option>`).join('')}</select></label></div>
       ${parameterFields()}
       <footer><button type="button" class="button quiet" id="layout-detach">解除群組</button><button type="button" class="button primary" id="layout-save-group">儲存參數組</button></footer>`;
 
@@ -523,7 +524,18 @@
       }
       preview();
     }));
-    document.getElementById('layout-group-existing').onchange = event => loadGroup(event.target.value);
+    document.getElementById('layout-group-existing').onchange = event => {
+      const groupId = event.target.value;
+      if (groupId) {
+        loadGroup(groupId);
+        return;
+      }
+      activeLayoutGroupId = '';
+      liveParams = null;
+      const nameInput = document.getElementById('layout-group-name');
+      if (nameInput) nameInput.value = '';
+      populateForm(canvasParams());
+    };
     document.getElementById('layout-save-group').onclick = saveGroup;
     document.getElementById('layout-detach').onclick = detachSelection;
     const floatingExportToggle = document.getElementById('lg-car-notice-export');
@@ -562,11 +574,14 @@
   }
 
   function openFloatingPanel(syncWithCanvas = true) {
+    if (syncWithCanvas) {
+      activeLayoutGroupId = '';
+      liveParams = null;
+    }
     renderFloatingPanel();
     const panel = document.getElementById('layout-floating-panel');
     panel.classList.remove('is-hidden');
     if (syncWithCanvas) {
-      liveParams = null;
       populateForm(canvasParams());
     }
   }
@@ -601,25 +616,27 @@
   function loadGroup(groupId) {
     const group = layoutState.groups[groupId];
     if (!group) return;
+    activeLayoutGroupId = groupId;
     document.getElementById('layout-group-name').value = group.name || group.id;
     pendingSelection.clear();
     group.pageIds.forEach(pageId => pendingSelection.add(pageId));
+    liveParams = { ...(group.params || {}) };
     renderDeckNavigator();
     showDeckEntry(deckEntries().find(entry => entry.id === group.pageIds[0]));
     openFloatingPanel(false);
     populateForm(group.params || {});
-    liveParams = { ...(group.params || {}) };
     preview();
   }
 
   async function saveGroup() {
     if (!layoutUnlocked) return status('版面配置已鎖定，請先輸入密碼解鎖');
     const pageIds = selectedIds();
-    const existingId = document.getElementById('layout-group-existing').value;
+    const existingId = document.getElementById('layout-group-existing').value || activeLayoutGroupId;
     const name = document.getElementById('layout-group-name').value.trim();
     if (!name || pageIds.length === 0) return status('請輸入群組名稱並勾選至少一頁');
     const group = production.createLayoutGroup(layoutState, existingId || `layout-${Date.now()}`, pageIds, paramsFromForm());
     group.name = name;
+    activeLayoutGroupId = group.id;
     if (pageIds.some(id => id.startsWith('announcements:'))) reflowReportPagesForLayout(group.params);
     liveParams = null;
     let cloudSaved = true;
@@ -633,8 +650,9 @@
       console.error('共用版面配置雲端保存失敗', error);
     }
     renderDeckNavigator();
-    renderFloatingPanel();
-    openFloatingPanel();
+    openFloatingPanel(false);
+    populateForm(group.params || {});
+    liveParams = { ...(group.params || {}) };
     preview();
     status(cloudSaved ? `已儲存全教會共用版面群組：${name}` : `雲端保存失敗：${cloudSaveError.message}；本機版面已保留，重新解鎖後會自動重試`);
   }

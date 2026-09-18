@@ -88,3 +88,17 @@ test('chapter summary navigates to first page and car-notice includes quick expo
   assert.match(source, /model\[sectionId\]\.includeInExport = /);
   assert.match(source, /id="lg-car-notice-export"/);
 });
+
+test('keeps the selected existing group while the panel is rerendered', () => {
+  assert.match(source, /let activeLayoutGroupId = ''/);
+  const panel = sourceBetween('function renderFloatingPanel()', 'function applyLayoutLockUI()');
+  assert.match(panel, /activeLayoutGroupId/);
+  assert.match(panel, /selected/);
+
+  const loadGroup = sourceBetween('function loadGroup(groupId)', 'async function saveGroup()');
+  assert.match(loadGroup, /activeLayoutGroupId = groupId/);
+
+  const saveGroup = sourceBetween('async function saveGroup()', 'async function detachSelection()');
+  assert.match(saveGroup, /const existingId = document\.getElementById\('layout-group-existing'\)\.value \|\| activeLayoutGroupId/);
+  assert.match(saveGroup, /activeLayoutGroupId = group\.id/);
+});
