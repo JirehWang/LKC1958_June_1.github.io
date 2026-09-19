@@ -98,6 +98,16 @@ test('formats abbreviated golden-verse references for calendar-style values', ()
   assert.equal(calendar.formatCalendarFieldValue('\u5ba3\u53ec', '\u592a 3:16'), '\u99ac\u592a\u798f\u97f33:16');
 });
 
+test('formats traditional Chinese aliases for First John in multi-reference input', () => {
+  const formatter = loadFormatter();
+  assert.equal(
+    formatter.format('\u7d04\u7ff0\u798f\u97f33:16\uff1b\u7d04\u58f9\u56db9~10'),
+    '\u7d04\u7ff0\u798f\u97f33:16\uff1b\u7d04\u7ff0\u4e00\u66f84:9-10'
+  );
+  assert.equal(formatter.format('\u7d04\u58f9\u66f84:9~10'), '\u7d04\u7ff0\u4e00\u66f84:9-10');
+  assert.equal(formatter.format('\u7d04\u7ff0\u58f9\u66f84:9~10'), '\u7d04\u7ff0\u4e00\u66f84:9-10');
+});
+
 test('weekly bulletin keeps both languages\' golden-verse references and fetched text', () => {
   const formatter = loadFormatter();
   const model = loadBulletinModel(formatter);
