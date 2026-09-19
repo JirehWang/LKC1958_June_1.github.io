@@ -1,5 +1,25 @@
 # LKC1958 整體系統關聯圖
 
+## GAS ↔ Supabase 年度同步稽核與 GAS 帳本（2026-09）
+
+~~~mermaid
+flowchart LR
+    Schedule["GitHub Actions<br/>reconcile-gas-supabase.yml<br/>每日 03:15 台灣時間"] --> Auditor["Node 稽核執行器<br/>scripts/reconcile-gas-supabase.js"]
+    Auditor --> MainGAS["主日出席／小組 GAS<br/>只讀 action"]
+    Auditor --> NewFamilyGAS["新家人 GAS<br/>只讀 tracking / closed"]
+    Auditor --> BulletinGAS["週報 GAS<br/>list / load"]
+    Auditor --> Supabase["Supabase<br/>只讀查詢"]
+    Auditor --> LedgerAPI["Sync Controller GAS<br/>sync_controller_gas"]
+    LedgerAPI --> LedgerSheets["Google Sheets<br/>SYNC_RUNS / SYNC_ITEMS<br/>SYNC_EVENTS / SYNC_REPAIR_QUEUE"]
+~~~
+
+- 稽核範圍預設為最近 365 個含首尾日期；會友名單與小組現況為全量快照，主日出席、新家人、週報與小組點名依日期窗查詢。
+- church_members、attendance_records、new_family_cases、groups、group_members、group_attendance_records、sunday_bulletins 與 sunday_bulletin_reports 依穩定識別鍵比對 MATCHED、單側存在、內容差異與識別錯誤。
+- 讚美詩只比對 GAS 的歌名集合與 Supabase sunday_bulletin_praise_titles 索引；歌詞與日期歌單不納入雙邊內容一致性判定。
+- Supabase 與 GAS 任一來源無法讀取時，稽核結果記為 SOURCE_UNAVAILABLE，不得推論另一側資料已刪除。
+- 稽核器只寫入 GAS 帳本，不寫入 Supabase 或業務 GAS；SYNC_REPAIR_QUEUE 只保存待人工覆核的方向與差異摘要，目前沒有自動修復／刪除執行器。
+- sync_controller_gas 的試算表是稽核紀錄的持久化位置，避免 Supabase 故障時連同步證據也遺失。正式啟用前在該 GAS 執行 bootstrapSyncLedger() 建立專用試算表、Script Properties 與欄位。
+
 ## 個人卡片分享流程（2026-07）
 
 ```mermaid

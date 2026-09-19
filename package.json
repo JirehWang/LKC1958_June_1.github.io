@@ -1,4 +1,7 @@
 {
+  "scripts": {
+    "audit:gas-supabase": "node scripts/reconcile-gas-supabase.js"
+  },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.4",
     "dotenv": "^17.4.2",

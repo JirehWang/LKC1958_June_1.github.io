@@ -1,0 +1,79 @@
+name: Audit GAS and Supabase synchronization
+
+on:
+  schedule:
+    # 每日 19:15 UTC（台灣時間隔日 03:15）稽核最近一年
+    - cron: '15 19 * * *'
+  workflow_dispatch:
+    inputs:
+      days:
+        description: '稽核天數（含首尾）'
+        required: true
+        default: '365'
+        type: string
+      from:
+        description: '起始日期 YYYY-MM-DD；留白則依 days 計算'
+        required: false
+        default: ''
+        type: string
+      to:
+        description: '結束日期 YYYY-MM-DD；留白則使用台灣今天'
+        required: false
+        default: ''
+        type: string
+      domains:
+        description: '逗號分隔資料域；留白則稽核全部資料域'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gas-supabase-reconciliation
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SYNC_LEDGER_GAS_URL: https://script.google.com/macros/s/AKfycbySKQ7JF7b1S_H7L2oPZJKOttGnEO_ZeAc8uTSd7xCCyRPa5SbL1e791BM0T0lJg33q/exec
+      SYNC_LEDGER_GAS_TOKEN: ${{ secrets.SYNC_LEDGER_GAS_TOKEN }}
+      SUNDAY_ATTENDANCE_GAS_URL: ${{ secrets.SUNDAY_ATTENDANCE_GAS_URL }}
+      SUNDAY_ATTENDANCE_GAS_TOKEN: ${{ secrets.SUNDAY_ATTENDANCE_GAS_TOKEN }}
+      NEW_FAMILY_GAS_URL: ${{ secrets.NEW_FAMILY_GAS_URL }}
+      NEW_FAMILY_GAS_TOKEN: ${{ secrets.NEW_FAMILY_GAS_TOKEN }}
+      BULLETIN_GAS_URL: ${{ secrets.BULLETIN_GAS_URL }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      GROUP_ADMIN_CODE: ${{ secrets.GROUP_ADMIN_CODE }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install audit dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Audit synchronization
+        shell: bash
+        env:
+          AUDIT_DAYS: ${{ inputs.days || '365' }}
+          AUDIT_FROM: ${{ inputs.from || '' }}
+          AUDIT_TO: ${{ inputs.to || '' }}
+          AUDIT_DOMAINS: ${{ inputs.domains || '' }}
+        run: |
+          set -euo pipefail
+          args=(--mode audit --days "$AUDIT_DAYS")
+          if [[ -n "$AUDIT_FROM" ]]; then args+=(--from "$AUDIT_FROM"); fi
+          if [[ -n "$AUDIT_TO" ]]; then args+=(--to "$AUDIT_TO"); fi
+          if [[ -n "$AUDIT_DOMAINS" ]]; then args+=(--domains "$AUDIT_DOMAINS"); fi
+          node scripts/reconcile-gas-supabase.js "${args[@]}"
