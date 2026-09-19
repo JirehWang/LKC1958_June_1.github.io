@@ -1,6 +1,21 @@
 let previewPage = 0;
 const safeHtml = value => String(value || '').replace(/[&<>]/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' })[char]);
 const safeAttr = value => safeHtml(value).replace(/"/g, '&quot;');
+function renderReportBody(page) {
+  const body = String(page.body || '');
+  if (page.listType !== 'ordered') return safeHtml(body);
+  const blocks = body.split(/\n\s*\n/).map(block => block.trim()).filter(Boolean);
+  if (!blocks.length) return '';
+  let start = 1;
+  const items = blocks.map((block, index) => {
+    const numbered = block.match(/^\s*(\d+)[.．、)]\s*(（續）)?\s*([\s\S]*)$/);
+    if (!numbered) return block;
+    if (index === 0) start = Number(numbered[1]) || 1;
+    return [numbered[2] || '', numbered[3] || ''].filter(Boolean).join(' ');
+  });
+  const startAttribute = start === 1 ? '' : ` start="${start}"`;
+  return `<ol${startAttribute}>${items.map(item => `<li>${safeHtml(item).replace(/\n/g, '<br>')}</li>`).join('')}</ol>`;
+}
 function renderImportedPptPage(page, item) {
   return `<div class="ppt-import-layer">${(page.objects || []).map((object, objectIndex) => {
     const geometry = `left:${object.x}%;top:${object.y}%;width:${object.w}%;height:${object.h}%`;
@@ -83,7 +98,7 @@ preview = function() {
     content.innerHTML = `<h1>${safeHtml((window.activeWorshipTemplateProfile && window.activeWorshipTemplateProfile.coverTitle) || '台語主日禮拜')}</h1><p>${formatted}</p>`;
   }
   else if (page.kind === 'content') content.className = 'slide-content template-content', content.innerHTML = `<h1>${title}</h1><div class="body">${safeHtml(page.body)}</div>`;
-  else if (page.kind === 'report') content.className = 'slide-content template-report', content.innerHTML = `<h1>${title}</h1><div class="body">${safeHtml(page.body)}</div>`;
+  else if (page.kind === 'report') content.className = 'slide-content template-report', content.innerHTML = `<h1>${title}</h1><div class="body">${renderReportBody(page)}</div>`;
   else if (page.kind === 'scripture') content.className = 'slide-content template-content template-scripture', content.innerHTML = `<h1>${title}</h1><div class="body">${safeHtml([page.languageLabel ? `(${page.languageLabel})` : '', page.body].filter(Boolean).join('\n'))}</div>`;
   else if (page.kind === 'liturgical') {
     const alignment = page.align === 'center' ? ' is-centered' : ' is-left';

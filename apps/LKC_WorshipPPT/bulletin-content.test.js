@@ -144,15 +144,21 @@ test('keeps announcements, church news, and pastoral prayer in report-page order
   assert.equal(pages.length, 4);
   assert.equal(pages[0].kind, 'report');
   assert.equal(pages[0].title, '報告－本會消息');
+  assert.equal(pages[0].listType, 'ordered');
   assert.match(pages[0].body, /1\. 消息一/);
   assert.match(pages[1].body, /4\. 消息四/);
   assert.equal(pages[2].title, '報告－教界消息');
+  assert.equal(pages[2].listType, 'ordered');
   assert.match(pages[2].body, /1\. 教界一/);
   assert.match(pages[2].body, /3\. 教界三/);
   assert.equal(pages[3].title, '報告－關懷代禱');
+  assert.equal(pages[3].listType, undefined);
+  assert.match(pages[3].body, /為社區代禱/);
   assert.match(pages[3].body, /在家調養兄姐：王小明/);
   assert.match(pages[3].body, /住院：陳小華/);
-  assert.match(pages[3].body, /其他代禱：為社區代禱/);
+  assert.ok(pages[3].body.indexOf('為社區代禱') < pages[3].body.indexOf('在家調養兄姐：王小明'));
+  assert.ok(pages[3].body.indexOf('在家調養兄姐：王小明') < pages[3].body.indexOf('住院：陳小華'));
+  assert.doesNotMatch(pages[3].body, /其他代禱：/);
 });
 
 test('paginates the 2026-06-28 announcements by rendered line capacity', () => {

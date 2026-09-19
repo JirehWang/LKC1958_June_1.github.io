@@ -472,6 +472,151 @@ test('exports the same deterministic native-text line breaks used by the preview
   assert.equal(slides[0].texts[1].text, '甲乙\n丙丁');
 });
 
+test('exports report pages with native ordered-list paragraphs', async () => {
+  const slides = [];
+  class MockPptx {
+    addSlide() {
+      const slide = {
+        texts: [],
+        addText(text, opts) { this.texts.push({ text, opts }); },
+        addShape() {},
+        addImage() {}
+      };
+      slides.push(slide);
+      return slide;
+    }
+    writeFile() { return Promise.resolve(); }
+  }
+
+  await exportWorshipPPTX({
+    PptxGenJS: MockPptx,
+    getDeckEntries: () => [{
+      kind: 'report',
+      listType: 'ordered',
+      sectionId: 'announcements',
+      title: '報告',
+      body: '1．第一則\n\n2、第二則'
+    }],
+    layoutState: { groups: {}, pageAssignments: {} },
+    production: require('./slide-production.js'),
+    model: {},
+    backgroundColor: '#ffffff',
+    serviceDate: '2026-07-12'
+  });
+
+  assert.equal(slides[0].texts[1].text, '第一則\n第二則');
+  assert.deepEqual(slides[0].texts[1].opts.bullet, {
+    type: 'number',
+    numberType: 'arabicPeriod',
+    numberStartAt: 1
+  });
+  assert.equal(slides[0].texts[1].opts.fit, 'shrink');
+});
+
+test('applies the selected report layout box to native ordered-list export', async () => {
+  const slides = [];
+  class MockPptx {
+    addSlide() {
+      const slide = {
+        texts: [],
+        addText(text, opts) { this.texts.push({ text, opts }); },
+        addShape() {},
+        addImage() {}
+      };
+      slides.push(slide);
+      return slide;
+    }
+    writeFile() { return Promise.resolve(); }
+  }
+
+  await exportWorshipPPTX({
+    PptxGenJS: MockPptx,
+    getDeckEntries: () => [{
+      id: 'announcements:1',
+      kind: 'report',
+      listType: 'ordered',
+      sectionId: 'announcements',
+      title: '報告',
+      body: '1. 第一則\n\n2. 第二則'
+    }],
+    layoutState: {
+      groups: {
+        compactReport: {
+          id: 'compactReport',
+          pageIds: ['announcements:1'],
+          params: {
+            titleSize: 28,
+            titleX: 6,
+            titleY: 8,
+            titleW: 88,
+            titleH: 10,
+            contentSize: 24,
+            contentX: 12,
+            contentY: 28,
+            contentW: 70,
+            contentH: 50,
+            contentAlign: 'left',
+            contentColor: '#123456',
+            lineSpacing: 1.1
+          }
+        }
+      },
+      pageAssignments: { 'announcements:1': 'compactReport' }
+    },
+    production: require('./slide-production.js'),
+    model: {},
+    backgroundColor: '#ffffff',
+    serviceDate: '2026-07-12'
+  });
+
+  const title = slides[0].texts[0].opts;
+  const body = slides[0].texts[1].opts;
+  assert.equal(title.fontSize, 28);
+  assert.equal(body.fontSize, 24);
+  assert.ok(Math.abs(body.x - 13.333 * 0.12) < 1e-9);
+  assert.ok(Math.abs(body.y - 7.5 * 0.28) < 1e-9);
+  assert.ok(Math.abs(body.w - 13.333 * 0.70) < 1e-9);
+  assert.ok(Math.abs(body.h - 7.5 * 0.50) < 1e-9);
+  assert.equal(body.color, '123456');
+  assert.equal(body.fit, 'shrink');
+});
+
+test('continues native report numbering from a continuation page', async () => {
+  const slides = [];
+  class MockPptx {
+    addSlide() {
+      const slide = {
+        texts: [],
+        addText(text, opts) { this.texts.push({ text, opts }); },
+        addShape() {},
+        addImage() {}
+      };
+      slides.push(slide);
+      return slide;
+    }
+    writeFile() { return Promise.resolve(); }
+  }
+
+  await exportWorshipPPTX({
+    PptxGenJS: MockPptx,
+    getDeckEntries: () => [{
+      kind: 'report',
+      listType: 'ordered',
+      sectionId: 'announcements',
+      title: '報告',
+      body: '3.（續）延續內容\n\n4. 下一則'
+    }],
+    layoutState: { groups: {}, pageAssignments: {} },
+    production: require('./slide-production.js'),
+    model: {},
+    backgroundColor: '#ffffff',
+    serviceDate: '2026-07-12'
+  });
+
+  assert.equal(slides[0].texts[1].text, '（續） 延續內容\n下一則');
+  assert.equal(slides[0].texts[1].opts.bullet.numberStartAt, 3);
+});
+
 test('keeps praise and sermon title pages vertically centered and identical to the canvas geometry', async () => {
   const slides = [];
   class MockPptx {
@@ -661,9 +806,11 @@ test('the export button forwards the active background and model state', () => {
   );
   assert.match(
     appSource,
-    /exportWorshipPPTX\(\{model,backgroundColor,backgroundImage\}\)/,
-    'app.js must pass its lexical state to the standalone exporter'
+    /exportWorshipPPTX\(exportOptions\)/,
+    'app.js must pass the assembled export context to the standalone exporter'
   );
+  assert.match(appSource, /getWorshipLayoutStateForExport/);
+  assert.match(appSource, /getWorshipReportLayoutForExport/);
   assert.match(appSource, /pastor-ppt-upload/);
   assert.match(appSource, /requireSixteenByNine/);
   assert.match(appSource, /parsePptx/);

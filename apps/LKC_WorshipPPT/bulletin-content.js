@@ -105,21 +105,24 @@
     return text;
   }
 
-  function paginateReportEntries(entries, title, params) {
+  function paginateReportEntries(entries, title, params, options = {}) {
     const layout = normalizeReportLayout(params);
     const lineCapacity = reportLineCapacity(layout);
+    const listType = options.listType || '';
     const pages = [];
     let currentParts = [];
     let usedLines = 0;
     const flush = () => {
       if (!currentParts.length) return;
-      pages.push({
+      const page = {
         kind: 'report',
         title,
         body: currentParts.join('\n\n'),
         estimatedLines: usedLines,
         lineCapacity
-      });
+      };
+      if (listType) page.listType = listType;
+      pages.push(page);
       currentParts = [];
       usedLines = 0;
     };
@@ -169,14 +172,14 @@
       pages.push(...paginateReportEntries(items.map((text, index) => ({
         text: `${index + 1}. ${text}`,
         continuation: `${index + 1}.（續）`
-      })), title, params));
+      })), title, params, { listType: 'ordered' }));
     };
     appendNumberedPages(reports.announcements, '報告－本會消息');
     appendNumberedPages(reports.churchNews, '報告－教界消息');
     const prayerParts = [
+      ['', reports.prayer.other],
       ['在家調養兄姐：', reports.prayer.homeRest],
-      ['住院：', reports.prayer.hospital],
-      ['其他代禱：', reports.prayer.other]
+      ['住院：', reports.prayer.hospital]
     ].filter(([, value]) => value).map(([label, value]) => `${label}${value}`);
     if (prayerParts.length) {
       pages.push(...paginateReportEntries(prayerParts.map(text => ({ text, continuation: '（續）' })), '報告－關懷代禱', params));

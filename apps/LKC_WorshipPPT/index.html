@@ -14,7 +14,7 @@
   <title>禮拜PPT產生器</title>
   <link rel="stylesheet" href="style.css?v=20260917d">
   <link rel="stylesheet" href="format.css?v=20260917d">
-  <link rel="stylesheet" href="reference-layout.css?v=20260917d">
+  <link rel="stylesheet" href="reference-layout.css?v=20260919a">
   <link rel="stylesheet" href="color-controls.css?v=20260917d">
   <link rel="stylesheet" href="layout-groups.css?v=20260917d">
   <link rel="stylesheet" href="pptx-library.css?v=20260917d">
@@ -53,7 +53,7 @@
   <dialog id="layout-unlock-dialog" class="layout-unlock-dialog" aria-labelledby="layout-unlock-title">
     <form id="layout-unlock-form">
       <h2 id="layout-unlock-title">解鎖全教會版面配置</h2>
-      <p>解鎖後才能修改及儲存全教會共用的版面參數。</p>
+      <p>未解鎖可先儲存本機草稿與測試；解鎖後才會同步全教會共用的版面參數。</p>
       <label>解鎖密碼<input id="layout-unlock-password" type="password" inputmode="numeric" autocomplete="current-password" required></label>
       <p id="layout-unlock-error" class="layout-unlock-error" role="alert"></p>
       <footer><button type="button" class="button quiet" id="layout-unlock-cancel">取消</button><button type="submit" class="button primary">解鎖</button></footer>
@@ -72,20 +72,20 @@
   <script src="pptx-library.js?v=20260918a"></script>
   <script src="slide-production.js?v=20260918a"></script>
   <script src="template-profiles.js?v=20260918a"></script>
-  <script src="bulletin-content.js?v=20260918b"></script>
+  <script src="bulletin-content.js?v=20260919a"></script>
   <script src="source-reminders.js?v=20260918a"></script>
-  <script src="app.js?v=20260918a"></script>
+    <script src="app.js?v=20260919b"></script>
   <script src="content-generators.js?v=20260918a"></script>
   <script src="ppt-library-integration.js?v=20260918b"></script>
   <script src="calendar-integration.js?v=20260918a"></script>
-  <script src="ppt-format-preview.js?v=20260918a"></script>
+  <script src="ppt-format-preview.js?v=20260919a"></script>
   <script src="fixed-page-editor.js?v=20260918a"></script>
   <script src="production-editor.js?v=20260918a"></script>
   <script src="bulletin-integration.js?v=20260918a"></script>
   <script src="layout-cloud-store.js?v=20260918a"></script>
-    <script src="layout-groups.js?v=20260918b"></script>
+    <script src="layout-groups.js?v=20260919c"></script>
   <script src="native-pptx.js?v=20260918a"></script>
-  <script src="ppt-export.js?v=20260918a"></script>
+  <script src="ppt-export.js?v=20260919b"></script>
   <script>
       const globalHymnOpacitySync = document.getElementById('sync-hymn-opacity-global');
       if (globalHymnOpacitySync) globalHymnOpacitySync.onchange = event => {

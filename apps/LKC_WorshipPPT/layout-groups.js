@@ -73,6 +73,12 @@
     }
   }
 
+  function persistLocalLayoutDraft() {
+    captureHymnOpacity();
+    layoutSyncPending = true;
+    persistLocalLayoutState();
+  }
+
   async function persistLayoutState() {
     captureHymnOpacity();
     layoutSyncPending = true;
@@ -113,6 +119,36 @@
 
   function selectedIds() {
     return Array.from(pendingSelection);
+  }
+
+  function layoutStateForExport() {
+    const exportState = {
+      groups: Object.fromEntries(Object.entries(layoutState.groups || {}).map(([groupId, group]) => [
+        groupId,
+        {
+          ...group,
+          pageIds: Array.isArray(group && group.pageIds) ? [...group.pageIds] : [],
+          params: { ...((group && group.params) || {}) }
+        }
+      ])),
+      pageAssignments: { ...(layoutState.pageAssignments || {}) },
+      hymnOpacityBySection: { ...(layoutState.hymnOpacityBySection || {}) },
+      outputScale: { text: 100, image: 100, ...(layoutState.outputScale || {}) }
+    };
+    const pageIds = selectedIds();
+    if (liveParams && pageIds.length) {
+      const liveGroupId = '__worship-live-export__';
+      exportState.groups[liveGroupId] = {
+        id: liveGroupId,
+        name: '目前編輯中的版面',
+        pageIds: [...pageIds],
+        params: { ...liveParams }
+      };
+      pageIds.forEach(pageId => {
+        exportState.pageAssignments[pageId] = liveGroupId;
+      });
+    }
+    return exportState;
   }
 
   function currentSelectionKind() {
@@ -317,6 +353,10 @@
   }
 
   window.reflowReportPagesForLayout = reflowReportPagesForLayout;
+  window.getWorshipLayoutStateForExport = layoutStateForExport;
+  window.getWorshipReportLayoutForExport = () => (
+    liveParams && selectionAffectsReports() ? { ...liveParams } : null
+  );
 
   function outputScaleFromForm() {
     const normalize = value => Math.max(80, Math.min(120, Number(value) || 100));
@@ -335,12 +375,15 @@
   }
 
   async function saveOutputScale() {
-    if (!layoutUnlocked) return status('輸出比例已鎖定，請先輸入密碼解鎖');
     layoutState.outputScale = outputScaleFromForm();
     reflowReportPagesForLayout();
     populateOutputScaleForm();
     renderDeckNavigator();
     preview();
+    if (!layoutUnlocked) {
+      persistLocalLayoutDraft();
+      return status('輸出比例已儲存至本機：文字 ' + layoutState.outputScale.text + '%、圖片 ' + layoutState.outputScale.image + '%；解鎖後可同步全教會配置');
+    }
     status('正在儲存輸出比例…');
     try {
       await persistLayoutState();
@@ -492,7 +535,7 @@
     const panel = document.getElementById('layout-floating-panel');
     const groups = Object.values(layoutState.groups);
     panel.innerHTML = `<header><div><small>版面參數</small><strong>調整勾選頁面</strong></div><button type="button" id="layout-panel-close" aria-label="關閉版面參數">×</button></header>
-      <p class="layout-lock-note" data-layout-lock-note>${layoutUnlocked ? '已解鎖：變更會寫入全教會共用雲端配置。' : '目前已鎖定；解鎖後才能修改全教會共用配置。'}</p>
+      <p class="layout-lock-note" data-layout-lock-note>${layoutUnlocked ? '已解鎖：變更會寫入全教會共用雲端配置。' : '目前未解鎖：可先儲存本機草稿與測試；解鎖後才會同步全教會共用配置。'}</p>
       <div class="floating-group-fields"><label>群組名稱<input id="layout-group-name" placeholder="例如：經文頁"></label><label>載入群組<select id="layout-group-existing"><option value="">新增群組</option>${groups.map(group => `<option value="${html(group.id)}" ${group.id === activeLayoutGroupId ? 'selected' : ''}>${html(group.name || group.id)}</option>`).join('')}</select></label></div>
       ${parameterFields()}
       <footer><button type="button" class="button quiet" id="layout-detach">解除群組</button><button type="button" class="button primary" id="layout-save-group">儲存參數組</button></footer>`;
@@ -561,16 +604,21 @@
       toggle.textContent = layoutUnlocked ? '鎖定版面設定' : '版面設定已鎖定';
       toggle.setAttribute('aria-pressed', String(layoutUnlocked));
     }
-    document.querySelectorAll('#opacity, #sync-hymn-opacity-global, #lg-output-text-scale, #lg-output-image-scale, #layout-save-output-scale').forEach(control => {
+    document.querySelectorAll('#opacity, #sync-hymn-opacity-global').forEach(control => {
       control.disabled = !layoutUnlocked;
+    });
+    document.querySelectorAll('#lg-output-text-scale, #lg-output-image-scale, #layout-save-output-scale').forEach(control => {
+      control.disabled = false;
     });
     if (!panel) return;
     panel.classList.toggle('is-layout-locked', !layoutUnlocked);
     panel.querySelectorAll('.floating-group-fields input, .floating-group-fields select, .layout-params input, .layout-params select, #layout-save-group, #layout-detach').forEach(control => {
-      control.disabled = !layoutUnlocked;
+      control.disabled = false;
     });
     const note = panel.querySelector('[data-layout-lock-note]');
-    if (note) note.textContent = layoutUnlocked ? '已解鎖：變更會寫入全教會共用雲端配置。' : '目前已鎖定；解鎖後才能修改全教會共用配置。';
+    if (note) note.textContent = layoutUnlocked
+      ? '已解鎖：變更會寫入全教會共用雲端配置。'
+      : '目前未解鎖：可先儲存本機草稿與測試；解鎖後才會同步全教會共用配置。';
   }
 
   function openFloatingPanel(syncWithCanvas = true) {
@@ -629,7 +677,6 @@
   }
 
   async function saveGroup() {
-    if (!layoutUnlocked) return status('版面配置已鎖定，請先輸入密碼解鎖');
     const pageIds = selectedIds();
     const existingId = document.getElementById('layout-group-existing').value || activeLayoutGroupId;
     const name = document.getElementById('layout-group-name').value.trim();
@@ -639,41 +686,56 @@
     activeLayoutGroupId = group.id;
     if (pageIds.some(id => id.startsWith('announcements:'))) reflowReportPagesForLayout(group.params);
     liveParams = null;
-    let cloudSaved = true;
+    let cloudSaved = false;
     let cloudSaveError = null;
     status(`正在儲存全教會共用版面群組：${name}…`);
-    try {
-      await persistLayoutState();
-    } catch (error) {
-      cloudSaved = false;
-      cloudSaveError = error;
-      console.error('共用版面配置雲端保存失敗', error);
+    if (layoutUnlocked) {
+      try {
+        await persistLayoutState();
+        cloudSaved = true;
+      } catch (error) {
+        cloudSaveError = error;
+        console.error('共用版面配置雲端保存失敗', error);
+      }
+    } else {
+      persistLocalLayoutDraft();
     }
     renderDeckNavigator();
     openFloatingPanel(false);
     populateForm(group.params || {});
     liveParams = { ...(group.params || {}) };
     preview();
-    status(cloudSaved ? `已儲存全教會共用版面群組：${name}` : `雲端保存失敗：${cloudSaveError.message}；本機版面已保留，重新解鎖後會自動重試`);
+    status(cloudSaved
+      ? '已儲存全教會共用版面群組：' + name
+      : layoutUnlocked
+        ? '雲端保存失敗：' + cloudSaveError.message + '；本機版面已保留，重新解鎖後會自動重試'
+        : '已儲存本機版面群組：' + name + '；解鎖後可同步全教會共用配置');
   }
 
   async function detachSelection() {
-    if (!layoutUnlocked) return status('版面配置已鎖定，請先輸入密碼解鎖');
     production.detachPagesFromLayoutGroup(layoutState, selectedIds());
     liveParams = null;
-    let cloudSaved = true;
+    let cloudSaved = false;
     let cloudSaveError = null;
     status('正在更新全教會共用版面群組…');
-    try {
-      await persistLayoutState();
-    } catch (error) {
-      cloudSaved = false;
-      cloudSaveError = error;
-      console.error('共用版面配置雲端保存失敗', error);
+    if (layoutUnlocked) {
+      try {
+        await persistLayoutState();
+        cloudSaved = true;
+      } catch (error) {
+        cloudSaveError = error;
+        console.error('共用版面配置雲端保存失敗', error);
+      }
+    } else {
+      persistLocalLayoutDraft();
     }
     renderDeckNavigator();
     preview();
-    status(cloudSaved ? '已解除所選頁面的共用版面群組' : `雲端解除群組失敗：${cloudSaveError.message}；本機變更已保留，重新解鎖後會自動重試`);
+    status(cloudSaved
+      ? '已解除所選頁面的共用版面群組'
+      : layoutUnlocked
+        ? '雲端解除群組失敗：' + cloudSaveError.message + '；本機變更已保留，重新解鎖後會自動重試'
+        : '已在本機解除所選頁面的版面群組；解鎖後可同步全教會配置');
   }
 
   window.applyPageLayoutToPreview = function(content, page) {

@@ -291,7 +291,17 @@ $('#export-ppt').onclick = async () => {
     await window.worshipTemplateAssetsReady;
     await (window.worshipExternalPresentationsReady || Promise.resolve([]));
     await window.ensureNativeLibrarySources();
-    await window.TaiwaneseWorshipPptExport.exportWorshipPPTX({model,backgroundColor,backgroundImage});
+    const exportOptions = { model, backgroundColor, backgroundImage };
+    if (typeof window.getWorshipLayoutStateForExport === 'function') {
+      exportOptions.layoutState = window.getWorshipLayoutStateForExport();
+    }
+    const reportLayout = typeof window.getWorshipReportLayoutForExport === 'function'
+      ? window.getWorshipReportLayoutForExport()
+      : null;
+    if (reportLayout && typeof window.reflowReportPagesForLayout === 'function') {
+      exportOptions.reflowReportPages = () => window.reflowReportPagesForLayout(reportLayout);
+    }
+    await window.TaiwaneseWorshipPptExport.exportWorshipPPTX(exportOptions);
     status('PPTX 簡報檔已成功下載！');
   } catch (error) {
     status(`簡報匯出失敗：${error.message}`);

@@ -186,6 +186,31 @@
     const textScale = normalizeScale(outputScale.text) / 100;
     const imageScale = normalizeScale(outputScale.image) / 100;
     const scaledFont = value => Number(value) * textScale;
+    const buildNativeOrderedReportText = value => {
+      const text = String(value || '');
+      if (!text.trim()) return null;
+      const blocks = text.split(/\n\n/).map(block => block.trim()).filter(Boolean);
+      if (!blocks.length) return null;
+      let numberStartAt = 1;
+      const items = blocks.map((block, index) => {
+        const numbered = block.match(/^\s*(\d+)[.．、)]\s*(（續）)?\s*([\s\S]*)$/);
+        if (!numbered) return block.replace(/\s*\n\s*/g, ' ').trim();
+        if (index === 0) numberStartAt = Number(numbered[1]) || 1;
+        return [numbered[2] || '', numbered[3] || '']
+          .filter(Boolean)
+          .join(' ')
+          .replace(/\s*\n\s*/g, ' ')
+          .trim();
+      });
+      return {
+        text: items.join('\n'),
+        bullet: {
+          type: 'number',
+          numberType: 'arabicPeriod',
+          numberStartAt
+        }
+      };
+    };
     const wrapNativeText = (value, params, prefix, boxWidthMultiplier = 1) => production.wrapTextForBox
       ? production.wrapTextForBox(value, {
           fontSize: scaledFont(params[`${prefix}Size`]),
@@ -590,12 +615,17 @@
 
         // Subtitles mapping
         const defaultBody = entry.kicker || (modelEntry && modelEntry.kicker) || SECTION_SUBTITLES[entry.sectionLabel] || '';
-        const bodyText = entry.kind === 'scripture' && entry.languageLabel
+        const nativeOrderedReport = entry.kind === 'report' && entry.listType === 'ordered'
+          ? buildNativeOrderedReportText(entry.body || defaultBody)
+          : null;
+        const bodyText = nativeOrderedReport
+          ? nativeOrderedReport.text
+          : entry.kind === 'scripture' && entry.languageLabel
           ? [`(${entry.languageLabel})`, entry.body || defaultBody].filter(Boolean).join('\n')
           : entry.body || defaultBody;
 
         if (bodyText) {
-          slide.addText(wrapNativeText(bodyText, params, 'content'), {
+          const bodyOptions = {
             x: slideX(params.contentX),
             y: slideY(params.contentY),
             w: slideX(params.contentW),
@@ -608,7 +638,12 @@
             bold: true,
             lineSpacing: params.lineSpacing ? Math.round(scaledFont(params.contentSize) * params.lineSpacing) : undefined,
             margin: 0
-          });
+          };
+          if (nativeOrderedReport) {
+            bodyOptions.bullet = nativeOrderedReport.bullet;
+            bodyOptions.fit = 'shrink';
+          }
+          slide.addText(nativeOrderedReport ? bodyText : wrapNativeText(bodyText, params, 'content'), bodyOptions);
         }
       }
     });

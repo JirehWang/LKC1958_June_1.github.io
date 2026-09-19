@@ -71,6 +71,26 @@ test('reflows report pagination from effective layout changes and cloud state', 
   assert.match(sourceBetween('async function initializeCloudLayout()', 'function openUnlockDialog()'), /replaceLayoutState\([\s\S]*reflowReportPagesForLayout\(\)/);
 });
 
+test('exposes the live layout draft to PPTX export without mutating shared state', () => {
+  assert.match(source, /function layoutStateForExport\(\)/);
+  assert.match(source, /pendingSelection/);
+  assert.match(source, /__worship-live-export__/);
+  assert.match(source, /window\.getWorshipLayoutStateForExport = layoutStateForExport/);
+  assert.match(source, /window\.getWorshipReportLayoutForExport =/);
+});
+
+test('keeps local layout editing available while protecting cloud writes behind unlock', () => {
+  const lockUi = sourceBetween('function applyLayoutLockUI()', 'function openFloatingPanel(');
+  assert.match(lockUi, /#opacity, #sync-hymn-opacity-global/);
+  assert.match(lockUi, /#lg-output-text-scale, #lg-output-image-scale, #layout-save-output-scale/);
+  assert.match(lockUi, /control\.disabled = false/);
+
+  const saveGroup = sourceBetween('async function saveGroup()', 'async function detachSelection()');
+  assert.doesNotMatch(saveGroup, /if \(!layoutUnlocked\) return status/);
+  assert.match(saveGroup, /persistLocalLayoutDraft\(\)/);
+  assert.match(saveGroup, /解鎖後可同步全教會共用配置/);
+});
+
 test('extracts layout form parameters safely when content inputs are absent for car-notice', () => {
   const paramsExtractor = sourceBetween(
     'function paramsFromForm()',
