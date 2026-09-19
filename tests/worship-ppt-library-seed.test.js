@@ -5,7 +5,11 @@ const path = require('node:path');
 
 const repoRoot = path.join(__dirname, '..');
 const scriptPath = path.join(repoRoot, 'scripts', 'seed_worship_ppt_library_supabase.js');
-const source = fs.existsSync(scriptPath) ? fs.readFileSync(scriptPath, 'utf8') : '';
+const sharedScriptPath = path.join(repoRoot, 'scripts', 'ppt-library-index-sync.js');
+const source = [scriptPath, sharedScriptPath]
+  .filter(filePath => fs.existsSync(filePath))
+  .map(filePath => fs.readFileSync(filePath, 'utf8'))
+  .join('\n');
 const seed = fs.existsSync(scriptPath) ? require(scriptPath) : null;
 
 test('PPT Library seed only writes index metadata, never PPTX payloads or URLs', () => {

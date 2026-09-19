@@ -16,7 +16,9 @@ $integrationJavascriptFiles = @(
     ".\scripts\cleanup-observability-logs.mjs",
     ".\scripts\migrate_sunday_bulletin_supabase.js",
     ".\scripts\migrate_worship_ppt_library_supabase.js",
+    ".\scripts\ppt-library-index-sync.js",
     ".\scripts\seed_worship_ppt_library_supabase.js",
+    ".\scripts\sync_worship_ppt_library_index.js",
     ".\scripts\sync_sunday_bulletin_gas_to_supabase.js"
 )
 foreach ($javascriptFile in $integrationJavascriptFiles) {
@@ -45,7 +47,9 @@ $integrationTestFiles = @(
     ".\tests\supabase-migration-security.test.js",
     ".\tests\sunday-bulletin-gas-sync.test.js",
     ".\tests\worship-ppt-library-migration.test.js",
-    ".\tests\worship-ppt-library-seed.test.js"
+    ".\tests\worship-ppt-library-seed.test.js",
+    ".\tests\worship-ppt-library-sync.test.js",
+    ".\tests\worship-ppt-library-workflow.test.js"
 ) | Where-Object { Test-Path -LiteralPath $_ }
 foreach ($testFile in $integrationTestFiles) {
     Write-Host "Running $testFile..."

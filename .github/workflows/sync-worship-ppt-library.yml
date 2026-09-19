@@ -1,0 +1,54 @@
+name: Sync Worship PPT Library index
+
+on:
+  schedule:
+    # 每日 18:30 UTC（台灣時間隔日 02:30）同步一次
+    - cron: '30 18 * * *'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: '手動執行模式；apply 才會寫入 Supabase'
+        required: true
+        default: dry-run
+        type: choice
+        options:
+          - dry-run
+          - apply
+
+permissions:
+  contents: read
+
+concurrency:
+  group: worship-ppt-library-index-sync
+  cancel-in-progress: false
+
+jobs:
+  sync-index:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PPT_LIBRARY_GAS_URL: ${{ secrets.PPT_LIBRARY_GAS_URL }}
+      PPT_LIBRARY_GAS_TOKEN: ${{ secrets.PPT_LIBRARY_GAS_TOKEN }}
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install sync dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Sync PPT Library index
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "schedule" || "${{ inputs.mode }}" == "apply" ]]; then
+            node scripts/sync_worship_ppt_library_index.js --apply
+          else
+            node scripts/sync_worship_ppt_library_index.js --dry-run
+          fi
