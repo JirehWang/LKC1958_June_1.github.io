@@ -643,6 +643,7 @@
           presentMale: avgMale,
           presentFemale: avgFemale,
           avgCount,
+          validDays,
           details
         };
       }

@@ -48,79 +48,60 @@ function _grpParseUidSet(listStr, lookups) {
  */
 function _grpFetchSundayDataEngine(sDate, eDate, targetMembers) {
   const lookups = getMemberLookups();
-  // 兩個查找：name 集合（向下相容）+ uid 集合（主要使用）
-  const targetUidSet = new Set();
-  const uidByName = {};   // name -> uid
+  const uidByName = {};
   targetMembers.forEach(m => {
     if (typeof m === 'string') {
       const uid = lookups.n2u[m];
-      if (uid) { targetUidSet.add(uid); uidByName[m] = uid; }
+      if (uid) uidByName[m] = uid;
     } else if (m && m.name) {
       const uid = m.uid || lookups.n2u[m.name];
-      if (uid) { targetUidSet.add(uid); uidByName[m.name] = uid; }
+      if (uid) uidByName[m.name] = uid;
     }
   });
 
-  // 結果以 uid 為 key 累積
-  const resultByUid = {};
-  targetUidSet.forEach(u => { resultByUid[u] = { sundayDates: new Set(), schoolDates: new Set() }; });
+  const startStr = sDate
+    ? Utilities.formatDate(sDate, "GMT+8", "yyyy/MM/dd")
+    : "1900/01/01";
+  const endExclusive = eDate ? new Date(eDate.getTime()) : null;
+  if (endExclusive) endExclusive.setDate(endExclusive.getDate() + 1);
+  const endStr = endExclusive
+    ? Utilities.formatDate(endExclusive, "GMT+8", "yyyy/MM/dd")
+    : "2999/12/31";
 
-  const globalSundayDates = new Set();
-  const globalSchoolDates = new Set();
+  const requestStats = (category, targetGroups) => getAttendanceStats({
+    type: category + "合計",
+    mode: "range",
+    baseSheet: "會友名單",
+    targetGroups,
+    start: startStr,
+    end: endStr
+  });
+  const worshipStats = requestStats("禮拜", ["台語", "華語", "聯合"]);
+  const schoolStats = requestStats("主日學", ["主日學A班", "主日學B班"]);
 
-  try {
-    const ssSunday = getSS();
-    const sheets = ssSunday.getSheets();
-    const schoolTargetSheets = ["主日學A/B班", "主日學"];
-    const sundayTargetSheets = ["台語點名紀錄", "華語點名紀錄", "聯合點名紀錄"];
-
-    sheets.forEach(sheet => {
-      const sheetName = sheet.getName();
-      const isSchoolSheet = schoolTargetSheets.some(kw => sheetName.includes(kw));
-      const isSundaySheet = sundayTargetSheets.some(kw => sheetName.includes(kw));
-      if (!isSchoolSheet && !isSundaySheet) return;
-
-      const data = sheet.getDataRange().getValues();
-      if (data.length <= 1) return;
-
-      for (let i = 1; i < data.length; i++) {
-        const row = data[i];
-        if (!row[0]) continue;
-        const rowDate = new Date(row[0]);
-        const time = rowDate.getTime();
-        if (sDate && time < sDate.getTime()) continue;
-        if (eDate && time > eDate.getTime()) continue;
-
-        const dateStr = Utilities.formatDate(rowDate, "GMT+8", "yyyy-MM-dd");
-        if (isSchoolSheet) globalSchoolDates.add(dateStr);
-        if (isSundaySheet) globalSundayDates.add(dateStr);
-
-        const presentUids = _grpParseUidSet(row[1] || "", lookups);
-        presentUids.forEach(uid => {
-          if (targetUidSet.has(uid)) {
-            if (isSchoolSheet) resultByUid[uid].schoolDates.add(dateStr);
-            else if (isSundaySheet) resultByUid[uid].sundayDates.add(dateStr);
-          }
-        });
-      }
+  const indexDetails = stats => {
+    const byUid = {};
+    (stats && stats.details || []).forEach(detail => {
+      const uid = String(detail.uid || "").trim().toUpperCase();
+      if (uid) byUid[uid] = detail;
     });
-  } catch (e) {
-    console.error("讀取主日表單失敗: " + e.toString());
-  }
+    return byUid;
+  };
+  const worshipByUid = indexDetails(worshipStats);
+  const schoolByUid = indexDetails(schoolStats);
+  const sundayTotal = Number(worshipStats && worshipStats.validDays) || 0;
+  const schoolTotal = Number(schoolStats && schoolStats.validDays) || 0;
 
-  const totalSundayDays = globalSundayDates.size;
-  const totalSchoolDays = globalSchoolDates.size;
-
-  // 回傳：以 name 為 key（向下相容），找不到就給空白 stats
   const finalResult = {};
   Object.keys(uidByName).forEach(name => {
-    const uid = uidByName[name];
-    const stats = resultByUid[uid] || { sundayDates: new Set(), schoolDates: new Set() };
+    const uid = String(uidByName[name] || "").trim().toUpperCase();
+    const worshipDetail = worshipByUid[uid];
+    const schoolDetail = schoolByUid[uid];
     finalResult[name] = {
-      sundayCount: stats.sundayDates.size,
-      sundayTotal: totalSundayDays,
-      schoolCount: stats.schoolDates.size,
-      schoolTotal: totalSchoolDays
+      sundayCount: Number(worshipDetail && worshipDetail.count) || 0,
+      sundayTotal,
+      schoolCount: Number(schoolDetail && schoolDetail.count) || 0,
+      schoolTotal
     };
   });
   return finalResult;

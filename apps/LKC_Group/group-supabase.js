@@ -46,6 +46,98 @@
   let _cachedMembersList = null;
   let _cachedNameDirectoryTime = 0;
 
+  // 主日統計的分類設定與統計服務是小組頁的唯一主日資料來源。
+  const DEFAULT_ATTENDANCE_GROUPS = {
+    '禮拜': ['台語', '華語', '聯合'],
+    '主日學': ['主日學A班', '主日學B班']
+  };
+
+  function normalizeAttendanceUid(value) {
+    return String(value || '').trim().toUpperCase();
+  }
+
+  function getNextAttendanceDate(dateValue) {
+    if (!dateValue) return dateValue;
+    const match = String(dateValue).match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+    if (!match) return dateValue;
+    const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+    if (Number.isNaN(date.getTime())) return dateValue;
+    date.setDate(date.getDate() + 1);
+    return [
+      date.getFullYear(),
+      String(date.getMonth() + 1).padStart(2, '0'),
+      String(date.getDate()).padStart(2, '0')
+    ].join('/');
+  }
+
+  async function getCanonicalAttendanceConfig() {
+    const AttendanceSupabaseService = window.AttendanceSupabaseService;
+    if (AttendanceSupabaseService && typeof AttendanceSupabaseService.getGroupConfig === 'function') {
+      try {
+        const config = await AttendanceSupabaseService.getGroupConfig();
+        if (config && typeof config === 'object') return config;
+      } catch (e) {
+        console.warn('[GroupSupabase] 讀取主日統計分類設定失敗，使用預設設定:', e);
+      }
+    }
+    return DEFAULT_ATTENDANCE_GROUPS;
+  }
+
+  async function callCanonicalAttendanceStats(category, mode, startDate, endDate, config) {
+    const targetGroups = Array.isArray(config && config[category]) && config[category].length
+      ? config[category]
+      : DEFAULT_ATTENDANCE_GROUPS[category];
+    const request = {
+      type: category + '合計',
+      mode: mode,
+      baseSheet: '會友名單',
+      targetGroups: targetGroups
+    };
+
+    if (mode === 'single') {
+      request.date = startDate;
+    } else {
+      // 主日統計頁以「隔日」作為區間結束值；沿用同一個契約，避免邊界日算法分歧。
+      request.start = startDate || '1900/01/01';
+      request.end = getNextAttendanceDate(endDate) || '2999/12/31';
+    }
+
+    const AttendanceSupabaseService = window.AttendanceSupabaseService;
+    if (AttendanceSupabaseService && typeof AttendanceSupabaseService.getAttendanceStats === 'function') {
+      try {
+        const result = await AttendanceSupabaseService.getAttendanceStats(request);
+        if (result && typeof result === 'object') return result;
+      } catch (e) {
+        console.warn('[GroupSupabase] 主日統計服務失敗，改走 GAS 主日統計:', e);
+      }
+    }
+
+    const gasFn = window.churchAPI_original || window.churchAPI;
+    if (typeof gasFn === 'function') {
+      const result = await gasFn('getAttendanceStats', request);
+      return result && result.data !== undefined ? result.data : result;
+    }
+    throw new Error('主日點名統計服務尚未載入');
+  }
+
+  function indexCanonicalAttendanceDetails(stats) {
+    const details = Array.isArray(stats && stats.details) ? stats.details : [];
+    const map = new Map();
+    details.forEach(detail => {
+      const uid = normalizeAttendanceUid(detail && detail.uid);
+      if (uid) map.set(uid, detail);
+    });
+    return map;
+  }
+
+  function getCanonicalAttendanceCount(detailMap, uid) {
+    const detail = detailMap.get(normalizeAttendanceUid(uid));
+    if (!detail) return 0;
+    if (detail.count !== undefined) return Number(detail.count) || 0;
+    return detail.attended ? 1 : 0;
+  }
+
+
   function getSupabase() {
     if (window._supabase) return window._supabase;
     const config = window._SUPABASE_CONFIG || window.SUPABASE_CONFIG;
@@ -418,19 +510,6 @@
 
       const { data: records } = await query;
 
-      // 若 Supabase 尚無該小組的歷史紀錄，回退至 GAS 讀取歷史試算表
-      if (!records || records.length === 0) {
-        const gasFn = window.churchAPI_original || window.churchAPI;
-        if (typeof gasFn === 'function') {
-          try {
-            const gasRes = await gasFn('getStats', payload);
-            if (gasRes && gasRes.success) return gasRes;
-          } catch (e) {
-            console.warn('[GroupSupabase] getStats GAS fallback:', e);
-          }
-        }
-      }
-
       // 建立會友 UID -> 姓名反查表（5分鐘快取加速）
       const now = Date.now();
       if (!_cachedNameDirectory || !_cachedMembersList || (now - _cachedNameDirectoryTime > 300000)) {
@@ -482,18 +561,17 @@
         return true;
       });
 
-      const { data: sundayRecs } = await sb.from('attendance_records').select('*');
-      const filteredSunday = (sundayRecs || []).filter(sr => {
-        if (!sr.date) return false;
-        const t = new Date(sr.date).getTime();
-        if (sDate && t < sDate.getTime()) return false;
-        if (eDate && t > eDate.getTime()) return false;
-        return true;
-      });
-
       const totalCellSessions = filteredRecords.length;
-      const worshipSessions = filteredSunday.filter(sr => ['台語', '華語', '聯合'].includes(sr.service_type)).length;
-      const schoolSessions = filteredSunday.filter(sr => String(sr.service_type || '').includes('主日學')).length;
+      const canonicalMode = isSingleDay ? 'single' : 'range';
+      const canonicalConfig = await getCanonicalAttendanceConfig();
+      const [worshipStats, schoolStats] = await Promise.all([
+        callCanonicalAttendanceStats('禮拜', canonicalMode, payload.startDate, payload.endDate, canonicalConfig),
+        callCanonicalAttendanceStats('主日學', canonicalMode, payload.startDate, payload.endDate, canonicalConfig)
+      ]);
+      const worshipDetails = indexCanonicalAttendanceDetails(worshipStats);
+      const schoolDetails = indexCanonicalAttendanceDetails(schoolStats);
+      const worshipSessions = Number(worshipStats && worshipStats.validDays) || 0;
+      const schoolSessions = Number(schoolStats && schoolStats.validDays) || 0;
 
       const data = groupMembers.map(m => {
         const uid = m.uid;
@@ -501,8 +579,8 @@
           const uList = r.present_uids || r.present_members || [];
           return uList.includes(uid) || uList.includes(m.name);
         }).length;
-        const sundayCount = filteredSunday.filter(sr => ['台語', '華語', '聯合'].includes(sr.service_type) && (sr.present_uids || []).includes(uid)).length;
-        const schoolCount = filteredSunday.filter(sr => String(sr.service_type || '').includes('主日學') && (sr.present_uids || []).includes(uid)).length;
+        const sundayCount = getCanonicalAttendanceCount(worshipDetails, uid);
+        const schoolCount = getCanonicalAttendanceCount(schoolDetails, uid);
 
         if (isSingleDay) {
           return {

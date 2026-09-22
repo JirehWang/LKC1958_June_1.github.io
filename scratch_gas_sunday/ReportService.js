@@ -108,7 +108,7 @@ function _getSingleDayStats(ss, type, dateStr, baseSheetName) {
 function _getRangeStats(ss, type, startStr, endStr, baseSheetName) {
   const startNum = toDateNum(startStr), endNum = toDateNum(endStr);
   const sheet = ss.getSheetByName(type + "點名紀錄");
-  const result = { presentCount: 0, newFriends: 0, nfMale: 0, nfFemale: 0, presentMale: 0, presentFemale: 0, avgCount: 0, details: [] };
+  const result = { presentCount: 0, newFriends: 0, nfMale: 0, nfFemale: 0, presentMale: 0, presentFemale: 0, avgCount: 0, validDays: 0, details: [] };
   if (!sheet) return result;
 
   const lookups = getMemberLookups();
@@ -135,6 +135,7 @@ function _getRangeStats(ss, type, startStr, endStr, baseSheetName) {
     }
   }
   result.newFriends = result.nfMale + result.nfFemale;
+  result.validDays = validDays;
   if (validDays > 0) {
     result.avgCount = Math.round(sumTotalCounts / validDays);
     result.presentCount = Math.round(sumMemberCounts / validDays);
@@ -205,7 +206,7 @@ function _getCombinedRangeStats(ss, startStr, endStr, baseSheetName, targetTypes
   }
 
   const memberSheet = ss.getSheetByName(baseSheetName);
-  if (!memberSheet) return { presentCount: 0, newFriends: 0, nfMale: 0, nfFemale: 0, presentMale: 0, presentFemale: 0, avgCount: 0, details: [] };
+  if (!memberSheet) return { presentCount: 0, newFriends: 0, nfMale: 0, nfFemale: 0, presentMale: 0, presentFemale: 0, avgCount: 0, validDays, details: [] };
   const memData = memberSheet.getDataRange().getValues();
   const nameIdx = memData[0].indexOf("姓名"), genderIdx = memData[0].indexOf("性別"), excludeIdx = memData[0].indexOf("不列入統計"), uidIdx = memData[0].indexOf("系統編號");
 
@@ -228,6 +229,7 @@ function _getCombinedRangeStats(ss, startStr, endStr, baseSheetName, targetTypes
     presentMale: validDays > 0 ? Math.round(totalMale / validDays) : 0,
     presentFemale: validDays > 0 ? Math.round(totalFemale / validDays) : 0,
     avgCount: validDays > 0 ? Math.round((sumAttendance + nfMaleTotal + nfFemaleTotal) / validDays) : 0,
+    validDays,
     details
   };
 }
