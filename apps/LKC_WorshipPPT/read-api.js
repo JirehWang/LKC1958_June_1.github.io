@@ -200,21 +200,23 @@
     const usesDedicatedEndpoint = PPT_LIBRARY_ACTIONS.has(action);
     const useJsonpFirst = usesDedicatedEndpoint || shouldPreferJsonp(action);
     let jsonpError = null;
-    if (usesDedicatedEndpoint && isBrowserWindow()) {
-      try {
-        // Library GAS 的 JSONP 回應允許 CORS；先用 fetch 取得同一份 payload，
-        // 可避開部分本機瀏覽器會阻擋跨來源 script tag 的情況。
-        return await fetchJsonp(endpoint, action, data || {}, root.AUTH_TOKEN || 'ChurchApp-2026');
-      } catch (error) {
-        jsonpError = error;
-      }
-    }
     if (useJsonpFirst) {
       try {
         return await jsonp(endpoint, action, data || {}, root.AUTH_TOKEN || 'ChurchApp-2026');
       } catch (error) {
         jsonpError = error;
         if (isTimeoutError(error)) throw error;
+        if (usesDedicatedEndpoint && isBrowserWindow()
+          && !(root.location && root.location.protocol === 'file:')) {
+          try {
+            // GAS 的 JSONP 端點原生以 script tag 服務；Fetch 追蹤 GAS 302
+            // 到 googleusercontent echo 時，部分瀏覽器會收到 404，故只作備援。
+            return await fetchJsonp(endpoint, action, data || {}, root.AUTH_TOKEN || 'ChurchApp-2026');
+          } catch (fetchError) {
+            fetchError.cause = error;
+            jsonpError = fetchError;
+          }
+        }
         if (root.location && root.location.protocol === 'file:') throw error;
       }
     }

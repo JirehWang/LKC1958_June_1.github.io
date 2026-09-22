@@ -378,7 +378,7 @@ test('uses the same PPT Library GAS bridge for index fallback and file retrieval
   }
 });
 
-test('uses the CORS-enabled GAS JSONP payload through fetch in a browser', async () => {
+test('uses script JSONP before fetch for the GAS Library bridge in a browser', async () => {
   const previous = {
     window: global.window,
     fetch: global.fetch,
@@ -395,22 +395,30 @@ test('uses the CORS-enabled GAS JSONP payload through fetch in a browser', async
   global.LKC_WORSHIP_PPT_LIBRARY_GAS_URL = 'https://script.google.com/macros/s/ppt-library/exec';
   global.AUTH_TOKEN = 'ChurchApp-2026';
   global.location = { protocol: 'http:', hostname: 'localhost' };
+  let fetchCalls = 0;
   global.document = {
     createElement() {
-      throw new Error('script JSONP should be the fallback, not the first transport');
+      return { remove() {} };
+    },
+    head: {
+      appendChild(script) {
+        const callback = new URL(script.src).searchParams.get('callback');
+        queueMicrotask(() => global[callback]({
+          success: true,
+          data: { base64: 'script-payload' }
+        }));
+      }
     }
   };
-  global.fetch = async requestUrl => {
-    const callback = new URL(requestUrl).searchParams.get('callback');
-    return {
-      ok: true,
-      text: async () => `${callback}(${JSON.stringify({ success: true, data: { base64: 'fetch-payload' } })});`
-    };
+  global.fetch = async () => {
+    fetchCalls += 1;
+    throw new Error('fetch should be the fallback, not the first transport');
   };
 
   try {
     const result = await read('cal_getPptLibraryFile', { fileId: 'library-entry' });
-    assert.deepEqual(result, { success: true, data: { base64: 'fetch-payload' } });
+    assert.deepEqual(result, { success: true, data: { base64: 'script-payload' } });
+    assert.equal(fetchCalls, 0);
   } finally {
     if (previous.window === undefined) delete global.window;
     else global.window = previous.window;
