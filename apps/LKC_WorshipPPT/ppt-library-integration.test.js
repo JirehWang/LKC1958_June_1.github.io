@@ -18,6 +18,7 @@ function loadIntegration(profile, sourcePages, options = {}) {
     activeWorshipTemplateProfile: profile,
     JSZip: {},
     worshipReadAPI: options.worshipReadAPI || (async () => ({ data: [] })),
+    worshipSyncAPI: options.worshipSyncAPI || (async () => ({ success: true, data: {} })),
     TaiwaneseWorshipPptxLibrary: {
       downloadAndParse: async entry => {
         requestedEntries.push(entry);
@@ -224,7 +225,26 @@ test('index.html includes vendor-jszip before pptx-library.js', () => {
   assert.ok(jszipIndex !== -1, 'vendor-jszip.min.js must be present in index.html');
   assert.ok(pptxLibraryIndex !== -1, 'pptx-library.js must be present in index.html');
   assert.ok(jszipIndex < pptxLibraryIndex, 'vendor-jszip.min.js must be loaded before pptx-library.js');
-  assert.match(indexHtml, /ppt-library-integration\.js\?v=20260918b/);
+  assert.match(indexHtml, /ppt-library-integration\.js\?v=20260922a/);
+});
+
+test('manual hymn index sync requests a full GAS hymn scan before loading a section', async () => {
+  const calls = [];
+  const { window } = loadIntegration({
+    librarySections: [['prayer-song', 'hymn']]
+  }, {}, {
+    worshipSyncAPI: async (...args) => {
+      calls.push(args);
+      return { success: true, data: { scope: 'hymn', inserted: 1 } };
+    }
+  });
+
+  const result = await window.syncHymnLibraryIndex();
+
+  assert.deepEqual(result, { scope: 'hymn', inserted: 1 });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][0], 'cal_syncPptHymnIndex');
+  assert.equal(calls[0][1].kind, 'hymn');
 });
 
 test('retries a GAS_HTML_ERROR PPTX once and recovers if second attempt succeeds', async () => {

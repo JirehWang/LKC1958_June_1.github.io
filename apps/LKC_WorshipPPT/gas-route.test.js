@@ -12,7 +12,7 @@ test('禮拜PPT uses the unified main GAS route for Bible queries', () => {
   assert.match(indexHtml, /window\._GAS_KEY\s*=\s*['"]LKC_WorshipPPT['"]/);
   assert.match(indexHtml, /window\._WORSHIP_PPT_LIBRARY_GAS_KEY\s*=\s*['"]LKC_WorshipPPT_LIBRARY['"]/);
   assert.match(indexHtml, /worship-ppt-supabase\.js\?v=20260918c/);
-  assert.match(indexHtml, /read-api\.js\?v=20260918d/);
+  assert.match(indexHtml, /read-api\.js\?v=20260922a/);
   assert.match(
     configJs,
     /"LKC_WorshipPPT"\s*:\s*"https:\/\/script\.google\.com\/macros\/s\/AKfycbxBOFeLiXu23kBMGU8iSvRyJci6fruTfk7HdahhcQFY777sCPSgasuNM7Z1CeuzuS-r\/exec"/

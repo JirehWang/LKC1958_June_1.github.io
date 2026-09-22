@@ -4,9 +4,21 @@
   const generatedIds = new Set(Array.isArray(profile.bibleSections)
     ? profile.bibleSections.map(item => item.sectionId)
     : ['call', 'scripture', 'verse']);
-  const portIds = new Set(Array.isArray(profile.librarySections)
-    ? profile.librarySections.map(item => item[0])
-    : ['pre-hymn-1', 'pre-hymn-2', 'hymn-1', 'hymn-2', 'response', 'prayer-song', 'offering', 'doxology', 'amen']);
+  const defaultLibrarySections = [
+    ['pre-hymn-1', 'hymn'],
+    ['pre-hymn-2', 'hymn'],
+    ['hymn-1', 'hymn'],
+    ['hymn-2', 'hymn'],
+    ['response', 'response'],
+    ['prayer-song', 'hymn'],
+    ['offering', 'hymn'],
+    ['doxology', 'hymn'],
+    ['amen', 'hymn']
+  ];
+  const librarySectionKinds = new Map(Array.isArray(profile.librarySections)
+    ? profile.librarySections
+    : defaultLibrarySections);
+  const portIds = new Set(librarySectionKinds.keys());
   const hymnOpacityIds = new Set(window.hymnOpacitySectionIds || []);
 
   editor = function() {
@@ -14,6 +26,7 @@
     const item = model[active];
     const form = document.getElementById('editor-form');
     const sourceLabel = generatedIds.has(active) ? '行事曆輸入值（經文範圍）' : '行事曆輸入值（資料庫索引）';
+    const activeLibraryKind = librarySectionKinds.get(active);
     const note = generatedIds.has(active)
       ? `此值只作為經文查詢條件；投影片內容由${Array.isArray(profile.bibleVersions) && profile.bibleVersions.length > 1 ? '台語／華語' : '台語'}聖經資料產生器建立。`
       : '此值只作為資料庫索引；按下方按鈕後會從雲端下載並解析原始 PPTX。';
@@ -21,7 +34,10 @@
     if (generatedIds.has(active)) {
       form.insertAdjacentHTML('beforeend', '<button type="button" class="button" id="regenerate-section">依輸入值重新產生</button>');
     } else {
-      form.insertAdjacentHTML('beforeend', `<button type="button" class="button" id="load-library-section">載入雲端 PPT 資料庫</button>${item.libraryError ? `<p class="inline-note">${item.libraryError}</p>` : ''}`);
+      const libraryButtonLabel = activeLibraryKind === 'hymn'
+        ? '同步聖詩索引並載入'
+        : '載入雲端 PPT 資料庫';
+      form.insertAdjacentHTML('beforeend', `<button type="button" class="button" id="load-library-section">${libraryButtonLabel}</button>${item.libraryError ? `<p class="inline-note">${item.libraryError}</p>` : ''}`);
       if (active !== 'response') form.insertAdjacentHTML('beforeend', `<label class="field"><span>聖詩頁白色色塊透明度</span><div class="range-wrap"><input id="library-image-opacity" type="range" min="40" max="80" value="${item.opacity || 60}"><output class="range-value">${item.opacity || 60}%</output></div><small>數值越高，背景越淡。</small></label>`);
     }
     form.querySelector('[data-key="sourceValue"]').addEventListener('input', event => {
@@ -45,9 +61,24 @@
     if (loadLibrary) loadLibrary.onclick = async () => {
       try {
         loadLibrary.disabled = true;
+        let syncResult = null;
+        if (activeLibraryKind === 'hymn') {
+          if (typeof window.syncHymnLibraryIndex !== 'function') {
+            throw new Error('聖詩索引同步介面尚未載入');
+          }
+          status('正在掃描並同步聖詩索引…');
+          syncResult = await window.syncHymnLibraryIndex();
+        }
         status('正在下載並解析雲端 PPTX…');
         const result = await window.reloadCurrentPptLibrarySection();
-        status(result && result.state === 'missing' ? result.message : `已載入 ${result.pageCount || 0} 頁`);
+        if (result && result.state === 'missing') {
+          status(result.message);
+          return;
+        }
+        const syncSummary = syncResult
+          ? `索引新增 ${syncResult.inserted || 0}、更新 ${syncResult.updated || 0}、未變更 ${syncResult.unchanged || 0}；`
+          : '';
+        status(`${syncSummary}已載入 ${result && result.pageCount || 0} 頁`);
       } catch (error) {
         status(`資料庫載入失敗：${error.message}`);
       } finally {

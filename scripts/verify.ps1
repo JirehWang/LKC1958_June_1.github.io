@@ -49,7 +49,8 @@ $integrationTestFiles = @(
     ".\tests\worship-ppt-library-migration.test.js",
     ".\tests\worship-ppt-library-seed.test.js",
     ".\tests\worship-ppt-library-sync.test.js",
-    ".\tests\worship-ppt-library-workflow.test.js"
+    ".\tests\worship-ppt-library-workflow.test.js",
+    ".\tests\ppt-library-gas-plan.test.js"
 ) | Where-Object { Test-Path -LiteralPath $_ }
 foreach ($testFile in $integrationTestFiles) {
     Write-Host "Running $testFile..."

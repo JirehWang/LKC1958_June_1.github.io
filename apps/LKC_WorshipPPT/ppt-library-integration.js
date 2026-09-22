@@ -209,6 +209,17 @@
     return { sectionId, state: 'loaded', pageCount: pages.length, entry };
   }
 
+  window.syncHymnLibraryIndex = async function() {
+    if (typeof window.worshipSyncAPI !== 'function') {
+      throw new Error('聖詩索引同步介面尚未載入');
+    }
+    const result = await window.worshipSyncAPI('cal_syncPptHymnIndex', { kind: 'hymn' });
+    if (result && result.success === false) {
+      throw new Error(result.message || '聖詩索引同步失敗');
+    }
+    return result && result.data ? result.data : result;
+  };
+
   window.loadPptLibraryContent = async function(sectionIds) {
     const profile = window.activeWorshipTemplateProfile || {};
     const defaultTargets = [

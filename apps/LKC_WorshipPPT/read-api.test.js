@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { buildJsonpUrl, jsonp, read } = require('./read-api.js');
+const { buildJsonpUrl, jsonp, read, sync } = require('./read-api.js');
 
 test('builds a JSONP URL for read-only GAS actions from file pages', () => {
   const url = new URL(buildJsonpUrl(
@@ -16,6 +16,78 @@ test('builds a JSONP URL for read-only GAS actions from file pages', () => {
   assert.deepEqual(JSON.parse(url.searchParams.get('data')), {
     startDate: '2026-07-12', endDate: '2026-07-12'
   });
+});
+
+test('manual hymn index sync posts only to the dedicated Library GAS endpoint', async () => {
+  const previous = {
+    fetch: global.fetch,
+    LKC_WORSHIP_PPT_LIBRARY_GAS_URL: global.LKC_WORSHIP_PPT_LIBRARY_GAS_URL,
+    AUTH_TOKEN: global.AUTH_TOKEN,
+    location: global.location
+  };
+  const calls = [];
+  global.LKC_WORSHIP_PPT_LIBRARY_GAS_URL = 'https://script.google.com/macros/s/ppt-library/exec';
+  global.AUTH_TOKEN = 'ChurchApp-2026';
+  global.location = { protocol: 'https:', hostname: 'example.com' };
+  global.fetch = async (url, init) => {
+    calls.push({ url, init });
+    return {
+      ok: true,
+      text: async () => JSON.stringify({
+        success: true,
+        data: { scope: 'hymn', inserted: 2, updated: 1, unchanged: 40 }
+      })
+    };
+  };
+
+  try {
+    const result = await sync('cal_syncPptHymnIndex', { kind: 'hymn' });
+    assert.deepEqual(result.data, { scope: 'hymn', inserted: 2, updated: 1, unchanged: 40 });
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, global.LKC_WORSHIP_PPT_LIBRARY_GAS_URL);
+    assert.equal(calls[0].init.method, 'POST');
+    assert.deepEqual(JSON.parse(calls[0].init.body), {
+      action: 'cal_syncPptHymnIndex',
+      token: 'ChurchApp-2026',
+      data: { kind: 'hymn' }
+    });
+  } finally {
+    Object.assign(global, previous);
+  }
+});
+
+test('does not retry JSONP after the dedicated GAS reports a backend sync error', async () => {
+  const previous = {
+    fetch: global.fetch,
+    LKC_WORSHIP_PPT_LIBRARY_GAS_URL: global.LKC_WORSHIP_PPT_LIBRARY_GAS_URL,
+    AUTH_TOKEN: global.AUTH_TOKEN,
+    document: global.document
+  };
+  let postCalls = 0;
+  global.LKC_WORSHIP_PPT_LIBRARY_GAS_URL = 'https://script.google.com/macros/s/ppt-library/exec';
+  global.AUTH_TOKEN = 'ChurchApp-2026';
+  global.document = {
+    createElement() {
+      throw new Error('backend errors must not fall through to JSONP');
+    }
+  };
+  global.fetch = async () => {
+    postCalls += 1;
+    return {
+      ok: true,
+      text: async () => JSON.stringify({
+        success: false,
+        message: '缺少 Script Property'
+      })
+    };
+  };
+
+  try {
+    await assert.rejects(sync('cal_syncPptHymnIndex', { kind: 'hymn' }), /缺少 Script Property/);
+    assert.equal(postCalls, 1);
+  } finally {
+    Object.assign(global, previous);
+  }
 });
 
 test('keeps a no-op JSONP callback after timeout for late GAS responses', async () => {

@@ -18,11 +18,11 @@
 - 產生固定禮文、標題頁、讚美歌詞、講道頁、報告頁及其他原生文字頁。
 - 提供整份投影片順序預覽、具名版面群組、背景、文字／圖片縮放與樂譜白底透明度設定。
 - 匯出真正的 `.pptx`，不是螢幕截圖集合。
-- 直接連接既有的行事曆、週報、PPT Library 與聖經唯讀來源；行事曆與 PPT Library 索引優先讀取 Supabase，缺資料或讀取失敗時回退既有 GAS。PPTX binary 一律由 Library GAS bridge 依 fileId 取回；週報優先讀取 Supabase，缺資料或讀取失敗時回退既有 GAS `load`，其他 GAS POST 被 CORS 阻擋或由 `file://` 開啟時提供安全的 JSONP 回退。
+- 直接連接既有的行事曆、週報、PPT Library 與聖經來源；行事曆與 PPT Library 索引優先讀取 Supabase，缺資料或讀取失敗時回退既有 GAS。PPTX binary 一律由 Library GAS bridge 依 fileId 取回；週報優先讀取 Supabase，缺資料或讀取失敗時回退既有 GAS `load`。PPT Library 的聖詩索引另提供使用者明確觸發的維護 action，由 Library GAS 代表前端寫入 Supabase。
 
 目前不負責的範圍：
 
-- 不寫回行事曆、週報、聖經或 Drive 資料庫。
+- 前端不直接寫回行事曆、週報、聖經或 Drive 資料庫；聖詩索引同步只由受限的 Library GAS action upsert Supabase metadata，不刪除資料、不傳送 PPTX binary。
 - 牧師講道 PPT 僅接受瀏覽器上傳的 `.pptx`；解析時強制驗證 16:9，通過後轉成 `ppt-import` 頁面接在講道標題頁之後，並可逐頁選擇是否套用禮拜背景。
 - 不在瀏覽器端建立或管理 Drive PPTX 資料庫；瀏覽器只保存 Supabase 索引的 fileId。
 - 不在前端保存版面解鎖密碼。
@@ -74,7 +74,7 @@ flowchart LR
 | Firebase Realtime Database | 共用版面設定 | `layout-cloud-store.js` 以共用 bootstrap 載入 SDK | 版面寫入需 Auth；不鏡像行事曆／週報 |
 | Firebase Auth Email/Password + in-memory persistence | `layout-cloud-store.js` | 只有知道版面密碼者能改全教會設定；重新整理自動鎖回 | 密碼不得寫入程式或 Git |
 | GAS Router／`churchAPI` | 行事曆、PPT 索引、PPT 檔案、聖經 | 沿用既有後端與 Google Workspace 權限 | POST 可能受 `file://`／CORS 影響 |
-| JSONP 唯讀回退 | `read-api.js` | 無法 POST 時仍能讀取必要資料 | 只允許明確的唯讀 action；60 秒逾時清理 callback |
+| JSONP 唯讀回退 | `read-api.js` | 無法 POST 時仍能讀取必要資料 | `read()` 只允許明確的唯讀 action；同步 action 是另一路明確列出的維護入口 |
 | JSZip 3.10.1 | `vendor-jszip.min.js`、PPTX 解析／匯出後處理 | 在瀏覽器解壓縮與重打包 OOXML | PPTX 是 ZIP；大型檔案會消耗記憶體 |
 | DOMParser + OOXML | `pptx-library.js` | 不依賴 PowerPoint 桌面程式，直接讀座標、文字、圖片、主題色與裁切 | 目前只解析本系統需要的 shape／picture 子集合 |
 | Canvas 2D | 樂譜／啟應文預覽 | 提供網頁中的近似樣貌 | 不作為這些資料庫頁面的輸出來源 |
@@ -100,7 +100,7 @@ flowchart LR
 
 ### 4.2 資料來源與轉接層
 
-- `read-api.js`：連接既有 `churchAPI` 唯讀入口，並在 GitHub Pages／POST 傳輸失敗時使用 JSONP。
+- `read-api.js`：連接既有 `churchAPI` 唯讀入口，並在 GitHub Pages／POST 傳輸失敗時使用 JSONP；`sync()` 只允許固定的 PPT Library 聖詩索引同步 action。
 - `bulletin-supabase.js`：重用週報系統的 Supabase client、日期查詢及 `reports`／`praise` 欄位映射。
 - `calendar-adapter.js`：將 Master Schedule 的 `values[]` 映射到 model，隔離欄位別名與台語事件條件。
 - `calendar-integration.js`：協調行事曆、週報、經文與 PPT Library 的整批載入。
@@ -246,7 +246,7 @@ sequenceDiagram
 
 帶入完成後，`source-reminders.js` 會依 profile 的 `sourceRequirements` 彙整一次「資料提醒」警告視窗。它不是錯誤或驗證阻擋：投影片仍會照目前可取得的資料產生。警告會列出模板對應行事曆事件、必要欄位、台語／華語經文、Library 素材、週報分類或讚美資料中尚未建立的項目；聯合華語不要求讚美或 Library 時不會誤報。
 
-## 8. 統一唯讀資料層與回退順序
+## 8. 統一資料層、回退與維護動作
 
 ### 8.1 既有來源 API
 
@@ -256,6 +256,7 @@ WorshipPPT 不複製行事曆與週報內容到 Firebase；資料直接由既有
 - 聖經：由主 GAS `LKC_WorshipPPT` 的 `cal_queryBible` action 讀取，沿用 `read-api.js` 的 POST／JSONP 備援。
 - PPT Library：索引先讀 Supabase `worship_ppt_library_index`；索引缺資料時才呼叫 `LKC_WorshipPPT_LIBRARY` 的 GAS bridge。索引只保存 `fileId`、類型、編號與顯示資訊，不保存 PPTX binary。
 - PPTX 檔案：取得索引 entry 後，只以 `fileId` 呼叫同一個 PPT Library GAS bridge 的 `cal_getPptLibraryFile`；瀏覽器不直接讀 Storage／Drive URL。
+- 聖詩索引維護：使用者在聖詩段落按「同步聖詩索引並載入」時，由 `read-api.js sync()` 呼叫獨立 Library GAS 的 `cal_syncPptHymnIndex`；完成後才重新讀取索引與目前 PPTX。
 - 週報報告與讚美：`SundayBulletinSupabaseService.loadReports/loadPraise` 讀取 Supabase；`bulletin-content.js` 將服務結果交給 PPT model。
 
 ### 8.2 週報回退順序
@@ -271,14 +272,22 @@ WorshipPPT 不複製行事曆與週報內容到 Firebase；資料直接由既有
 3. POST 遇到 network、4xx/5xx 或非 JSON 回應時改用 JSONP。
 4. JSONP 建立唯一 callback，60 秒逾時或 script error 時移除 callback 與 script。
 
-JSONP 只應開放：
+`read()` 的 JSONP 只應開放：
 
 - `cal_getEvents`
 - `cal_getPptLibraryIndex`
 - `cal_getPptLibraryFile`
 - `cal_queryBible`
 
-這些都是唯讀 action。新增模板不可利用這條回退路徑執行寫入。
+這些都是唯讀 action。新增模板不可利用 `read()` 回退路徑執行寫入。
+
+### 8.4 聖詩索引手動同步
+
+1. `production-editor.js` 只在 `kind=hymn` 的資料庫段落顯示同步標籤；啟應文段落維持原本的唯讀載入行為。
+2. `syncHymnLibraryIndex()` 固定送出 `{ action: 'cal_syncPptHymnIndex', data: { kind: 'hymn' } }` 到 `LKC_WORSHIP_PPT_LIBRARY`，先嘗試 `POST`，跨來源失敗時才使用同一 action 的 JSONP 備援。
+3. Library GAS 以 `LockService` 鎖定，繞過 5 分鐘索引快取重新掃描聖詩 Drive 資料夾，與 Supabase `worship_ppt_library_index` 只比對 `kind / number / file_id / title / file_name`。
+4. GAS 只 upsert 新增／內容變更的聖詩 metadata；Supabase 已有但 Drive 本次未出現的資料只計為 `preserved`，不刪除。服務金鑰只存在 GAS Script Properties：`PPT_LIBRARY_SUPABASE_URL`、`PPT_LIBRARY_SUPABASE_SERVICE_ROLE_KEY`。
+5. 每次成功、錯誤或被短暫冷卻的結果都由 GAS 寫入 `PPT_LIBRARY_SYNC_LOG`；前端收到成功結果後才載入目前段落的 PPTX。同步失敗時不宣稱載入成功。
 
 ## 9. 行事曆欄位契約
 
@@ -625,6 +634,7 @@ PptxGenJS 產生 blob 後，若 JSZip 可用，系統會再次打開輸出 PPTX�
 | 版面 Firebase SDK 載入失敗 | 清除 promise，下一次可重試 |
 | GAS POST network/CORS 失敗 | 回退 JSONP |
 | JSONP 逾時／載入失敗 | 清理 script/callback，回報可讀訊息 |
+| 聖詩索引同步失敗 | 保留既有 Supabase 索引，不載入本次段落，顯示 GAS 錯誤訊息並由 `PPT_LIBRARY_SYNC_LOG` 留痕 |
 | PPT Library 索引失敗 | 清除 `indexPromise`，下一次可重試 |
 | 單一 PPTX 解析失敗 | 清除該 file ID cache，不污染其他素材 |
 | Library 找不到編號 | 清除該 section pages，保存 `libraryError` |

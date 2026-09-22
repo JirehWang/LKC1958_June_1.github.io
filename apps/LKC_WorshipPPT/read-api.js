@@ -3,6 +3,7 @@
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.TaiwaneseWorshipReadApi = api;
   root.worshipReadAPI = api.read;
+  root.worshipSyncAPI = api.sync;
 })(typeof globalThis !== 'undefined' ? globalThis : this, function(root) {
   let callbackSequence = 0;
   const JSONP_TIMEOUT_MS = 45000;
@@ -17,9 +18,14 @@
     'cal_getPptLibraryIndex',
     'cal_getPptLibraryFile'
   ]);
+  const PPT_LIBRARY_SYNC_ACTIONS = new Set([
+    'cal_syncPptHymnIndex'
+  ]);
 
   function endpointForAction(action) {
-    if (PPT_LIBRARY_ACTIONS.has(action)) return root.LKC_WORSHIP_PPT_LIBRARY_GAS_URL || null;
+    if (PPT_LIBRARY_ACTIONS.has(action) || PPT_LIBRARY_SYNC_ACTIONS.has(action)) {
+      return root.LKC_WORSHIP_PPT_LIBRARY_GAS_URL || null;
+    }
     return root.GAS_URL;
   }
 
@@ -116,6 +122,36 @@
     return result;
   }
 
+  async function postJson(endpoint, action, data, token) {
+    if (typeof root.fetch !== 'function') throw new Error('瀏覽器 fetch 尚未載入');
+    const response = await root.fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      credentials: 'omit',
+      body: JSON.stringify({ action, token: token || '', data: data || {} })
+    });
+    if (!response || !response.ok) {
+      const error = new Error(`GAS 回傳 HTTP ${response && response.status || 0}`);
+      error.type = 'INVALID_RESPONSE';
+      throw error;
+    }
+    let result;
+    try {
+      result = JSON.parse(await response.text());
+    } catch (error) {
+      const parseError = new Error('GAS 回應不是可解析 JSON');
+      parseError.type = 'INVALID_RESPONSE';
+      parseError.cause = error;
+      throw parseError;
+    }
+    if (result && result.success === false) {
+      const error = new Error(result.message || 'PPT Library 同步失敗');
+      error.type = 'BACKEND_ERROR';
+      throw error;
+    }
+    return result;
+  }
+
   function isGithubPages() {
     const hostname = String(root.location && root.location.hostname || '').toLowerCase();
     return hostname === 'github.io' || hostname.endsWith('.github.io');
@@ -197,5 +233,27 @@
     return jsonp(endpoint, action, data || {}, root.AUTH_TOKEN || 'ChurchApp-2026');
   }
 
-  return { buildJsonpUrl, jsonp, fetchJsonp, parseJsonpPayload, read };
+  async function sync(action, data) {
+    if (!PPT_LIBRARY_SYNC_ACTIONS.has(action)) {
+      throw new Error('不支援的 PPT Library 同步 action');
+    }
+    const endpoint = endpointForAction(action);
+    if (!endpoint) throw new Error('PPT Library GAS 同步網址尚未就緒');
+    const token = root.AUTH_TOKEN || 'ChurchApp-2026';
+    let postError;
+    try {
+      return await postJson(endpoint, action, data || {}, token);
+    } catch (error) {
+      if (error && error.type === 'BACKEND_ERROR') throw error;
+      postError = error;
+    }
+    try {
+      return await jsonp(endpoint, action, data || {}, token);
+    } catch (error) {
+      error.cause = postError;
+      throw error;
+    }
+  }
+
+  return { buildJsonpUrl, jsonp, fetchJsonp, postJson, parseJsonpPayload, read, sync };
 });

@@ -598,9 +598,11 @@ admin.html → apps/LKC_WorshipPPT/
 禮拜PPT產生器 → Supabase `worship_ppt_library_index`（只讀 PPT Library 索引：kind / number / title / fileId）
 禮拜PPT產生器 → config.js / read-api.js → 主 GAS `LKC_WorshipPPT` `cal_queryBible` / 行事曆備援
 禮拜PPT產生器 → config.js / read-api.js → Library GAS `LKC_WorshipPPT_LIBRARY` `cal_getPptLibraryIndex`（索引備援） / `cal_getPptLibraryFile`（fileId → PPTX）
+禮拜PPT產生器「同步聖詩索引並載入」→ read-api.js sync() → Library GAS `cal_syncPptHymnIndex` → Supabase `worship_ppt_library_index`（只新增／更新 hymn metadata，不刪除、不傳 PPTX binary）
+Library GAS `cal_syncPptHymnIndex` → GAS `PPT_LIBRARY_SYNC_LOG`（成功、錯誤、preserved 與計數紀錄）
 禮拜PPT產生器 → 週報管理系統 GAS `load` → `reports_YYYY-MM-DD`（本會消息／教界消息／關懷代禱，依序產生報告頁）
 禮拜PPT產生器 → 週報管理系統 GAS `load` → `praise_songs_YYYY-MM-DD`（聖歌隊讚美）
-禮拜PPT產生器（file:// 或 POST 被擋）→ read-api.js JSONP → 對應的主 GAS／Library GAS 唯讀 action
+禮拜PPT產生器（file:// 或 POST 被擋）→ read-api.js JSONP → 對應的主 GAS／Library GAS 唯讀 action；索引同步另走固定且受限的 `cal_syncPptHymnIndex`
 Library GAS → Google Drive 聖詩／啟應文資料夾（依 fileId 讀取原始 PPTX）
 禮拜PPT產生器（聯合華語）→ `templates/` 三張 16:9 PNG → 全心敬拜／奉獻／獻上感恩完整圖像頁（不拆字、不呼叫 GAS）
 禮拜PPT產生器 → 索引命中 fileId → Library GAS `cal_getPptLibraryFile` → 原始台語聖詩／啟應文 PPTX Base64
@@ -618,7 +620,7 @@ Library GAS → Google Drive 聖詩／啟應文資料夾（依 fileId 讀取原�
 
 - 禱告會 PPT 使用中央路由 key `LKC_PrayerPPT` 指向合併主 GAS，不沿用舊獨立行事曆的 `LKC_MasterSchedule`；瀏覽器不保存或直連 Gemini key。前端支援一次選取或拖入多張圖片，依序以 `cal_parsePrayerImage` 送至合併主 GAS 並顯示逐張進度；每張 AI 文字在自己的圖片邊界內解析，先排除頁尾頁碼與下一頁前言滲入，再合併結構化禱告段落，因此上傳順序不會污染前一段，重複出現的同編號段落則採追加內容。OCR 對「經文」與「金句」區塊僅回傳可辨識的書卷、章、節代號；PrayerPPT 再從文字中抽取代號並交給既有聖經 API 填入全文，不會把手寫經文本身當成查詢字串。投影片以 1～13 大項分組，同一大項內的小點會在可用行數內合併排版；放不下的小點整體移到下一頁，只有單一小點本身超長時才續頁。PrayerPPT 使用與其他崇拜模板共用的版面群組介面，並實作相同的群組建立、頁面歸屬與套用能力；設定依 template ID 同步。PrayerPPT 預設白色背景搭配深色標題／內文。後端由 `CalendarCore.js` 呼叫 `GeminiHelper.js`，再從「LKC系統設定」試算表的 `AI_Config` 讀取 `GEMINI_API_KEY`。
 
-行事曆帶入先由 `worship-ppt-supabase.js` 讀取 Supabase；缺資料或讀取失敗時回到主 GAS，依 active profile 嚴格選取同日期的 `講道資訊-台語`、`講道資訊-聯合-台語` 或 `講道資訊-聯合-華語`。PPT Library 索引先讀 Supabase `worship_ppt_library_index`，缺索引時才回到 Library GAS；索引命中後只把 `fileId` 傳給 `cal_getPptLibraryFile` 取回原始 PPTX，Supabase 不保存 binary，瀏覽器也不直接讀 Storage／Drive。聖經由主 GAS `cal_queryBible` 提供；本會消息、教界消息、關懷代禱與讚美由週報 Supabase 優先、週報 GAS `load` 備援，不經過 `worshipPpt/content` Firebase 鏡像。由 `file://` 直接開啟或 POST 遭跨來源政策拒絕時，`read-api.js` 對四個唯讀 action 使用 JSONP，PPT Library action 固定送往 Library GAS，不會落到主 GAS。映射結果先成為 `sourceValue`：講題與講員可直接顯示；宣召、經文與金句由瀏覽器解析範圍後依 profile 查詢台語或華語聖經全文並分頁。台語與聯合台語模板使用聖詩／啟應文 Library；聯合台語的宣召、信仰告白、主禱文、經文與金句為台華雙語，雙欄禮文沿用聯合華語版型。聯合華語的全心敬拜、奉獻與獻上感恩直接使用專案內三張 16:9 PNG 原圖，完整保留圖片中的文字排版、背景與視覺效果，不再依賴外部簡報或 GAS。每張產生後的投影片具有穩定 `pageId`，使用者可將不同勾選批次存成具名版面群組；群組參數與頁面歸屬按 template ID 同步到 Firebase，並以不同 localStorage key 保存草稿與待同步狀態。
+行事曆帶入先由 `worship-ppt-supabase.js` 讀取 Supabase；缺資料或讀取失敗時回到主 GAS，依 active profile 嚴格選取同日期的 `講道資訊-台語`、`講道資訊-聯合-台語` 或 `講道資訊-聯合-華語`。PPT Library 索引先讀 Supabase `worship_ppt_library_index`，缺索引時才回到 Library GAS；索引命中後只把 `fileId` 傳給 `cal_getPptLibraryFile` 取回原始 PPTX，Supabase 不保存 binary，瀏覽器也不直接讀 Storage／Drive。聖詩段落的「同步聖詩索引並載入」會由 `read-api.js sync()` 呼叫 Library GAS `cal_syncPptHymnIndex`，只新增／更新索引 metadata，結果與錯誤留在 GAS `PPT_LIBRARY_SYNC_LOG`。聖經由主 GAS `cal_queryBible` 提供；本會消息、教界消息、關懷代禱與讚美由週報 Supabase 優先、週報 GAS `load` 備援，不經過 `worshipPpt/content` Firebase 鏡像。由 `file://` 直接開啟或 POST 遭跨來源政策拒絕時，`read-api.js` 對四個唯讀 action 使用 JSONP，PPT Library action 固定送往 Library GAS，不會落到主 GAS。映射結果先成為 `sourceValue`：講題與講員可直接顯示；宣召、經文與金句由瀏覽器解析範圍後依 profile 查詢台語或華語聖經全文並分頁。台語與聯合台語模板使用聖詩／啟應文 Library；聯合台語的宣召、信仰告白、主禱文、經文與金句為台華雙語，雙欄禮文沿用聯合華語版型。聯合華語的全心敬拜、奉獻與獻上感恩直接使用專案內三張 16:9 PNG 原圖，完整保留圖片中的文字排版、背景與視覺效果，不再依賴外部簡報或 GAS。每張產生後的投影片具有穩定 `pageId`，使用者可將不同勾選批次存成具名版面群組；群組參數與頁面歸屬按 template ID 同步到 Firebase，並以不同 localStorage key 保存草稿與待同步狀態。
 
 ### 多模板擴充邊界（台語、聯合台語與聯合華語已實作）
 
