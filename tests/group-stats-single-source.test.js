@@ -11,6 +11,7 @@ function readRepoFile(relativePath) {
 
 test('小組統計使用主日點名的單一統計服務', () => {
   const groupHtml = readRepoFile('apps/LKC_Group/group.html');
+  const statsHtml = readRepoFile('apps/LKC_Group/stats.html');
   const groupSupabase = readRepoFile('apps/LKC_Group/group-supabase.js');
   const groupGas = readRepoFile('scratch_gas_sunday/GroupStatistics.js').replace(/\r\n/g, '\n');
 
@@ -18,6 +19,11 @@ test('小組統計使用主日點名的單一統計服務', () => {
     groupHtml,
     /LKC_SundayserviceAttendance[\\/]attendance-supabase\.js/,
     '小組頁面應載入主日點名統計服務'
+  );
+  assert.match(
+    statsHtml,
+    /LKC_SundayserviceAttendance[\\/]attendance-supabase\.js/,
+    '小組完整統計頁應載入主日點名統計服務'
   );
   assert.match(
     groupSupabase,
