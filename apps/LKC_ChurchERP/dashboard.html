@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#173f3c">
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="dashboard.css">
+  <title>幹事 Dashboard｜林口教會 ERP</title>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Dashboard 導覽">
+      <div class="brand-lockup">
+        <div class="brand-mark" aria-hidden="true">
+          <span></span><span></span><span></span>
+        </div>
+        <div>
+          <p class="brand-kicker">LKC · ADMIN</p>
+          <p class="brand-name">林口教會</p>
+        </div>
+      </div>
+
+      <div class="sidebar-label">工作總覽</div>
+      <nav class="sidebar-nav">
+        <a class="nav-item is-active" href="dashboard.html" aria-current="page">
+          <span class="nav-icon" aria-hidden="true">◈</span>
+          <span>本週 Dashboard</span>
+        </a>
+        <a class="nav-item" href="../LKC_MinistrySchedule/" target="_blank" rel="noopener">
+          <span class="nav-icon" aria-hidden="true">✦</span>
+          <span>事工總表</span>
+          <span class="nav-arrow" aria-hidden="true">↗</span>
+        </a>
+        <a class="nav-item" href="../LKC_SundayserviceAttendance/" target="_blank" rel="noopener">
+          <span class="nav-icon" aria-hidden="true">◉</span>
+          <span>主日出席</span>
+          <span class="nav-arrow" aria-hidden="true">↗</span>
+        </a>
+        <a class="nav-item" href="../LKC_MasterSchedule/" target="_blank" rel="noopener">
+          <span class="nav-icon" aria-hidden="true">⌁</span>
+          <span>行事曆</span>
+          <span class="nav-arrow" aria-hidden="true">↗</span>
+        </a>
+        <a class="nav-item" href="../LKC_SundayBulletin/" target="_blank" rel="noopener">
+          <span class="nav-icon" aria-hidden="true">▤</span>
+          <span>週報管理</span>
+          <span class="nav-arrow" aria-hidden="true">↗</span>
+        </a>
+        <a class="nav-item" href="../LKC_WorshipPPT/" target="_blank" rel="noopener">
+          <span class="nav-icon" aria-hidden="true">◫</span>
+          <span>禮拜 PPT</span>
+          <span class="nav-arrow" aria-hidden="true">↗</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-bottom">
+        <div class="mode-card">
+          <span class="mode-dot" aria-hidden="true"></span>
+          <div>
+            <strong>示範模式</strong>
+            <span>資料尚未串接正式 API</span>
+          </div>
+        </div>
+        <a class="back-link" href="index.html">
+          <span aria-hidden="true">←</span>
+          回到入口卡片
+        </a>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <div class="breadcrumb">
+          <span>幹事 ERP</span>
+          <span class="breadcrumb-separator" aria-hidden="true">/</span>
+          <strong>本週 Dashboard</strong>
+        </div>
+        <div class="topbar-meta">
+          <span class="sync-status"><span class="sync-dot" aria-hidden="true"></span> 示範資料</span>
+          <span class="topbar-divider" aria-hidden="true"></span>
+          <span class="operator">幹事<span class="operator-avatar">幹</span></span>
+        </div>
+      </header>
+
+      <div class="content-wrap">
+        <section class="hero" aria-labelledby="dashboard-title">
+          <div class="hero-copy">
+            <p class="eyebrow">WEEKLY OPERATIONS</p>
+            <h1 id="dashboard-title">本週營運總覽</h1>
+            <p class="hero-description">把服事、出席與行政準備集中在一個畫面，讓今天該處理的事一眼就能找到。</p>
+          </div>
+          <div class="hero-side">
+            <div class="period-card">
+              <span class="period-label">本週期間</span>
+              <strong>2026/09/21 <i>—</i> 2026/09/27</strong>
+              <span class="period-note">週二 · 目前進行中</span>
+            </div>
+            <button class="ghost-button" id="refreshDemo" type="button">
+              <span aria-hidden="true">↻</span>
+              重新整理
+            </button>
+          </div>
+        </section>
+
+        <section class="kpi-grid" aria-label="本週關鍵數字">
+          <article class="kpi-card tone-green">
+            <div class="kpi-topline">
+              <span class="kpi-label">本週服事</span>
+              <span class="kpi-symbol" aria-hidden="true">✦</span>
+            </div>
+            <div class="kpi-value-row">
+              <strong>13<span>/18</span></strong>
+              <span class="trend positive">已填進度</span>
+            </div>
+            <div class="kpi-foot"><span>還有 5 項待確認</span><span class="mini-progress"><i style="width:72%"></i></span></div>
+          </article>
+          <article class="kpi-card tone-blue">
+            <div class="kpi-topline">
+              <span class="kpi-label">上週主日出席</span>
+              <span class="kpi-symbol" aria-hidden="true">◉</span>
+            </div>
+            <div class="kpi-value-row">
+              <strong>189</strong>
+              <span class="trend positive">+8 人</span>
+            </div>
+            <div class="kpi-foot"><span>新朋友 7 位</span><span class="kpi-foot-link">查看趨勢 <b aria-hidden="true">↗</b></span></div>
+          </article>
+          <article class="kpi-card tone-amber">
+            <div class="kpi-topline">
+              <span class="kpi-label">本週行事曆</span>
+              <span class="kpi-symbol" aria-hidden="true">⌁</span>
+            </div>
+            <div class="kpi-value-row">
+              <strong>12</strong>
+              <span class="trend warning">3 待補資料</span>
+            </div>
+            <div class="kpi-foot"><span>已建立活動 12 項</span><span class="kpi-foot-link">開啟行事曆 <b aria-hidden="true">↗</b></span></div>
+          </article>
+          <article class="kpi-card tone-violet">
+            <div class="kpi-topline">
+              <span class="kpi-label">週報／PPT</span>
+              <span class="kpi-symbol" aria-hidden="true">▤</span>
+            </div>
+            <div class="kpi-value-row">
+              <strong>78<span>%</span></strong>
+              <span class="trend warning">3 項待處理</span>
+            </div>
+            <div class="kpi-foot"><span>資料完成 11 / 14 項</span><span class="mini-progress"><i style="width:78%"></i></span></div>
+          </article>
+        </section>
+
+        <section class="primary-grid" aria-label="本週主要工作">
+          <article class="panel service-panel">
+            <div class="panel-heading">
+              <div>
+                <div class="section-eyebrow"><span class="section-dot green"></span> MINISTRY SCHEDULE</div>
+                <h2>本週服事進度</h2>
+              </div>
+              <a class="text-link" href="../LKC_MinistrySchedule/" target="_blank" rel="noopener">查看事工總表 <span aria-hidden="true">↗</span></a>
+            </div>
+            <div class="service-overview">
+              <div class="service-score"><strong>72<span>%</span></strong><span>欄位已填妥</span></div>
+              <div class="service-track"><span style="width:72%"></span></div>
+              <div class="service-count"><strong>13</strong><span>/ 18 項</span></div>
+            </div>
+            <div class="service-table" id="serviceRows" aria-label="服事進度明細"></div>
+          </article>
+
+          <article class="panel attendance-panel">
+            <div class="panel-heading">
+              <div>
+                <div class="section-eyebrow"><span class="section-dot blue"></span> ATTENDANCE</div>
+                <h2>出席狀況</h2>
+              </div>
+              <a class="text-link" href="../LKC_SundayserviceAttendance/" target="_blank" rel="noopener">開啟點名 <span aria-hidden="true">↗</span></a>
+            </div>
+            <div class="attendance-summary">
+              <div class="attendance-ring" style="--ring-value:84%">
+                <div><strong>189</strong><span>上週出席</span></div>
+              </div>
+              <div class="attendance-note">
+                <span class="comparison-pill">↗ 比前週增加 8 人</span>
+                <p>含新朋友 <strong>7</strong> 位</p>
+                <span class="muted-note">資料來源：主日出席系統</span>
+              </div>
+            </div>
+            <div class="attendance-list" id="attendanceRows" aria-label="各場次出席明細"></div>
+          </article>
+        </section>
+
+        <section class="secondary-grid" aria-label="行政準備工作">
+          <article class="panel calendar-panel">
+            <div class="panel-heading compact-heading">
+              <div>
+                <div class="section-eyebrow"><span class="section-dot amber"></span> CALENDAR</div>
+                <h2>行事曆進度</h2>
+              </div>
+              <span class="heading-badge amber-badge">3 項待補資料</span>
+            </div>
+            <div class="timeline" id="calendarRows" aria-label="行事曆時間軸"></div>
+          </article>
+
+          <article class="panel readiness-panel">
+            <div class="panel-heading compact-heading">
+              <div>
+                <div class="section-eyebrow"><span class="section-dot violet"></span> WEEKLY PACK</div>
+                <h2>週報與 PPT 準備度</h2>
+              </div>
+              <span class="heading-badge violet-badge">11 / 14 完成</span>
+            </div>
+            <div class="readiness-list" id="readinessRows" aria-label="週報與 PPT 準備明細"></div>
+            <div class="readiness-footer">
+              <span>最後更新 09/22 08:32</span>
+              <a class="text-link" href="../LKC_SundayBulletin/" target="_blank" rel="noopener">前往週報 <span aria-hidden="true">↗</span></a>
+            </div>
+          </article>
+        </section>
+
+        <section class="panel sources-panel" aria-labelledby="sources-title">
+          <div class="sources-heading">
+            <div>
+              <div class="section-eyebrow"><span class="section-dot teal"></span> DATA SOURCES</div>
+              <h2 id="sources-title">資料來源</h2>
+            </div>
+            <p>正式串接時沿用各系統既有 API 與資料快取，不直接讀取頁面內容。</p>
+          </div>
+          <div class="source-grid" id="sourceRows"></div>
+        </section>
+
+        <footer class="page-footer">
+          <span>林口教會幹事 ERP · Dashboard prototype</span>
+          <span>本頁為示範畫面，數字尚未連接正式資料。</span>
+        </footer>
+      </div>
+    </main>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="dashboard.js" defer></script>
+</body>
+</html>
