@@ -14,7 +14,17 @@
     const praisePromise = requirements.praise === false
       ? Promise.resolve({ state: 'skipped' })
       : loadRecord('praise');
-    const [reportsResult, praiseResult] = await Promise.all([reportsPromise, praisePromise]);
+    const [reportsOutcome, praiseOutcome] = await Promise.allSettled([reportsPromise, praisePromise]);
+    const toSourceResult = outcome => {
+      if (outcome.status === 'fulfilled') return outcome.value;
+      const reason = outcome.reason;
+      return {
+        state: 'error',
+        error: reason && reason.message ? reason.message : String(reason || '未知錯誤')
+      };
+    };
+    const reportsResult = toSourceResult(reportsOutcome);
+    const praiseResult = toSourceResult(praiseOutcome);
     if (reportsResult.state === 'loaded' && model.announcements) {
       api.applyReportsToModel(model, reportsResult.data);
       if (typeof root.reflowReportPagesForLayout === 'function') root.reflowReportPagesForLayout();
@@ -34,12 +44,16 @@
 
   root.describeBulletinPptContent = function(result) {
     if (!result || result.error) return `週報資料讀取失敗：${result && result.error ? result.error : '未知錯誤'}`;
+    const describeSource = (label, source, loadedText, missingText) => {
+      if (source.state === 'error') return label + '讀取失敗：' + (source.error || '未知錯誤');
+      return source.state === 'loaded' ? loadedText : missingText;
+    };
     const parts = [];
     if (result.reports && result.reports.state !== 'skipped') {
-      parts.push(result.reports.state === 'loaded' ? `報告 ${result.reportPageCount} 頁` : '報告無資料');
+      parts.push(describeSource('報告', result.reports, '報告 ' + result.reportPageCount + ' 頁', '報告無資料'));
     }
     if (result.praise && result.praise.state !== 'skipped') {
-      parts.push(result.praise.state === 'loaded' ? `讚美 ${result.praisePageCount} 頁` : '讚美無資料');
+      parts.push(describeSource('讚美', result.praise, '讚美 ' + result.praisePageCount + ' 頁', '讚美無資料'));
     }
     return parts.join('、');
   };

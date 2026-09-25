@@ -278,8 +278,11 @@
       );
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const json = await response.json();
-      if (!json || json.success !== true) {
-        throw new Error(json && (json.message || json.error) || '週報服務回應無效');
+      if (!json) throw new Error('週報服務回應無效');
+      if (json.success !== true) {
+        const message = json.message || json.error || '週報服務回應無效';
+        if (message === '草稿不存在') return { state: 'missing', data: null };
+        throw new Error(message);
       }
       return json.data
         ? { state: 'loaded', data: json.data }

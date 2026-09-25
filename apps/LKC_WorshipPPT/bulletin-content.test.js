@@ -310,3 +310,24 @@ test('applies report pages and praise fields without treating cloud values as a 
   assert.equal(model.praise.kicker, '聖歌隊');
   assert.equal(model.praise.body, '第一段\n\n第二段');
 });
+
+test('treats a missing GAS draft as missing data without retrying', async () => {
+  let requests = 0;
+  const result = await loadCloudRecord(
+    'https://example.test/gas',
+    'reports',
+    '2026-09-27',
+    async () => {
+      requests += 1;
+      return {
+        ok: true,
+        async json() {
+          return { success: false, message: '草稿不存在' };
+        }
+      };
+    }
+  );
+
+  assert.deepEqual(result, { state: 'missing', data: null });
+  assert.equal(requests, 1);
+});
