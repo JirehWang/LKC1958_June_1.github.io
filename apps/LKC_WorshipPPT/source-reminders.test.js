@@ -63,6 +63,33 @@ test('identifies absent date records instead of treating them as an empty field'
   ]);
 });
 
+test('does not require lyrics for instrumental praise and flags missing performance details', () => {
+  const input = {
+    date: '2026-07-26',
+    event: {},
+    model: { praise: { title: '這是天父世界', body: '' } },
+    bulletinResult: {
+      praise: {
+        state: 'loaded',
+        data: {
+          title: '這是天父世界',
+          performanceType: 'instrumental',
+          tune: 'Terra Beata',
+          arrangement: 'Brant Adams',
+          performers: '長笛 / 黃慈恩\n鋼琴 / 蔡宜婷'
+        }
+      }
+    },
+    profile: { sourceRequirements: { calendarFields: [], bibleSections: [], reports: false } }
+  };
+
+  assert.deepEqual(buildMissingSourceReminders(input), []);
+  input.bulletinResult.praise.data.tune = '';
+  input.bulletinResult.praise.data.arrangement = '';
+  input.bulletinResult.praise.data.performers = '';
+  assert.deepEqual(buildMissingSourceReminders(input), ['週報「讚美演奏資訊」空白']);
+});
+
 test('formats the popup as a readable source-by-source reminder', () => {
   assert.equal(formatMissingSourceReminder([
     '行事曆「金句」欄位空白',

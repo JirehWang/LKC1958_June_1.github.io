@@ -10,8 +10,19 @@ function normalizeUploadedPraise(data) {
   const source = data && typeof data === 'object' ? data : {};
   return {
     title: normalizeUploadedText(source.title),
+    performanceType: source.performanceType === 'instrumental' ? 'instrumental' : 'vocal',
+    kicker: normalizeUploadedText(source.kicker),
+    tune: normalizeUploadedText(source.tune),
+    arrangement: normalizeUploadedText(source.arrangement),
+    performers: normalizeUploadedText(source.performers),
     lyrics: normalizeUploadedText(source.lyrics)
   };
+}
+
+function hasUploadedPraiseData(praise) {
+  return Boolean(praise && [
+    praise.title, praise.lyrics, praise.tune, praise.arrangement, praise.performers
+  ].some(value => normalizeUploadedText(value)));
 }
 
 function normalizeUploadedReports(data) {
@@ -65,6 +76,7 @@ const App = {
 
     this.initTabs();
     this.initFormFields();
+    if (window.AnnouncementReorder) window.AnnouncementReorder.init(document);
     this.initButtons();
     this.initServiceTypeSelector();
     this.updateDateDisplay();
@@ -658,9 +670,14 @@ const App = {
     if (sbService && typeof sbService.loadPraise === 'function') {
       try {
         const sbRes = await sbService.loadPraise(date);
-        if (sbRes && (sbRes.title || sbRes.lyrics)) {
+        if (hasUploadedPraiseData(sbRes)) {
           const praise = normalizeUploadedPraise(sbRes);
           BulletinModel.set('taiwanese.choirSong', praise.title);
+          BulletinModel.set('taiwanese.choirType', praise.performanceType);
+          BulletinModel.set('taiwanese.choirKicker', praise.kicker || (praise.performanceType === 'instrumental' ? '' : '聖歌隊'));
+          BulletinModel.set('taiwanese.choirTune', praise.tune);
+          BulletinModel.set('taiwanese.choirArrangement', praise.arrangement);
+          BulletinModel.set('taiwanese.choirPerformers', praise.performers);
           BulletinModel.set('taiwanese.choirLyrics', praise.lyrics);
           this.syncFormFromModel();
           if (!silent) this.showToast('🎉 成功載入上傳的讚美詩名與歌詞！', 'success');
@@ -681,8 +698,13 @@ const App = {
       const json = await res.json();
       if (json.success && json.data) {
         const praise = normalizeUploadedPraise(json.data);
-        if (praise.title || praise.lyrics) {
+        if (hasUploadedPraiseData(praise)) {
           BulletinModel.set('taiwanese.choirSong', praise.title);
+          BulletinModel.set('taiwanese.choirType', praise.performanceType);
+          BulletinModel.set('taiwanese.choirKicker', praise.kicker || (praise.performanceType === 'instrumental' ? '' : '聖歌隊'));
+          BulletinModel.set('taiwanese.choirTune', praise.tune);
+          BulletinModel.set('taiwanese.choirArrangement', praise.arrangement);
+          BulletinModel.set('taiwanese.choirPerformers', praise.performers);
           BulletinModel.set('taiwanese.choirLyrics', praise.lyrics);
           this.syncFormFromModel();
           if (!silent) this.showToast('🎉 成功載入上傳的讚美詩名與歌詞！', 'success');

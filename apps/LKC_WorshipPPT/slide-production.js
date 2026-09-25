@@ -369,6 +369,50 @@
     }
     if (page.kind === 'praise-title') {
       const song = page.title || (item && item.title) || '';
+      const instrumental = item && item.performanceType === 'instrumental';
+      if (instrumental) {
+        const details = page.body || [
+          item.kicker || '',
+          item.tune ? '曲／' + item.tune : '',
+          item.arrangement ? '編曲／' + item.arrangement : '',
+          item.performers || ''
+        ].filter(Boolean).join('\n');
+        const songLines = song ? wrapTextForBox(song, { fontSize: 36, boxWidth: 84, bold: true }).split('\n').filter(line => line.trim()).length : 0;
+        const wrappedDetails = details ? wrapTextForBox(details, { fontSize: 24, boxWidth: 84, bold: true }) : '';
+        const detailLines = wrappedDetails.split('\n').filter(line => line.trim()).length;
+        const secondarySize = detailLines > 6 ? 20 : 24;
+        const secondaryH = detailLines * secondarySize * 0.3;
+        const songH = songLines * 10.8;
+        const titleH = 17.8;
+        const gapAfterTitle = songLines ? 4.5 : 0;
+        const gapAfterSong = detailLines ? 2.5 : 0;
+        const totalH = titleH + gapAfterTitle + songH + gapAfterSong + secondaryH;
+        const titleY = Number(Math.max(4, (100 - totalH) / 2).toFixed(1));
+        const contentY = Number((titleY + titleH + gapAfterTitle).toFixed(1));
+        const secondaryContentY = Number((contentY + songH + gapAfterSong).toFixed(1));
+        return {
+          ...defaults,
+          titleY,
+          titleH,
+          titleAlign: 'center',
+          contentSize: 36,
+          contentX: 8,
+          contentY,
+          contentW: 84,
+          contentH: songH || 10.8,
+          contentAlign: 'center',
+          contentColor: '#111111',
+          lineSpacing: 1.2,
+          secondaryContentSize: secondarySize,
+          secondaryContentX: 8,
+          secondaryContentY,
+          secondaryContentW: 84,
+          secondaryContentH: secondaryH || 7.2,
+          secondaryContentAlign: 'center',
+          secondaryContentColor: '#111111',
+          secondaryLineSpacing: 1.2
+        };
+      }
       const performer = page.kicker || (item && item.kicker) || '';
       const songLines = song ? wrapTextForBox(song, { fontSize: 36, boxWidth: 84, bold: true }).split('\n').filter(line => line.trim()).length : 0;
       const performerLines = performer ? wrapTextForBox(performer, { fontSize: 36, boxWidth: 84, bold: true }).split('\n').filter(line => line.trim()).length : 0;

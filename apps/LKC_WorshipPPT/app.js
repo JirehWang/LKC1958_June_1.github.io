@@ -3,6 +3,12 @@ const activeTemplateId = templateProfiles.resolveTemplateId(window.location.sear
 const activeWorshipTemplateProfile = templateProfiles.getTemplateProfile(activeTemplateId);
 const sections = activeWorshipTemplateProfile.sections;
 const model = templateProfiles.createTemplateModel(activeWorshipTemplateProfile);
+if (model.praise) {
+  model.praise.performanceType = 'vocal';
+  model.praise.tune = '';
+  model.praise.arrangement = '';
+  model.praise.performers = '';
+}
 const hymnOpacitySectionIds = activeWorshipTemplateProfile.hymnOpacitySectionIds || [];
 const draftKey = activeWorshipTemplateProfile.draftKey;
 
@@ -32,7 +38,7 @@ try {
   });
   Object.entries(draft.model || {}).forEach(([id, saved]) => {
     if (!model[id] || !saved || typeof saved !== 'object') return;
-    ['title', 'kicker', 'body', 'secondaryBody', 'sourceValue'].forEach(key => {
+    ['title', 'kicker', 'body', 'secondaryBody', 'sourceValue', 'performanceType', 'tune', 'arrangement', 'performers'].forEach(key => {
       if (typeof saved[key] === 'string') model[id][key] = saved[key];
     });
     if (typeof saved.pastorPptApplyBackground === 'boolean') {
@@ -149,7 +155,17 @@ function editor() {
   } else if (item.type === 'calendar') {
     html = `<div class="inline-note">此值會作為經文查詢條件，再依目前模板的聖經版本產生投影片。</div>${field('標題', 'title', item.title)}${field('內容', 'body', item.body, 'textarea')}`;
   } else if (item.type === 'praise') {
-    html = `${field('詩歌名稱', 'title', item.title)}${field('演唱者／團體（選填）', 'kicker', item.kicker)}${field('歌詞（以空白行分頁）', 'body', item.body, 'textarea', '依你貼入的歌詞分頁，不自動生成歌詞。')}`;
+    const mode = item.performanceType === 'instrumental' ? 'instrumental' : 'vocal';
+    html = '<label class="field"><span>表演方式</span><select data-key="performanceType">'
+      + '<option value="vocal"' + (mode === 'vocal' ? ' selected' : '') + '>演唱（有歌詞）</option>'
+      + '<option value="instrumental"' + (mode === 'instrumental' ? ' selected' : '') + '>演奏（無歌詞）</option>'
+      + '</select></label>'
+      + field('曲目名稱（組曲可用／分隔）', 'title', item.title)
+      + field('演唱者／演出團體（選填）', 'kicker', item.kicker)
+      + field('曲／原曲（選填）', 'tune', item.tune, 'textarea')
+      + field('編曲（選填）', 'arrangement', item.arrangement)
+      + field('樂器／演奏者（每行一位）', 'performers', item.performers, 'textarea')
+      + field('歌詞（演唱時填寫；以空白行分頁）', 'body', item.body, 'textarea', '器樂演奏可留空。');
   } else if (item.type === 'sermon') {
     const pastorPptPages = Array.isArray(item.pastorPptPages) ? item.pastorPptPages : [];
     const pastorPptStatus = pastorPptPages.length
@@ -171,7 +187,9 @@ function editor() {
 
   form.innerHTML = html;
   form.querySelectorAll('[data-key]').forEach(element => {
-    element.oninput = event => { item[event.target.dataset.key] = event.target.value; preview(); };
+    const updateItem = event => { item[event.target.dataset.key] = event.target.value; preview(); };
+    element.oninput = updateItem;
+    if (element.tagName === 'SELECT') element.onchange = updateItem;
   });
   const carNoticeExportToggle = $('#car-notice-export-toggle');
   if (carNoticeExportToggle) carNoticeExportToggle.onchange = event => {
@@ -202,7 +220,9 @@ function editor() {
 
 function preview() {
   const item = model[active];
-  const pages = item.type === 'praise' && item.body ? item.body.split(/\n\s*\n/).filter(Boolean).length : 1;
+  const pages = item.type === 'praise'
+    ? 1 + (item.performanceType === 'instrumental' ? 0 : (item.body || '').split(/\n\s*\n/).filter(Boolean).length)
+    : 1;
   const setText = (selector, value) => { const element = $(selector); if (element) element.textContent = value; };
   setText('#preview-name', item.label);
   setText('#preview-kicker', item.kicker);

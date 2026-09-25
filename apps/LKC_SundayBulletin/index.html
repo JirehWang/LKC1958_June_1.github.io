@@ -89,7 +89,12 @@
             </label>
             <input type="text" class="form-input" data-field="taiwanese.choirSong">
           </div>
-          <div class="form-group"><label>聖歌隊歌詞 <span class="source-tag">聖歌隊上傳</span></label><textarea class="form-input" data-field="taiwanese.choirLyrics" rows="5"></textarea></div>
+          <div class="form-group"><label>表演方式 <span class="source-tag">聖歌隊上傳</span></label><select class="form-input" data-field="taiwanese.choirType"><option value="vocal">演唱（有歌詞）</option><option value="instrumental">演奏（無歌詞）</option></select></div>
+          <div class="form-group"><label>演唱者／演出團體</label><input type="text" class="form-input" data-field="taiwanese.choirKicker"></div>
+          <div class="form-group"><label>曲／原曲</label><textarea class="form-input" data-field="taiwanese.choirTune" rows="2"></textarea></div>
+          <div class="form-group"><label>編曲</label><input type="text" class="form-input" data-field="taiwanese.choirArrangement"></div>
+          <div class="form-group"><label>樂器／演奏者</label><textarea class="form-input" data-field="taiwanese.choirPerformers" rows="3"></textarea></div>
+          <div class="form-group"><label>歌詞（演唱曲目） <span class="source-tag">聖歌隊上傳</span></label><textarea class="form-input" data-field="taiwanese.choirLyrics" rows="5"></textarea></div>
           <div class="form-group"><label>講道題目 <span class="source-tag">LKCschedule</span></label><input type="text" class="form-input" data-field="taiwanese.sermonTitle"></div>
           <div class="section-label">「回應上帝的話」</div>
           <div class="form-group"><label>回應聖詩號碼 <span class="manual-tag">手動</span></label><input type="text" class="form-input" data-field="taiwanese.responseHymn"></div>
@@ -351,6 +356,7 @@
 <script src="js/bulletin.js"></script>
 <script src="js/draft.js"></script>
 <script src="js/export.js"></script>
+<script src="js/announcement-reorder.js"></script>
 <script src="js/app.js"></script>
 
 <script>

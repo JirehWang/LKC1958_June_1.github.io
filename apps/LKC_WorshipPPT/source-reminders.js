@@ -89,8 +89,14 @@
         reminders.push(`週報：praise_songs_${clean(date)} 尚未建立`);
       } else if (praise && praise.state === 'loaded') {
         const praiseData = praise.data && typeof praise.data === 'object' ? praise.data : null;
+        const instrumental = praiseData && praiseData.performanceType === 'instrumental';
         if (praiseData && !clean(praiseData.title)) reminders.push('週報「讚美歌名」空白');
-        if (!clean(items.praise && items.praise.body)) reminders.push('週報「讚美歌詞」空白');
+        if (instrumental) {
+          const hasInstrumentalDetails = [praiseData.tune, praiseData.arrangement, praiseData.performers, praiseData.kicker].some(clean);
+          if (!hasInstrumentalDetails) reminders.push('週報「讚美演奏資訊」空白');
+        } else if (!clean(items.praise && items.praise.body)) {
+          reminders.push('週報「讚美歌詞」空白');
+        }
       }
     }
     return reminders;

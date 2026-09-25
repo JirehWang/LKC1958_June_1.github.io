@@ -148,9 +148,14 @@ const BulletinExport = {
       zhGoldenVerseFull = `${zhGoldenVerseFull}（${zh.goldenVerseText}）`;
     }
 
+    const instrumentalPraise = tw.choirType === 'instrumental';
+    const praisePerformer = tw.choirKicker || (instrumentalPraise ? '器樂演奏' : '聖歌隊');
     const choirDisplay = [
-      tw.choirSong ? `${tw.choirSong} (聖歌隊)` : '',
-      tw.choirLyrics || ''
+      tw.choirSong ? tw.choirSong + ' (' + praisePerformer + ')' : '',
+      tw.choirTune ? '曲／' + tw.choirTune : '',
+      tw.choirArrangement ? '編曲／' + tw.choirArrangement : '',
+      tw.choirPerformers || '',
+      instrumentalPraise ? '' : (tw.choirLyrics || '')
     ].filter(Boolean).join('\n') || '(聖歌隊)';
 
     // 左欄 - 台語程序

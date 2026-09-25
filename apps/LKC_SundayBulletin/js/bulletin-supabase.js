@@ -217,7 +217,7 @@
       const row = {
         date,
         title: String(praiseData.title || '').trim(),
-        kicker: String(praiseData.kicker || '聖歌隊').trim(),
+        kicker: String(praiseData.kicker || (praiseData.performanceType === 'instrumental' ? '' : '聖歌隊')).trim(),
         lyrics: String(praiseData.lyrics || '').trim(),
         raw_data: praiseData,
         updated_at: nowIso,
@@ -232,7 +232,7 @@
       return { success: true, location: 'supabase', date, updatedAt: nowIso };
     },
 
-    // Supabase 只保存永久歌名索引；完整歌詞與日期紀錄仍以 GAS 為來源。
+    // 此方法只維護永久歌名索引；完整日期資料由 savePraise 寫入讚美資料表。
     async savePraiseTitle(title, userIdentifier = 'praise-title-index') {
       const sb = getSupabase();
       if (!sb) return null;
@@ -299,12 +299,21 @@
       if (error) throw error;
       if (!data) return null;
 
+      const rawData = data.raw_data && typeof data.raw_data === 'object' && !Array.isArray(data.raw_data)
+        ? data.raw_data
+        : {};
+      const performanceType = rawData.performanceType === 'instrumental' ? 'instrumental' : 'vocal';
       return {
+        ...rawData,
         date: data.date,
-        title: data.title || '',
-        kicker: data.kicker || '聖歌隊',
-        lyrics: data.lyrics || '',
-        updatedAt: data.updated_at
+        title: data.title || rawData.title || '',
+        performanceType,
+        kicker: data.kicker || rawData.kicker || (performanceType === 'instrumental' ? '' : '聖歌隊'),
+        tune: rawData.tune || '',
+        arrangement: rawData.arrangement || '',
+        performers: rawData.performers || '',
+        lyrics: data.lyrics || rawData.lyrics || '',
+        updatedAt: data.updated_at || rawData.updatedAt || ''
       };
     },
 

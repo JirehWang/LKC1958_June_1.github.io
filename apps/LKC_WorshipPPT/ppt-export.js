@@ -291,8 +291,17 @@
         : entry.kind === 'sermon-title'
           ? ['講道', titlePageTopic].filter(Boolean).join('：')
           : '';
+      const instrumentalPraise = entry.kind === 'praise-title' && modelEntry && modelEntry.performanceType === 'instrumental';
+      const praiseInstrumentalDetails = instrumentalPraise
+        ? (entry.body || [
+            modelEntry.kicker || '',
+            modelEntry.tune ? '曲／' + modelEntry.tune : '',
+            modelEntry.arrangement ? '編曲／' + modelEntry.arrangement : '',
+            modelEntry.performers || ''
+          ].filter(Boolean).join('\n'))
+        : '';
       const titlePageDetails = entry.kind === 'praise-title'
-        ? [titlePageTopic, entry.kicker || (modelEntry && modelEntry.kicker)].filter(Boolean)
+        ? [titlePageTopic, instrumentalPraise ? praiseInstrumentalDetails : (entry.kicker || (modelEntry && modelEntry.kicker))].filter(Boolean)
         : entry.kind === 'sermon-title'
           ? [entry.kicker || (modelEntry && modelEntry.kicker), entry.body || (modelEntry && modelEntry.body)].filter(Boolean)
           : [];
@@ -506,15 +515,19 @@
           margin: 0
         });
         if (entry.kind === 'praise-title') {
-          const performer = entry.kicker || (modelEntry && modelEntry.kicker) || '';
+          const performer = instrumentalPraise
+            ? praiseInstrumentalDetails
+            : (entry.kicker || (modelEntry && modelEntry.kicker) || '');
           if (performer) slide.addText(wrapNativeText(performer, params, 'secondaryContent'), {
             x: slideX(params.secondaryContentX == null ? 8 : params.secondaryContentX),
             y: slideY(params.secondaryContentY == null ? Number(params.contentY) + 10.8 : params.secondaryContentY),
             w: slideX(params.secondaryContentW || 84), h: slideY(params.secondaryContentH || 10.8),
-            fontSize: scaledFont(params.secondaryContentSize || 36),
+            fontSize: scaledFont(params.secondaryContentSize || (instrumentalPraise ? 24 : 36)),
             color: (params.secondaryContentColor || '#111111').replace('#', ''),
             fontFace: 'Microsoft JhengHei', align: params.secondaryContentAlign || 'center',
-            valign: 'top', bold: true, margin: 0
+            valign: 'top', bold: true,
+            lineSpacing: params.secondaryLineSpacing ? Math.round(scaledFont(params.secondaryContentSize || 24) * params.secondaryLineSpacing) : undefined,
+            margin: 0
           });
         }
       } else if (entry.kind === 'praise-lyrics') {

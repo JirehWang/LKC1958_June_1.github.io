@@ -37,6 +37,14 @@ function renderImportedPptPage(page, item) {
     return `<div class="ppt-object-text" data-ppt-role="${object.role || 'content'}" data-ppt-index="${objectIndex}" data-source-x="${object.x}" data-source-y="${object.y}" data-source-w="${object.w}" data-source-h="${object.h}" data-source-font-size="${object.fontSize || 18}" style="${geometry};text-align:${object.align || 'left'};align-items:${object.verticalAlign || 'start'};font-size:${(object.fontSize || 18) / 9.6}cqw;font-family:${safeAttr(object.fontFamily || 'Microsoft JhengHei')};color:${safeAttr(object.color || '#000000')};font-weight:${object.bold ? 700 : 400}"><span class="ppt-text-runs">${runHtml}</span></div>`;
   }).join('')}</div>`;
 }
+function formatPraiseInstrumentDetails(item) {
+  return [
+    item.kicker || '',
+    item.tune ? '曲／' + item.tune : '',
+    item.arrangement ? '編曲／' + item.arrangement : '',
+    item.performers || ''
+  ].map(value => String(value || '').trim()).filter(Boolean).join('\n');
+}
 function slidePages(item, sectionId) {
   if (Array.isArray(item.pptPages)) return window.TaiwaneseWorshipSlideProduction.composeLibraryPages(item, sectionId || active);
   if (item.type === 'fixed') {
@@ -45,8 +53,11 @@ function slidePages(item, sectionId) {
   }
   if (item.type === 'cover') return [{ kind:'cover' }];
   if (item.type === 'praise') {
-    const lyrics = (item.body || '').split(/\n\s*\n/).filter(Boolean).map(body => ({ kind:'praise-lyrics', body }));
-    return [{ kind:'praise-title' }, ...lyrics];
+    const instrumental = item.performanceType === 'instrumental';
+    const titlePage = { kind:'praise-title' };
+    if (instrumental) titlePage.body = formatPraiseInstrumentDetails(item);
+    const lyrics = instrumental ? [] : (item.body || '').split(/\n\s*\n/).filter(Boolean).map(body => ({ kind:'praise-lyrics', body }));
+    return [titlePage, ...lyrics];
   }
   if (item.type === 'sermon') return window.TaiwaneseWorshipSlideProduction.composeSermonPages(item, sectionId || active);
   if (item.type === 'manual') {
@@ -125,8 +136,11 @@ preview = function() {
     content.innerHTML = `<div class="body">${safeHtml(page.body)}</div><h1>${title}</h1>`;
   }
   else if (page.kind === 'praise-title') {
-    content.className = 'slide-content template-section';
-    content.innerHTML = `<h1>讚美</h1><div class="body body-primary">${safeHtml(page.title || item.title || '')}</div><div class="body-secondary">${safeHtml(page.kicker || item.kicker || '')}</div>`;
+    const instrumental = item.performanceType === 'instrumental';
+    content.className = 'slide-content template-section' + (instrumental ? ' template-praise-instrumental' : '');
+    const title = safeHtml(page.title || item.title || '');
+    const secondary = safeHtml(instrumental ? (page.body || formatPraiseInstrumentDetails(item)) : (page.kicker || item.kicker || ''));
+    content.innerHTML = '<h1>讚美</h1><div class="body body-primary">' + title + '</div><div class="body body-secondary">' + secondary + '</div>';
   }
   else if (page.kind === 'sermon-title') {
     const sermonTitle = ['講道', page.title || item.title].filter(Boolean).join('：');

@@ -86,6 +86,63 @@ test('prefers the shared Sunday Bulletin Supabase service and preserves its fiel
   }
 });
 
+test('loads instrumental praise credits for PPT without exposing cloud bookkeeping fields', async () => {
+  const previousService = globalThis.SundayBulletinSupabaseService;
+  const previousClient = globalThis._supabase;
+  globalThis._supabase = null;
+  globalThis.SundayBulletinSupabaseService = {
+    async loadPraise(date) {
+      return {
+        date,
+        title: "This Is My Father's World 這是天父世界 / He's Got the Whole World in His Hands 祂掌管全世界",
+        performanceType: 'instrumental',
+        kicker: '',
+        tune: 'Terra Beata、英國傳統曲調、美國靈歌',
+        arrangement: 'Brant Adams',
+        performers: '長笛 / 黃慈恩\n鋼琴 / 蔡宜婷',
+        lyrics: '',
+        updatedAt: '2026-10-04T00:00:00.000Z',
+        raw_data: { source: '週報讚美表單' }
+      };
+    }
+  };
+
+  try {
+    const result = await loadCloudRecord('https://example.test/gas', 'praise', '2026-10-04', async () => {
+      throw new Error('GAS fallback should not be used when Supabase returns data');
+    });
+    assert.deepEqual(result, {
+      state: 'loaded',
+      data: {
+        title: "This Is My Father's World 這是天父世界 / He's Got the Whole World in His Hands 祂掌管全世界",
+        performanceType: 'instrumental',
+        kicker: '',
+        tune: 'Terra Beata、英國傳統曲調、美國靈歌',
+        arrangement: 'Brant Adams',
+        performers: '長笛 / 黃慈恩\n鋼琴 / 蔡宜婷',
+        lyrics: ''
+      }
+    });
+
+    const model = { praise: {} };
+    applyPraiseToModel(model, result.data);
+    assert.deepEqual(model.praise, {
+      title: "This Is My Father's World 這是天父世界 / He's Got the Whole World in His Hands 祂掌管全世界",
+      performanceType: 'instrumental',
+      kicker: '',
+      tune: 'Terra Beata、英國傳統曲調、美國靈歌',
+      arrangement: 'Brant Adams',
+      performers: '長笛 / 黃慈恩\n鋼琴 / 蔡宜婷',
+      body: ''
+    });
+  } finally {
+    if (previousService === undefined) delete globalThis.SundayBulletinSupabaseService;
+    else globalThis.SundayBulletinSupabaseService = previousService;
+    if (previousClient === undefined) delete globalThis._supabase;
+    else globalThis._supabase = previousClient;
+  }
+});
+
 test('retries a stale GAS redirect with a cache-busted request', async () => {
   const requests = [];
   let attempt = 0;

@@ -209,9 +209,30 @@
   function applyPraiseToModel(model, data) {
     if (!model || !model.praise || !data) return model;
     model.praise.title = clean(data.title) || '讚美';
-    model.praise.kicker = clean(data.kicker) || '聖歌隊';
+    model.praise.performanceType = data.performanceType === 'instrumental' ? 'instrumental' : 'vocal';
+    model.praise.kicker = clean(data.kicker) || (model.praise.performanceType === 'instrumental' ? '' : '聖歌隊');
+    model.praise.tune = clean(data.tune);
+    model.praise.arrangement = clean(data.arrangement);
+    model.praise.performers = clean(data.performers);
     model.praise.body = clean(data.lyrics);
     return model;
+  }
+
+  function mapPraiseData(data) {
+    const source = data && typeof data === 'object' ? data : {};
+    const rawData = source.raw_data && typeof source.raw_data === 'object' && !Array.isArray(source.raw_data)
+      ? source.raw_data
+      : {};
+    const mapped = {
+      title: clean(source.title || rawData.title),
+      kicker: clean(source.kicker != null ? source.kicker : rawData.kicker),
+      lyrics: clean(source.lyrics != null ? source.lyrics : rawData.lyrics)
+    };
+    ['performanceType', 'tune', 'arrangement', 'performers'].forEach(key => {
+      const value = source[key] != null ? source[key] : rawData[key];
+      if (value != null) mapped[key] = value;
+    });
+    return mapped;
   }
 
   async function loadCloudRecord(endpoint, kind, date, fetchImpl) {
@@ -223,7 +244,7 @@
         const data = await bulletinService[loaderName](date);
         if (data) {
           const mappedData = kind === 'praise'
-            ? { title: data.title, kicker: data.kicker, lyrics: data.lyrics }
+            ? mapPraiseData(data)
             : { announcements: data.announcements, churchNews: data.churchNews, prayer: data.prayer };
           return { state: 'loaded', data: mappedData };
         }
@@ -241,7 +262,7 @@
         const { data, error } = await sb.from(table).select('*').eq('date', clean(date)).maybeSingle();
         if (!error && data) {
           const mappedData = kind === 'praise'
-            ? { title: data.title, kicker: data.kicker, lyrics: data.lyrics }
+            ? mapPraiseData(data)
             : { announcements: data.announcements, churchNews: data.church_news, prayer: data.prayer };
           return { state: 'loaded', data: mappedData };
         }

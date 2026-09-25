@@ -18,7 +18,8 @@ const BulletinModel = {
         callToWorship: '', openingHymn: '',
         apostlesCreed: true,
         responsivePsalm: '', prayer1Note: '',
-        scripture: '', choirSong: '', choirLyrics: '', sermonTitle: '',
+        scripture: '', choirSong: '', choirType: 'vocal', choirKicker: '聖歌隊',
+        choirTune: '', choirArrangement: '', choirPerformers: '', choirLyrics: '', sermonTitle: '',
         responseHymn: '', goldenVerse: '', goldenVerseText: '',
         offeringNote: '', doxologyHymn: '',
         bankAccount: CONFIG.BANK_ACCOUNT

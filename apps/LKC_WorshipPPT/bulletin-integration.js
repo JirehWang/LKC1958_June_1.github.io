@@ -27,7 +27,7 @@
         ? (Array.isArray(model.announcements.pptPages) ? model.announcements.pptPages.length : 0) + 1
         : 0,
       praisePageCount: praiseResult.state === 'loaded' && model.praise
-        ? 1 + String(model.praise.body || '').split(/\n\s*\n/).filter(Boolean).length
+        ? 1 + (model.praise.performanceType === 'instrumental' ? 0 : String(model.praise.body || '').split(/\n\s*\n/).filter(Boolean).length)
         : 0
     };
   };

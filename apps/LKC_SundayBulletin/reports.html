@@ -406,6 +406,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="../../supabase/supabase-config.js"></script>
 <script src="js/bulletin-supabase.js"></script>
+<script src="js/announcement-reorder.js"></script>
 <script src="js/reports-ai.js"></script>
 <script>
   const state = {
@@ -499,6 +500,12 @@
       }
     });
     initCharCounters();
+    if (window.AnnouncementReorder) window.AnnouncementReorder.init(document);
+    document.addEventListener('announcement-reordered', () => {
+      collectState();
+      if (window.SundayBulletinAI) SundayBulletinAI.clearSuggestions(document);
+      updateAiBulkActions();
+    });
 
     clearFormWithoutConfirm();
   });

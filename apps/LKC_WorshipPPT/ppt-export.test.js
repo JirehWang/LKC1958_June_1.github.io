@@ -1,4 +1,5 @@
 const test = require('node:test');
+const vm = require('node:vm');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -435,6 +436,112 @@ test('exports hymn names from the loaded model and uses the preview anchor for p
   assert.equal(slides[1].texts[0].opts.h, 6);
   assert.equal(slides[1].texts[0].opts.valign, 'top');
   assert.equal(slides[1].texts[0].opts.bold, true);
+});
+
+test('exports one instrumental praise title slide with complete credits and no lyrics pages', async () => {
+  const slides = [];
+  class MockPptx {
+    addSlide() {
+      const slide = {
+        texts: [],
+        addText(text, opts) { this.texts.push({ text, opts }); },
+        addShape() {},
+        addImage() {}
+      };
+      slides.push(slide);
+      return slide;
+    }
+    writeFile() { return Promise.resolve(); }
+  }
+
+  await exportWorshipPPTX({
+    PptxGenJS: MockPptx,
+    getDeckEntries: () => [{ kind: 'praise-title', sectionId: 'praise', sectionLabel: '讚美' }],
+    layoutState: { groups: {}, pageAssignments: {} },
+    production: require('./slide-production.js'),
+    model: {
+      praise: {
+        title: '這是天父世界 / 祂掌管全世界',
+        performanceType: 'instrumental',
+        kicker: '',
+        tune: 'Terra Beata、英國傳統曲調、美國靈歌',
+        arrangement: 'Brant Adams',
+        performers: '長笛 / 黃慈恩\n鋼琴 / 蔡宜婷',
+        body: ''
+      }
+    },
+    backgroundColor: '#ffffff',
+    serviceDate: '2026-10-04'
+  });
+
+  assert.equal(slides.length, 1);
+  const exportedText = slides[0].texts.map(item => item.text).join('\n');
+  assert.match(exportedText, /這是天父世界 \/ 祂掌管全世界/);
+  assert.match(exportedText, /曲／Terra Beata、英國傳統曲調、美國靈歌/);
+  assert.match(exportedText, /編曲／Brant Adams/);
+  assert.match(exportedText, /長笛 \/ 黃慈恩/);
+  assert.match(exportedText, /鋼琴 \/ 蔡宜婷/);
+  assert.doesNotMatch(exportedText, /第一節歌詞/);
+});
+
+test('previews an instrumental praise as one title page with all credits and no lyrics page', () => {
+  const elements = new Map();
+  const elementFor = id => {
+    if (!elements.has(id)) elements.set(id, { style: { setProperty() {} }, textContent: '', innerHTML: '', className: '' });
+    return elements.get(id);
+  };
+  const background = { style: {} };
+  const windowObject = {
+    TaiwaneseWorshipSlideProduction: {
+      shouldApplyHymnWhiteOverlay: () => false,
+      toWhiteOverlayOpacity: () => 0
+    }
+  };
+  const context = vm.createContext({
+    window: windowObject,
+    document: {
+      getElementById: elementFor,
+      querySelector: selector => selector === '.slide-background' ? background : {},
+      addEventListener() {}
+    },
+    model: {
+      praise: {
+        type: 'praise',
+        label: '讚美',
+        title: '這是天父世界',
+        performanceType: 'instrumental',
+        kicker: '',
+        tune: 'Terra Beata、英國傳統曲調、美國靈歌',
+        arrangement: 'Brant Adams',
+        performers: '長笛 / 黃慈恩\n鋼琴 / 蔡宜婷',
+        body: ''
+      }
+    },
+    active: 'praise',
+    backgroundImage: '',
+    backgroundColor: '#ffffff',
+    hymnOpacitySectionIds: [],
+    render() {}
+  });
+
+  vm.runInContext(fs.readFileSync(path.join(__dirname, 'ppt-format-preview.js'), 'utf8'), context);
+  const pages = JSON.parse(vm.runInContext(
+    'JSON.stringify(slidePages(model.praise).map(page => ({ kind: page.kind, body: page.body || "" })))',
+    context
+  ));
+  assert.deepEqual(pages, [{
+    kind: 'praise-title',
+    body: '曲／Terra Beata、英國傳統曲調、美國靈歌\n編曲／Brant Adams\n長笛 / 黃慈恩\n鋼琴 / 蔡宜婷'
+  }]);
+
+  vm.runInContext('preview()', context);
+  assert.equal(elementFor('slide-count').textContent, '1 / 1');
+  assert.match(elementFor('slide-content').innerHTML, /這是天父世界/);
+  assert.match(elementFor('slide-content').innerHTML, /曲／Terra Beata、英國傳統曲調、美國靈歌/);
+  assert.match(elementFor('slide-content').innerHTML, /編曲／Brant Adams/);
+  assert.match(elementFor('slide-content').innerHTML, /長笛 \/ 黃慈恩/);
+  assert.match(elementFor('slide-content').innerHTML, /鋼琴 \/ 蔡宜婷/);
+  assert.doesNotMatch(elementFor('slide-content').innerHTML, /歌詞/);
 });
 
 test('exports the same deterministic native-text line breaks used by the preview', async () => {
