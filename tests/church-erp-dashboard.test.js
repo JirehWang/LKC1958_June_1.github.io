@@ -6,6 +6,7 @@ const test = require('node:test');
 const root = path.join(__dirname, '..');
 const dashboardPath = path.join(root, 'apps', 'LKC_ChurchERP', 'dashboard.html');
 const dashboard = fs.readFileSync(dashboardPath, 'utf8');
+const dashboardJs = fs.readFileSync(path.join(root, 'apps', 'LKC_ChurchERP', 'dashboard.js'), 'utf8');
 const portal = fs.readFileSync(path.join(root, 'apps', 'LKC_ChurchERP', 'index.html'), 'utf8');
 
 test('church ERP Dashboard prototype exposes the secretary workflow areas', () => {
@@ -22,6 +23,9 @@ test('church ERP Dashboard prototype exposes the secretary workflow areas', () =
   assert.match(dashboard, /dashboard\.css/);
   assert.match(dashboard, /dashboard\.js/);
   assert.match(dashboard, /示範資料/);
+  assert.match(dashboard, /id="periodRange"/);
+  assert.match(dashboard, /id="periodNote"/);
+  assert.match(dashboardJs, /renderCurrentPeriod/);
 });
 
 test('Dashboard prototype stays separate from the simple ERP entry cards', () => {

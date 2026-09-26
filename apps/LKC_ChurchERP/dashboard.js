@@ -43,6 +43,20 @@
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
 
+  const weekDayNames = ['一', '二', '三', '四', '五', '六', '日']
+  const pad2 = value => String(value).padStart(2, '0')
+  const getCurrentWeek = () => {
+    const today = new Date()
+    const weekday = today.getDay()
+    const mondayOffset = weekday === 0 ? -6 : 1 - weekday
+    const start = new Date(today)
+    start.setHours(0, 0, 0, 0)
+    start.setDate(today.getDate() + mondayOffset)
+    const end = new Date(start)
+    end.setDate(start.getDate() + 6)
+    return { today, start, end, weekday: weekday === 0 ? 6 : weekday - 1 }
+  }
+  const formatPeriodDate = date => date.getFullYear() + '/' + pad2(date.getMonth() + 1) + '/' + pad2(date.getDate())
   const serviceRows = document.getElementById('serviceRows');
   const attendanceRows = document.getElementById('attendanceRows');
   const calendarRows = document.getElementById('calendarRows');
@@ -50,6 +64,16 @@
   const sourceRows = document.getElementById('sourceRows');
 
   if (!serviceRows || !attendanceRows || !calendarRows || !readinessRows || !sourceRows) return;
+  const periodRange = document.getElementById('periodRange')
+  const periodNote = document.getElementById('periodNote')
+  const renderCurrentPeriod = () => {
+    const { start, end, weekday } = getCurrentWeek()
+    if (periodRange) {
+      periodRange.innerHTML = escapeHtml(formatPeriodDate(start)) + ' <i>—</i> ' + escapeHtml(formatPeriodDate(end))
+    }
+    if (periodNote) periodNote.textContent = '週' + weekDayNames[weekday] + ' · 目前進行中'
+  }
+  renderCurrentPeriod()
 
   serviceRows.innerHTML = dashboardData.service.map(row => {
     const percent = Math.round((row.filled / row.total) * 100);
