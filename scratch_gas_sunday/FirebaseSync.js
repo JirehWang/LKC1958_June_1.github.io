@@ -20,7 +20,7 @@ const FIREBASE_PENDING_MARKER_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 // by GAS after a successful read; legacy entries without this metadata are a
 // safe browser miss and are rebuilt through the normal API path.
 const FIREBASE_CACHEABLE_ACTIONS = new Set([
-  'getGroups', 'getGroupConfig', 'getWeeklyReport', 'getAllMembers',
+  'getGroups', 'getGroupConfig', 'getGroupRoleCatalog', 'getWeeklyReport', 'getAllMembers',
   'getAdminGroupsList', 'getAllGroupMembers', 'getMemberSuggestions',
   'getSmartAttendanceList', 'checkGroupStatus', 'getStats', 'getAllGroupsStats',
   'getAttendanceStats', 'getAttendanceTrend', 'getCategoryChartData',

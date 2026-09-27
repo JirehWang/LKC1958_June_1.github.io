@@ -275,27 +275,205 @@ function renderMemberList(members) {
     }).join('');
 }
 
-function toggleEditMode() {
+async function toggleEditMode() {
     const modal = document.getElementById('edit-modal');
     if (modal.style.display === 'block') {
-        modal.style.display = 'none';
-        isInitializingMemberList = false;
+        closeMemberManagerModal();
     } else {
         isInitializingMemberList = false;
         editingMembers = currentMembers.map(m => ({...m}));
-        prepareMemberManagerModal();
+        await prepareMemberManagerModal();
         modal.style.display = 'block';
     }
 }
 
-function openInitMemberManager() {
+async function openInitMemberManager() {
     isInitializingMemberList = true;
     editingMembers = [];
-    prepareMemberManagerModal();
+    await prepareMemberManagerModal();
     document.getElementById('edit-modal').style.display = 'block';
 }
 
-function prepareMemberManagerModal() {
+const GROUP_ROLE_CATALOG_DEFAULTS = {
+    '幸福小組': ['BEST', '同工', '福長', '陪伴同工'],
+    '一般小組': ['小羊', '一般同工', '核心同工', '陪伴同工']
+};
+
+function getGroupRoleCatalogCache() {
+    if (!window._groupRoleCatalogCache) window._groupRoleCatalogCache = {};
+    return window._groupRoleCatalogCache;
+}
+
+function getCurrentGroupRoleCatalog() {
+    const type = String(groupType || '一般小組');
+    const catalog = getGroupRoleCatalogCache()[type];
+    if (Array.isArray(catalog) && catalog.length) return catalog;
+    return GROUP_ROLE_CATALOG_DEFAULTS[type] || GROUP_ROLE_CATALOG_DEFAULTS['一般小組'];
+}
+
+function escapeGroupRoleHtml(value) {
+    return String(value || '').replace(/[&<>"']/g, ch => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[ch]));
+}
+
+async function loadGroupRoleCatalogForEditor() {
+    const type = String(groupType || '一般小組');
+    try {
+        const res = await callAPI('getGroupRoleCatalog', { groupType: type });
+        if (res && res.success && Array.isArray(res.roles) && res.roles.length) {
+            getGroupRoleCatalogCache()[type] = res.roles.map(role => String(role).trim()).filter(Boolean);
+        }
+    } catch (e) {
+        console.warn('[GroupRoleCatalog] 載入失敗，先使用預設身分清單：', e);
+    }
+}
+
+function renderGroupRoleCatalogDraft() {
+    const list = document.getElementById('groupRoleCatalogEntries');
+    if (!list) return;
+    const draft = window._groupRoleCatalogDraft || [];
+    list.innerHTML = draft.map((role, index) => `
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px solid #eee;">
+            <span>${escapeGroupRoleHtml(role)}</span>
+            <button type="button" data-role-index="${index}" style="border:0;background:#fff1f0;color:#b42318;border-radius:6px;padding:5px 9px;">移除</button>
+        </div>
+    `).join('') || '<div style="padding:8px 0;color:#777;">目前沒有身分選項</div>';
+    list.querySelectorAll('button[data-role-index]').forEach(button => {
+        button.addEventListener('click', () => {
+            const draftRoles = window._groupRoleCatalogDraft || [];
+            draftRoles.splice(Number(button.dataset.roleIndex), 1);
+            window._groupRoleCatalogDraft = draftRoles;
+            renderGroupRoleCatalogDraft();
+        });
+    });
+}
+
+function ensureGroupRoleCatalogSettingsPanel() {
+    const list = document.getElementById('editMemberList');
+    if (!list || !list.parentNode || document.getElementById('groupRoleCatalogSettings')) return;
+    const panel = document.createElement('section');
+    panel.id = 'groupRoleCatalogSettings';
+    panel.style.cssText = 'margin:14px 0;padding:12px;border:1px solid #d9e2f0;border-radius:10px;background:#f8fbff;';
+    panel.innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+            <div><strong>身分清單設定</strong><div style="font-size:12px;color:#667085;margin-top:3px;">依小組類型共用，僅管理者可修改</div></div>
+            <button type="button" id="toggleGroupRoleCatalogPanel" style="border:1px solid #c8d5e6;background:#fff;border-radius:7px;padding:7px 10px;">管理身分</button>
+        </div>
+        <div id="groupRoleCatalogAdminPanel" hidden style="margin-top:12px;padding-top:12px;border-top:1px solid #d9e2f0;">
+            <div style="font-size:13px;margin-bottom:8px;">目前類型：<strong id="groupRoleCatalogTypeLabel"></strong></div>
+            <div style="display:flex;gap:7px;">
+                <input type="password" id="groupRoleCatalogAdminCode" autocomplete="current-password" placeholder="管理者代碼" style="min-width:0;flex:1;padding:8px;border:1px solid #ccd5e0;border-radius:7px;">
+                <button type="button" id="verifyGroupRoleCatalogAdmin" style="border:0;background:#2f5e9e;color:#fff;border-radius:7px;padding:8px 11px;">驗證並載入</button>
+            </div>
+            <div id="groupRoleCatalogEditor" hidden>
+                <div id="groupRoleCatalogEntries" style="margin-top:8px;"></div>
+                <div style="display:flex;gap:7px;margin-top:10px;">
+                    <input type="text" id="newGroupRoleCatalogEntry" maxlength="40" placeholder="新增身分名稱" style="min-width:0;flex:1;padding:8px;border:1px solid #ccd5e0;border-radius:7px;">
+                    <button type="button" id="addGroupRoleCatalogEntry" style="border:1px solid #c8d5e6;background:#fff;border-radius:7px;padding:8px 11px;">新增</button>
+                </div>
+                <button type="button" id="saveGroupRoleCatalog" style="width:100%;margin-top:10px;border:0;background:#2f5e9e;color:#fff;border-radius:7px;padding:9px;">儲存身分清單</button>
+            </div>
+            <div id="groupRoleCatalogStatus" role="status" style="font-size:13px;margin-top:8px;color:#667085;"></div>
+        </div>
+    `;
+    list.parentNode.insertBefore(panel, list);
+    document.getElementById('groupRoleCatalogTypeLabel').textContent = String(groupType || '一般小組');
+    document.getElementById('toggleGroupRoleCatalogPanel').addEventListener('click', () => {
+        const adminPanel = document.getElementById('groupRoleCatalogAdminPanel');
+        adminPanel.hidden = !adminPanel.hidden;
+    });
+    document.getElementById('verifyGroupRoleCatalogAdmin').addEventListener('click', unlockGroupRoleCatalogSettings);
+    document.getElementById('addGroupRoleCatalogEntry').addEventListener('click', addGroupRoleCatalogEntry);
+    document.getElementById('saveGroupRoleCatalog').addEventListener('click', saveGroupRoleCatalog);
+}
+
+async function unlockGroupRoleCatalogSettings() {
+    const status = document.getElementById('groupRoleCatalogStatus');
+    const editor = document.getElementById('groupRoleCatalogEditor');
+    const adminCode = (document.getElementById('groupRoleCatalogAdminCode').value || '').trim();
+    if (!adminCode) {
+        status.textContent = '請輸入管理者代碼。';
+        return;
+    }
+    status.textContent = '正在驗證並載入身分清單…';
+    try {
+        const auth = await callAPI('verifyGroupRoleAdmin', { adminCode });
+        if (!auth || !auth.success || !auth.isAdmin) {
+            editor.hidden = true;
+            status.textContent = '管理者驗證未通過。';
+            return;
+        }
+        const res = await callAPI('getGroupRoleCatalog', { groupType: String(groupType || '一般小組') });
+        if (!res || !res.success || !Array.isArray(res.roles)) {
+            editor.hidden = true;
+            status.textContent = (res && res.message) || '無法載入身分清單，請確認資料庫設定已完成。';
+            return;
+        }
+        window._groupRoleCatalogDraft = [...res.roles];
+        editor.hidden = false;
+        status.textContent = '已載入。修改後按「儲存身分清單」。';
+        renderGroupRoleCatalogDraft();
+    } catch (e) {
+        editor.hidden = true;
+        status.textContent = '載入失敗，請稍後再試。';
+    }
+}
+
+function addGroupRoleCatalogEntry() {
+    const input = document.getElementById('newGroupRoleCatalogEntry');
+    const status = document.getElementById('groupRoleCatalogStatus');
+    const role = String(input.value || '').trim();
+    const draft = window._groupRoleCatalogDraft || [];
+    if (!role) { status.textContent = '請先輸入身分名稱。'; return; }
+    if (draft.some(item => String(item).toLocaleLowerCase() === role.toLocaleLowerCase())) {
+        status.textContent = '這個身分已經存在。';
+        return;
+    }
+    if (draft.length >= 30) { status.textContent = '身分選項最多可設定 30 個。'; return; }
+    draft.push(role);
+    window._groupRoleCatalogDraft = draft;
+    input.value = '';
+    status.textContent = '';
+    renderGroupRoleCatalogDraft();
+}
+
+async function saveGroupRoleCatalog() {
+    const status = document.getElementById('groupRoleCatalogStatus');
+    const adminCode = (document.getElementById('groupRoleCatalogAdminCode').value || '').trim();
+    const roles = window._groupRoleCatalogDraft || [];
+    if (!roles.length) { status.textContent = '至少保留一個身分選項。'; return; }
+    status.textContent = '正在儲存…';
+    try {
+        const res = await callAPI('saveGroupRoleCatalog', {
+            adminCode,
+            groupType: String(groupType || '一般小組'),
+            roles
+        });
+        if (!res || !res.success) {
+            status.textContent = (res && res.message) || '儲存失敗，請稍後再試。';
+            return;
+        }
+        getGroupRoleCatalogCache()[String(groupType || '一般小組')] = [...roles];
+        applyGroupRoleCatalogToEditor();
+        status.textContent = '身分清單已儲存並套用。';
+    } catch (e) {
+        status.textContent = '儲存失敗，請稍後再試。';
+    }
+}
+
+function applyGroupRoleCatalogToEditor() {
+    const roleSelect = document.getElementById('newMemberRole');
+    if (roleSelect) {
+        const currentValue = roleSelect.value;
+        const roles = getCurrentGroupRoleCatalog();
+        roleSelect.innerHTML = roles.map(role => `<option value="${escapeGroupRoleHtml(role)}">${escapeGroupRoleHtml(role)}</option>`).join('');
+        roleSelect.value = roles.includes(currentValue) ? currentValue : roles[0];
+    }
+    renderEditList();
+}
+
+async function prepareMemberManagerModal() {
     const title = document.getElementById('editModalTitle');
     const saveBtn = document.getElementById('saveMemberListBtn');
     if (title) {
@@ -308,26 +486,13 @@ function prepareMemberManagerModal() {
     const roleSelect = document.getElementById('newMemberRole');
     if (input) input.value = "";
     
+    await loadGroupRoleCatalogForEditor();
     if (roleSelect) {
-        if (groupType === '幸福小組') {
-            roleSelect.innerHTML = `
-                <option value="BEST">BEST</option>
-                <option value="同工">同工</option>
-                <option value="福長">福長</option>
-                <option value="陪伴同工">陪伴同工</option>
-            `;
-            roleSelect.value = 'BEST';
-        } else {
-            roleSelect.innerHTML = `
-                <option value="小羊">小羊</option>
-                <option value="一般同工">一般同工</option>
-                <option value="核心同工">核心同工</option>
-                <option value="陪伴同工">陪伴同工</option>
-            `;
-            roleSelect.value = '小羊';
-        }
+        const roles = getCurrentGroupRoleCatalog();
+        roleSelect.innerHTML = roles.map(role => `<option value="${escapeGroupRoleHtml(role)}">${escapeGroupRoleHtml(role)}</option>`).join('');
+        roleSelect.value = roles[0];
     }
-    
+    ensureGroupRoleCatalogSettingsPanel();
     renderEditList();
     loadMemberSuggestions();    // 載入主日所有會友到 datalist
 }
@@ -335,6 +500,13 @@ function prepareMemberManagerModal() {
 function closeMemberManagerModal() {
     document.getElementById('edit-modal').style.display = 'none';
     isInitializingMemberList = false;
+    const adminCodeInput = document.getElementById('groupRoleCatalogAdminCode');
+    const adminPanel = document.getElementById('groupRoleCatalogAdminPanel');
+    const roleEditor = document.getElementById('groupRoleCatalogEditor');
+    if (adminCodeInput) adminCodeInput.value = '';
+    if (adminPanel) adminPanel.hidden = true;
+    if (roleEditor) roleEditor.hidden = true;
+    window._groupRoleCatalogDraft = [];
 }
 
 async function initGroupWithMembers() {
@@ -418,19 +590,7 @@ function renderEditList() {
         return;
     }
     
-    const roleOptions = groupType === '幸福小組'
-        ? `
-            <option value="BEST">BEST</option>
-            <option value="同工">同工</option>
-            <option value="福長">福長</option>
-            <option value="陪伴同工">陪伴同工</option>
-          `
-        : `
-            <option value="核心同工">核心同工</option>
-            <option value="一般同工">一般同工</option>
-            <option value="小羊">小羊</option>
-            <option value="陪伴同工">陪伴同工</option>
-          `;
+    const roleOptions = getCurrentGroupRoleCatalog();
 
     container.innerHTML = editingMembers.map(m => {
         const safeName = (m.name || '').replace(/'/g, "&#39;");
@@ -438,10 +598,10 @@ function renderEditList() {
         
         // 生成對應身分的 selected 屬性
         const curRole = m.role || (groupType === '幸福小組' ? 'BEST' : '小羊');
-        const roleOptionsWithSelected = roleOptions.replace(
-            `value="${curRole}"`,
-            `value="${curRole}" selected`
-        );
+        const memberRoles = roleOptions.includes(curRole) ? roleOptions : [curRole, ...roleOptions];
+        const roleOptionsWithSelected = memberRoles.map(role => `
+            <option value="${escapeGroupRoleHtml(role)}"${role === curRole ? ' selected' : ''}>${escapeGroupRoleHtml(role)}</option>
+        `).join('');
 
         return `
             <div class="edit-member-item" data-name="${safeName}">
@@ -498,7 +658,7 @@ function addEditMember() {
     const roleSelect = document.getElementById('newMemberRole');
 
     const raw = (input.value || '').trim();
-    const newRole = roleSelect ? roleSelect.value : '小羊';
+    const newRole = roleSelect ? roleSelect.value : getCurrentGroupRoleCatalog()[0];
     if (!raw) return userNotification.warning("請輸入要新增的姓名！");
 
     // 解析「名字 (LKxxxxx)」格式（同名情況下會看到）

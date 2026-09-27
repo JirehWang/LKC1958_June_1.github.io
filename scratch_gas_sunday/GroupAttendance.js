@@ -268,6 +268,159 @@ function submitAttendance(groupName, date, present, absent, newFriends) {
 //  - 既有成員：解析現有 group/role 字串 → 只更新此組的身分 → 寫回（其他組保留）
 //  - 被移除成員：從主日的「所屬小組」+「身分」拿掉此組（保留其他組）
 //  - 不從主日刪除整個會友（人還在，只是離開這組）
+var _groupRoleCatalogKnownRolesCache = null;
+
+function _groupRoleCatalogDefaults_() {
+  return {
+    '一般小組': ['小羊', '一般同工', '核心同工', '陪伴同工'],
+    '幸福小組': ['BEST', '同工', '福長', '陪伴同工']
+  };
+}
+
+function _readGroupRoleCatalogStore_() {
+  try {
+    const raw = PropertiesService.getScriptProperties().getProperty('GROUP_ROLE_CATALOGS_V1');
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function _cleanGroupRoleLabels_(values) {
+  if (!Array.isArray(values)) return [];
+  const roles = [];
+  const seen = new Set();
+  values.forEach(value => {
+    const role = String(value || '').trim();
+    if (!role || role.length > 40) return;
+    const key = role.toLocaleLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    roles.push(role);
+  });
+  return roles;
+}
+
+function getGroupRoleCatalog(groupType) {
+  const type = String(groupType || '一般小組').trim();
+  const defaults = _groupRoleCatalogDefaults_();
+  if (!Object.prototype.hasOwnProperty.call(defaults, type)) {
+    return { success: false, message: '不支援此小組類型的身分清單。' };
+  }
+
+  const saved = _readGroupRoleCatalogStore_()[type];
+  const configured = Array.isArray(saved) ? saved : (saved && saved.roles);
+  const roles = _cleanGroupRoleLabels_(configured);
+  return { success: true, groupType: type, roles: roles.length ? roles : defaults[type] };
+}
+
+function _isGroupRoleCatalogAdmin_(authCode) {
+  let decryptedCode = '';
+  try {
+    decryptedCode = String(decryptGroupCode(String(authCode || '')) || '').trim().toUpperCase();
+  } catch (e) {
+    decryptedCode = String(authCode || '').trim().toUpperCase();
+  }
+  return decryptedCode === ADMIN_CODE;
+}
+
+function verifyGroupRoleAdmin(authCode) {
+  const isAdmin = _isGroupRoleCatalogAdmin_(authCode);
+  return {
+    success: isAdmin,
+    isAdmin,
+    message: isAdmin ? '' : '管理者驗證未通過。'
+  };
+}
+
+function saveGroupRoleCatalog(groupType, roleValues, authCode) {
+  if (!_isGroupRoleCatalogAdmin_(authCode)) {
+    return { success: false, message: '管理者驗證未通過。' };
+  }
+
+  const type = String(groupType || '').trim();
+  if (!Object.prototype.hasOwnProperty.call(_groupRoleCatalogDefaults_(), type)) {
+    return { success: false, message: '不支援此小組類型的身分清單。' };
+  }
+  if (!Array.isArray(roleValues) || roleValues.length > 30) {
+    return { success: false, message: '身分選項需為 1 至 30 個。' };
+  }
+  if (roleValues.some(value => String(value || '').trim().length > 40)) {
+    return { success: false, message: '身分名稱最多 40 個字元。' };
+  }
+  const roles = _cleanGroupRoleLabels_(roleValues);
+  if (!roles.length || roles.length > 30) {
+    return { success: false, message: '至少保留一個身分選項，且最多可設定 30 個。' };
+  }
+
+  const lock = LockService.getScriptLock();
+  let hasLock = false;
+  let savedRoles = null;
+  try {
+    lock.waitLock(10000);
+    hasLock = true;
+    const props = PropertiesService.getScriptProperties();
+    const store = _readGroupRoleCatalogStore_();
+    const previous = store[type] || {};
+    const previousRoles = Array.isArray(previous) ? previous : (previous.roles || []);
+    const previousRetired = Array.isArray(previous.retiredRoles) ? previous.retiredRoles : [];
+    const activeKeys = new Set(roles.map(role => role.toLocaleLowerCase()));
+    const retired = _cleanGroupRoleLabels_(previousRetired.concat(previousRoles))
+      .filter(role => !activeKeys.has(role.toLocaleLowerCase()));
+
+    store[type] = { roles, retiredRoles: retired };
+    props.setProperty('GROUP_ROLE_CATALOGS_V1', JSON.stringify(store));
+    _groupRoleCatalogKnownRolesCache = null;
+    savedRoles = roles;
+  } catch (e) {
+    if (!hasLock) return { success: false, message: '伺服器繁忙，請稍後再試。' };
+    return { success: false, message: '儲存身分清單失敗：' + e.message };
+  } finally {
+    if (hasLock) lock.releaseLock();
+  }
+
+  // Script Properties remains the admin-controlled source of truth. Mirror the
+  // saved catalog into the shared Firebase read cache so other clients can load
+  // it without another GAS request; invalidate first to reject any in-flight
+  // stale catalog read, then seed the exact read key with the new value.
+  try {
+    if (typeof firebaseInvalidate === 'function') {
+      firebaseInvalidate(['getGroupRoleCatalog']);
+    }
+    if (typeof firebaseCacheWriteThrough === 'function') {
+      firebaseCacheWriteThrough('getGroupRoleCatalog', { groupType: type }, {
+        success: true,
+        groupType: type,
+        roles: savedRoles
+      });
+    }
+  } catch (e) {
+    console.log('[firebase] group role catalog cache sync failed: ' + e.message);
+  }
+  return { success: true, groupType: type, roles: savedRoles };
+}
+
+function _getKnownGroupRoleLabels_() {
+  if (Array.isArray(_groupRoleCatalogKnownRolesCache)) return _groupRoleCatalogKnownRolesCache;
+  const store = _readGroupRoleCatalogStore_();
+  const defaults = _groupRoleCatalogDefaults_();
+  const allRoles = defaults['一般小組'].concat(defaults['幸福小組']);
+  Object.keys(store).forEach(type => {
+    const entry = store[type];
+    if (Array.isArray(entry)) {
+      allRoles.push.apply(allRoles, entry);
+      return;
+    }
+    if (entry && typeof entry === 'object') {
+      if (Array.isArray(entry.roles)) allRoles.push.apply(allRoles, entry.roles);
+      if (Array.isArray(entry.retiredRoles)) allRoles.push.apply(allRoles, entry.retiredRoles);
+    }
+  });
+  _groupRoleCatalogKnownRolesCache = _cleanGroupRoleLabels_(allRoles);
+  return _groupRoleCatalogKnownRolesCache;
+}
+
 function updateMemberList(groupName, members) {
   var lock = LockService.getScriptLock();
   var hasLock = false;
