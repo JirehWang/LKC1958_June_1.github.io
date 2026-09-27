@@ -28,8 +28,13 @@ window.onload = async () => {
     }
 };
 
+// 群組清單與設定以 GAS 為來源，經中央路由讀 Firebase 快取；快取未命中才讀 GAS。
+const GAS_PRIMARY_GROUP_CONFIG_ACTIONS = new Set(['getAdminGroupsList', 'updateGroupInfo']);
+
 async function callAPI(action, data = {}) {
-    if (window.GroupSupabaseService && typeof window.GroupSupabaseService[action] === 'function') {
+    if (!GAS_PRIMARY_GROUP_CONFIG_ACTIONS.has(action) &&
+        window.GroupSupabaseService &&
+        typeof window.GroupSupabaseService[action] === 'function') {
         try {
             const res = await window.GroupSupabaseService[action](data);
             if (res !== null && typeof res === 'object') return res;
@@ -77,13 +82,7 @@ async function loadGroups() {
             cachedDistricts = res.districts || [];
             cachedClusters = res.clusters || [];
             myClusterName = res.clusterName || ""; // 小組長自己所屬的小組群名稱
-            myClusterUuid = res.clusterUuid || ""; // 小組長自己所屬的小組群 UUID
-
-            if (globalIsAdmin) {
-                await loadAdminHierarchyFromGas();
-            }
-
-            updatePermissionBadge(res.isAdmin); // ✅ 更新權限徽章
+            myClusterUuid = res.clusterUuid || ""; // 小組長自己所屬的小組群 UUIDupdatePermissionBadge(res.isAdmin); // ✅ 更新權限徽章
             renderTable(res.isAdmin); // ✅ 傳入權限等級
             initClusterManagementPanel(res.isAdmin); // ✅ 初始化小組長專屬管理區
         } else {
@@ -93,39 +92,6 @@ async function loadGroups() {
         userNotification.error("連線發生錯誤: " + e.message);
     } finally {
         hideLoading();
-    }
-}
-
-// Supabase 的 getAdminGroupsList 目前沒有牧區／小組群目錄，會回傳空陣列。
-// 這兩份清單仍以 GAS 試算表為來源；此 action 也會執行舊欄位回填同步。
-async function loadAdminHierarchyFromGas() {
-    try {
-        const res = await callAPI('getDistrictsAndClusters', { authCode: verifiedAdminCode });
-        if (!res || !res.success) {
-            throw new Error((res && res.message) || 'GAS 未回傳牧區／小組群資料');
-        }
-
-        cachedDistricts = Array.isArray(res.districts) ? res.districts : [];
-        cachedClusters = Array.isArray(res.clusters) ? res.clusters : [];
-
-        const hierarchyByUuid = new Map(
-            (Array.isArray(res.groups) ? res.groups : [])
-                .filter(group => group && group.uuid)
-                .map(group => [String(group.uuid), group])
-        );
-        adminGroupsList = adminGroupsList.map(group => {
-            const hierarchy = hierarchyByUuid.get(String(group.uuid));
-            if (!hierarchy) return group;
-            return {
-                ...group,
-                districtUuid: hierarchy.districtUuid || '',
-                districtName: hierarchy.districtName || '',
-                clusterUuid: hierarchy.clusterUuid || '',
-                clusterName: hierarchy.clusterName || ''
-            };
-        });
-    } catch (e) {
-        console.warn('[GroupHierarchy] GAS 目錄載入失敗，保留目前清單資料：', e);
     }
 }
 
