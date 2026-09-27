@@ -82,7 +82,9 @@ async function loadGroups() {
             cachedDistricts = res.districts || [];
             cachedClusters = res.clusters || [];
             myClusterName = res.clusterName || ""; // 小組長自己所屬的小組群名稱
-            myClusterUuid = res.clusterUuid || ""; // 小組長自己所屬的小組群 UUIDupdatePermissionBadge(res.isAdmin); // ✅ 更新權限徽章
+            myClusterUuid = res.clusterUuid || ""; // 小組長自己所屬的小組群 UUID
+
+            updatePermissionBadge(res.isAdmin); // ✅ 更新權限徽章
             renderTable(res.isAdmin); // ✅ 傳入權限等級
             initClusterManagementPanel(res.isAdmin); // ✅ 初始化小組長專屬管理區
         } else {
