@@ -28,8 +28,13 @@ window.onload = async () => {
     }
 };
 
+// 群組清單與設定以 GAS 為來源，經中央路由讀 Firebase 快取；快取未命中才讀 GAS。
+const GAS_PRIMARY_GROUP_CONFIG_ACTIONS = new Set(['getAdminGroupsList', 'updateGroupInfo']);
+
 async function callAPI(action, data = {}) {
-    if (window.GroupSupabaseService && typeof window.GroupSupabaseService[action] === 'function') {
+    if (!GAS_PRIMARY_GROUP_CONFIG_ACTIONS.has(action) &&
+        window.GroupSupabaseService &&
+        typeof window.GroupSupabaseService[action] === 'function') {
         try {
             const res = await window.GroupSupabaseService[action](data);
             if (res !== null && typeof res === 'object') return res;

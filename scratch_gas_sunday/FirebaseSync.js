@@ -417,6 +417,8 @@ function onEditGroup(e) {
     if (sheetName === '小組清單') {
       _rebuildGroupsCache();
       firebaseInvalidate(['getGroups', 'getAdminGroupsList', 'ministry_getGroups']);
+    } else if (sheetName === 'Districts' || sheetName === 'GroupClusters') {
+      firebaseInvalidate(['getGroups', 'getAdminGroupsList', 'ministry_getGroups']);
     } else if (/_點名紀錄$/.test(sheetName)) {
       firebaseInvalidate(['getStats', 'getAllGroupsStats', 'getWeeklyReport']);
     } else if (/_名單$/.test(sheetName)) {

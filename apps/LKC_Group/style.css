@@ -266,6 +266,13 @@ body.modal-open {
     border: 1px solid rgba(140, 102, 46, 0.16);
 }
 
+/* The group editor can contain more fields than fit on a phone screen. Keep
+   the form and its save button inside the card and scroll the card itself. */
+.page-manage #edit-group-modal .modal-content {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
 .modal-content h3 {
     margin-top: 0;
     color: var(--soil);
@@ -893,6 +900,17 @@ body.modal-open {
         width: 95%;
         box-sizing: border-box;
         max-height: 90vh;
+    }
+
+    .page-manage #edit-group-modal {
+        height: 100vh;
+        height: 100dvh;
+    }
+
+    .page-manage #edit-group-modal .modal-content {
+        max-height: calc(100vh - 40px);
+        max-height: calc(100dvh - 40px);
+        -webkit-overflow-scrolling: touch;
     }
 
     .edit-add-box {

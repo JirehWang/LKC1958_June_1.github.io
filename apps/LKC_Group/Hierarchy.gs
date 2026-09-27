@@ -377,20 +377,32 @@ function handleHierarchyAction(action, data) {
     return { success: false, message: '找不到 小組清單 工作表' };
   }
 
+  var result;
   switch (action) {
     case 'getDistrictsAndClusters':
       return _handleGetDistrictsAndClusters(data, groupsSheet);
     case 'createDistrict':
-      return _handleCreateDistrict(data, groupsSheet);
+      result = _handleCreateDistrict(data, groupsSheet);
+      break;
     case 'createGroupCluster':
-      return _handleCreateGroupCluster(data, groupsSheet);
+      result = _handleCreateGroupCluster(data, groupsSheet);
+      break;
     case 'updateClusterGroups':
-      return _handleUpdateClusterGroups(data, groupsSheet);
+      result = _handleUpdateClusterGroups(data, groupsSheet);
+      break;
     default:
       return { success: false, message: '未知的 hierarchy action: ' + action };
   }
-}
 
+  if (result && result.success && typeof firebaseInvalidate === 'function') {
+    try {
+      firebaseInvalidate(['getGroups', 'getAdminGroupsList', 'ministry_getGroups']);
+    } catch (e) {
+      Logger.log('⚠️ 清除階層快取失敗: ' + e.message);
+    }
+  }
+  return result;
+}
 function _handleGetDistrictsAndClusters(data, groupsSheet) {
   var refs = _getHierarchyRefs();
   var groups = _getSheetRows(groupsSheet);
