@@ -162,6 +162,7 @@
     // 主日系統 — 全域資料
     'getGroups':                    _SIX_HOURS,
     'getGroupConfig':               _SIX_HOURS,
+    'getGroupRoleCatalog':          _SIX_HOURS,
     'getWeeklyReport':              _SIX_HOURS,
     'getAllMembers':                _SIX_HOURS,
     'getAdminGroupsList':           _SIX_HOURS,

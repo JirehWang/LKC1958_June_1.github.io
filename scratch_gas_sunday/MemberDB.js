@@ -46,7 +46,10 @@ function getMemberSheet() {
 const MEMBER_ROLES = ["核心同工", "一般同工", "小羊", "陪伴同工"];
 function _normalizeRole(role) {
   const v = role ? String(role).trim() : "";
-  return MEMBER_ROLES.indexOf(v) !== -1 ? v : "小羊";
+  if (!v) return "小羊";
+  if (MEMBER_ROLES.indexOf(v) !== -1) return v;
+  if (typeof _getKnownGroupRoleLabels_ === 'function' && _getKnownGroupRoleLabels_().indexOf(v) !== -1) return v;
+  return "小羊";
 }
 
 // ═══════════════════════════════════════════════════════════

@@ -11,6 +11,7 @@ const MEMBER_SHEET = '會友名單';
  */
 const _GROUP_ACTIONS = new Set([
   'getGroups', 'verifyGroup', 'createGroup', 'findGroupByCode',
+  'getGroupRoleCatalog', 'saveGroupRoleCatalog', 'verifyGroupRoleAdmin',
   'checkGroupStatus', 'initGroup', 'submitAttendance', 'updateMemberList',
   'updateAttendanceRecord', 'deleteAttendanceRecord',
   'getStats', 'getAllGroupsStats', 'getAllGroupMembers', 'getAdminGroupsList',
@@ -283,6 +284,9 @@ function _handleGroupRequest(body) {
     case 'updateMemberList':         result = updateMemberList(data.groupName, data.members); break;
     case 'updateAttendanceRecord':   result = updateAttendanceRecord(data.groupName, data.originalDate, data.newDate, data.present, data.absent, data.newFriends); break;
     case 'deleteAttendanceRecord':   result = deleteAttendanceRecord(data.groupName, data.originalDate); break;
+    case 'getGroupRoleCatalog':      result = getGroupRoleCatalog(data.groupType); break;
+    case 'saveGroupRoleCatalog':     result = saveGroupRoleCatalog(data.groupType, data.roles, data.adminCode || data.authCode); break;
+    case 'verifyGroupRoleAdmin':     result = verifyGroupRoleAdmin(data.adminCode || data.authCode); break;
 
     case 'getStats':                 result = getStats(data.groupName, data.groupCode, data.startDate, data.endDate); break;
 
