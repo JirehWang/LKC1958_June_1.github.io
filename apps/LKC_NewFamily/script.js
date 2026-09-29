@@ -188,6 +188,17 @@ let settlementOptions = ['請安拜訪', '尚未落戶'];
 let editingCase = null;
 let trackingCases = [];
 let closedCasesBase = []; // Base loaded closed cases list
+let closedCasesAll = [];
+let closedRecentCases = [];
+let closedHistoryCases = [];
+let closedRecentLoadPromise = null;
+let closedHistoryLoadPromise = null;
+let closedRecentDateRange = null;
+let closedRecentLoaded = false;
+let closedHistoryLoaded = false;
+let closedHistoryLoadAttempted = false;
+let closedHistoryCacheStored = false;
+let closedRenderRevision = 0;
 let activeClosedFilters = {}; // Maps column -> { search: string, selected: Set }
 let firebaseCacheModulePromise = null;
 let memberDirectoryPromise = null;
@@ -216,6 +227,13 @@ function hideGlobalLoading() {
 const newFamilyCacheTtl = 19800;
 const newFamilyListActions = new Set(['getTrackingCases', 'getClosedCases']);
 const stoppedAttendanceStatus = '停止聚會';
+const CLOSED_CASES_HOT_YEAR = 2025;
+const CLOSED_CASES_DEVICE_CACHE_DB = 'lkc-new-family-device-cache';
+const CLOSED_CASES_DEVICE_CACHE_STORE = 'lists';
+const CLOSED_CASES_DEVICE_CACHE_KEY = 'closed-cases-v1';
+const CLOSED_CASES_DEVICE_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+setDefaultClosedDateRange();
 
 dateField.valueAsDate = new Date();
 analysisYear.value = new Date().getFullYear();
@@ -267,7 +285,7 @@ form.addEventListener('submit', async event => {
 trackingSearchBtn.addEventListener('click', loadTrackingCases);
 addMembersBtn.addEventListener('click', openSessionModal);
 closeBtn.addEventListener('click', closeSelectedCases);
-closedSearchBtn.addEventListener('click', loadClosedCases);
+closedSearchBtn.addEventListener('click', searchClosedCases);
 closedExportBtn.addEventListener('click', exportClosedCases);
 analysisOpenBtn.addEventListener('click', openAnalysisModal);
 analysisExportDetailBtn.addEventListener('click', exportAnalysisDetail);
@@ -306,6 +324,14 @@ sessionConfirmBtn.addEventListener('click', () => {
   addSelectedMembers(selectedSession);
 });
 editCaseForm.addEventListener('submit', saveTrackingCase);
+
+window.addEventListener('pagehide', () => {
+  if (closedHistoryCacheStored) {
+    refreshClosedCasesDeviceCacheExpiry().catch(error => {
+      console.warn('[new-family-cache] failed to refresh device-cache expiry', error);
+    });
+  }
+});
 
 
 
@@ -358,6 +384,230 @@ function getFirebaseCacheModule() {
     firebaseCacheModulePromise = import('../../firebase/firebase-cache.js');
   }
   return firebaseCacheModulePromise;
+}
+
+function setDefaultClosedDateRange() {
+  const startInput = document.getElementById('closedStartDate');
+  const endInput = document.getElementById('closedEndDate');
+  if (!startInput || !endInput) return;
+
+  const today = new Date();
+  const start = new Date(today);
+  start.setFullYear(start.getFullYear() - 1);
+
+  const toDateInputValue = date => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  if (!startInput.value) startInput.value = toDateInputValue(start);
+  if (!endInput.value) endInput.value = toDateInputValue(today);
+}
+
+function getClosedSearchFilters() {
+  return {
+    name: document.getElementById('closedName').value,
+    startDate: document.getElementById('closedStartDate').value,
+    endDate: document.getElementById('closedEndDate').value
+  };
+}
+
+function extractClosedCaseRows(response) {
+  if (Array.isArray(response)) return response;
+  if (response && response.success === false) {
+    throw new Error(response.message || '已結案資料讀取失敗');
+  }
+  if (response && Array.isArray(response.data)) return response.data;
+  throw new Error('已結案資料格式不正確');
+}
+
+function getClosedCaseKey(item) {
+  const formNumber = String(item['表單號'] || item.form_number || '').trim();
+  if (formNumber) return `form:${formNumber}`;
+  const id = String(item.id || '').trim();
+  if (id) return `id:${id}`;
+  const rowNumber = String(item.rowNumber || item.row_number || '').trim();
+  if (rowNumber) return `row:${rowNumber}`;
+  return `${String(item['姓名'] || item.name || '').trim()}|${String(item['首次來訪日'] || item.first_visit_date || '').trim()}`;
+}
+
+function mergeClosedCaseRows(...rowLists) {
+  const merged = new Map();
+  rowLists.forEach(rows => {
+    (rows || []).forEach(item => {
+      if (!item || typeof item !== 'object') return;
+      merged.set(getClosedCaseKey(item), item);
+    });
+  });
+  return Array.from(merged.values());
+}
+
+async function callOriginalNewFamilyApi(action, data = {}) {
+  if (typeof window.ensureAPIReady === 'function') {
+    await window.ensureAPIReady();
+  }
+  const api = window.churchAPI_original_nf || window.churchAPI;
+  if (typeof api !== 'function') throw new Error('新家人 API 尚未準備完成');
+  const result = await api(action, data);
+  if (result && result.success === false) {
+    throw new Error(result.message || '新家人資料讀取失敗');
+  }
+  return result;
+}
+
+async function fetchRecentClosedCases(filters) {
+  showGlobalLoading();
+  try {
+    const service = window.NewFamilySupabaseService;
+    if (service && typeof service.getClosedCases === 'function') {
+      try {
+        const result = await service.getClosedCases(filters);
+        if (result) return extractClosedCaseRows(result);
+      } catch (error) {
+        console.warn('[new-family] recent Supabase read failed; using GAS fallback', error);
+        return extractClosedCaseRows(await callOriginalNewFamilyApi('getClosedCases', filters));
+      }
+    }
+    return extractClosedCaseRows(await callOriginalNewFamilyApi('getClosedCases', filters));
+  } finally {
+    hideGlobalLoading();
+  }
+}
+
+function isColdClosedCase(item) {
+  const visitDate = String(item['首次來訪日'] || item.first_visit_date || '').trim();
+  const formNumber = String(item['表單號'] || item.form_number || '').trim();
+  const yearText = visitDate.slice(0, 4) || formNumber.slice(0, 4);
+  const year = Number(yearText);
+  return Number.isInteger(year) && year > 0 && year < CLOSED_CASES_HOT_YEAR;
+}
+
+async function fetchColdClosedCasesFromFirebaseOrGas() {
+  let cachedResponse = null;
+  try {
+    const cache = await getFirebaseCacheModule();
+    cachedResponse = await cache.cacheGet('getClosedCases', '_default');
+  } catch (error) {
+    console.warn('[new-family-cache] Firebase cold-list read failed; falling back to GAS', error);
+    firebaseCacheModulePromise = null;
+  }
+
+  if (cachedResponse) {
+    try {
+      return extractClosedCaseRows(cachedResponse).filter(isColdClosedCase);
+    } catch (error) {
+      console.warn('[new-family-cache] Firebase cold-list entry is unusable; falling back to GAS', error);
+    }
+  }
+
+  const response = await callOriginalNewFamilyApi('getClosedCases', {});
+  return extractClosedCaseRows(response).filter(isColdClosedCase);
+}
+
+async function fetchAllHotClosedCases() {
+  const filters = { startDate: `${CLOSED_CASES_HOT_YEAR}-01-01` };
+  const service = window.NewFamilySupabaseService;
+  if (service && typeof service.getClosedCases === 'function') {
+    try {
+      const result = await service.getClosedCases(filters);
+      if (result) return extractClosedCaseRows(result);
+    } catch (error) {
+      console.warn('[new-family] historical Supabase read failed; using GAS fallback', error);
+      return extractClosedCaseRows(await callOriginalNewFamilyApi('getClosedCases', filters));
+    }
+  }
+  return extractClosedCaseRows(await callOriginalNewFamilyApi('getClosedCases', filters));
+}
+
+function openClosedCasesDeviceCache() {
+  if (!window.indexedDB) return Promise.resolve(null);
+  return new Promise((resolve, reject) => {
+    const request = window.indexedDB.open(CLOSED_CASES_DEVICE_CACHE_DB, 1);
+    request.onupgradeneeded = () => {
+      const database = request.result;
+      if (!database.objectStoreNames.contains(CLOSED_CASES_DEVICE_CACHE_STORE)) {
+        database.createObjectStore(CLOSED_CASES_DEVICE_CACHE_STORE, { keyPath: 'key' });
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error('裝置快取資料庫無法開啟'));
+  });
+}
+
+async function readClosedCasesDeviceCache() {
+  const database = await openClosedCasesDeviceCache();
+  if (!database) return null;
+  const record = await new Promise((resolve, reject) => {
+    const transaction = database.transaction(CLOSED_CASES_DEVICE_CACHE_STORE, 'readonly');
+    const request = transaction.objectStore(CLOSED_CASES_DEVICE_CACHE_STORE).get(CLOSED_CASES_DEVICE_CACHE_KEY);
+    request.onsuccess = () => resolve(request.result || null);
+    request.onerror = () => reject(request.error || new Error('裝置快取讀取失敗'));
+    transaction.onabort = () => reject(transaction.error || new Error('裝置快取讀取中斷'));
+  });
+  database.close();
+
+  if (!record) return null;
+  if (record.schemaVersion !== 1 || record.expiresAt <= Date.now() || !Array.isArray(record.rows)) {
+    await deleteClosedCasesDeviceCache();
+    return null;
+  }
+  return record;
+}
+
+async function writeClosedCasesDeviceCache(rows) {
+  const database = await openClosedCasesDeviceCache();
+  if (!database) return false;
+  const record = {
+    key: CLOSED_CASES_DEVICE_CACHE_KEY,
+    schemaVersion: 1,
+    rows,
+    savedAt: Date.now(),
+    expiresAt: Date.now() + CLOSED_CASES_DEVICE_CACHE_TTL_MS
+  };
+  await new Promise((resolve, reject) => {
+    const transaction = database.transaction(CLOSED_CASES_DEVICE_CACHE_STORE, 'readwrite');
+    transaction.objectStore(CLOSED_CASES_DEVICE_CACHE_STORE).put(record);
+    transaction.oncomplete = resolve;
+    transaction.onerror = () => reject(transaction.error || new Error('裝置快取寫入失敗'));
+    transaction.onabort = () => reject(transaction.error || new Error('裝置快取寫入中斷'));
+  });
+  database.close();
+  closedHistoryCacheStored = true;
+  return true;
+}
+
+async function deleteClosedCasesDeviceCache() {
+  const database = await openClosedCasesDeviceCache();
+  if (!database) return;
+  await new Promise((resolve, reject) => {
+    const transaction = database.transaction(CLOSED_CASES_DEVICE_CACHE_STORE, 'readwrite');
+    transaction.objectStore(CLOSED_CASES_DEVICE_CACHE_STORE).delete(CLOSED_CASES_DEVICE_CACHE_KEY);
+    transaction.oncomplete = resolve;
+    transaction.onerror = () => reject(transaction.error || new Error('裝置快取清除失敗'));
+  });
+  database.close();
+  closedHistoryCacheStored = false;
+}
+
+async function refreshClosedCasesDeviceCacheExpiry() {
+  const database = await openClosedCasesDeviceCache();
+  if (!database) return;
+  const transaction = database.transaction(CLOSED_CASES_DEVICE_CACHE_STORE, 'readwrite');
+  const store = transaction.objectStore(CLOSED_CASES_DEVICE_CACHE_STORE);
+  const request = store.get(CLOSED_CASES_DEVICE_CACHE_KEY);
+  request.onsuccess = () => {
+    if (!request.result || !Array.isArray(request.result.rows)) return;
+    request.result.expiresAt = Date.now() + CLOSED_CASES_DEVICE_CACHE_TTL_MS;
+    store.put(request.result);
+  };
+  await new Promise((resolve, reject) => {
+    transaction.oncomplete = resolve;
+    transaction.onerror = () => reject(transaction.error || new Error('裝置快取期限更新失敗'));
+    transaction.onabort = () => reject(transaction.error || new Error('裝置快取期限更新中斷'));
+  });
+  database.close();
 }
 
 async function callSundayAttendanceApi(action, data = {}) {
@@ -801,26 +1051,145 @@ async function enrichRowsWithSundayMemberData(rows) {
 }
 
 async function loadClosedCases() {
-  setNotice(closedNotice, '');
-  setEmptyState(closedContent, '正在檢索落戶名冊...', 'loading');
-  closedSearchBtn.disabled = true;
-  activeClosedFilters = {}; // Reset active header filters on new search
+  if (closedRecentLoaded) {
+    await renderCurrentClosedSearch();
+    void refreshRecentClosedCases();
+    void ensureClosedHistoryLoaded();
+    return;
+  }
+  if (closedRecentLoadPromise) return closedRecentLoadPromise;
 
-  try {
-    const filters = {
-      name: document.getElementById('closedName').value,
+  setNotice(closedNotice, '正在載入近一年資料...');
+  setEmptyState(closedContent, '正在載入近一年已結案資料...', 'loading');
+  const dateRange = getClosedRecentDateRange();
+  closedRecentLoadPromise = (async () => {
+    try {
+      closedRecentCases = await fetchRecentClosedCases({ ...dateRange });
+      closedRecentLoaded = true;
+      await refreshClosedCasesView();
+      setNotice(closedNotice, '近一年資料已載入；較早資料正在背景讀取。');
+      void ensureClosedHistoryLoaded();
+    } catch (error) {
+      setEmptyState(closedContent, '近一年資料讀取失敗，請稍後再試。', 'error');
+      setNotice(closedNotice, error.message || String(error), 'error');
+      // A device cache may still provide a usable list while the live query is unavailable.
+      void ensureClosedHistoryLoaded();
+    } finally {
+      closedRecentLoadPromise = null;
+    }
+  })();
+  return closedRecentLoadPromise;
+}
+
+function getClosedRecentDateRange() {
+  if (!closedRecentDateRange) {
+    setDefaultClosedDateRange();
+    closedRecentDateRange = {
       startDate: document.getElementById('closedStartDate').value,
       endDate: document.getElementById('closedEndDate').value
     };
-    const result = await callCachedListApi('getClosedCases', filters);
-    const rows = await enrichRowsWithSundayMemberData(filterCases(result.data || [], filters));
-    renderClosedCases(rows);
-  } catch (error) {
-    setEmptyState(closedContent, '讀取失敗，請重新整理頁面！', 'error');
-    setNotice(closedNotice, error.message || String(error), 'error');
-  } finally {
-    closedSearchBtn.disabled = false;
   }
+  return closedRecentDateRange;
+}
+
+async function refreshRecentClosedCases() {
+  if (closedRecentLoadPromise) return closedRecentLoadPromise;
+  const dateRange = getClosedRecentDateRange();
+  closedRecentLoadPromise = (async () => {
+    try {
+      closedRecentCases = await fetchRecentClosedCases({ ...dateRange });
+      closedRecentLoaded = true;
+      await refreshClosedCasesView();
+    } catch (error) {
+      console.warn('[new-family] recent closed-case refresh failed', error);
+    } finally {
+      closedRecentLoadPromise = null;
+    }
+  })();
+  return closedRecentLoadPromise;
+}
+
+function searchClosedCases() {
+  activeClosedFilters = {};
+  void renderCurrentClosedSearch();
+  if (!closedHistoryLoaded) {
+    setNotice(closedNotice, closedHistoryLoadPromise
+      ? '查詢使用目前已載入的資料；較早資料仍在背景讀取。'
+      : '查詢使用目前已載入的資料；較早資料尚未完整載入。');
+  }
+}
+
+async function ensureClosedHistoryLoaded() {
+  if (closedHistoryLoaded || closedHistoryLoadAttempted) return closedHistoryLoadPromise;
+  if (closedHistoryLoadPromise) return closedHistoryLoadPromise;
+
+  closedHistoryLoadAttempted = true;
+  setNotice(closedNotice, '近一年資料已載入；正在背景讀取完整歷史資料。');
+  closedHistoryLoadPromise = (async () => {
+    try {
+      const cached = await readClosedCasesDeviceCache();
+      if (cached) {
+        closedHistoryCases = cached.rows;
+        closedHistoryLoaded = true;
+        closedHistoryCacheStored = true;
+        await refreshClosedCasesView();
+        setNotice(closedNotice, '已載入此裝置保存的完整名單。');
+        return;
+      }
+
+      const [hotResult, coldResult] = await Promise.allSettled([
+        fetchAllHotClosedCases(),
+        fetchColdClosedCasesFromFirebaseOrGas()
+      ]);
+      const hotRows = hotResult.status === 'fulfilled' ? hotResult.value : [];
+      const coldRows = coldResult.status === 'fulfilled' ? coldResult.value : [];
+
+      if (hotResult.status === 'fulfilled' || coldResult.status === 'fulfilled') {
+        closedHistoryCases = mergeClosedCaseRows(coldRows, hotRows);
+        await refreshClosedCasesView();
+      }
+
+      if (hotResult.status === 'fulfilled' && coldResult.status === 'fulfilled') {
+        closedHistoryLoaded = true;
+        try {
+          const saved = await writeClosedCasesDeviceCache(closedHistoryCases);
+          setNotice(closedNotice, saved
+            ? '完整名單已載入並保存在此裝置；離開頁面後保留一天。'
+            : '完整名單已載入；此瀏覽器未提供裝置快取。');
+        } catch (error) {
+          console.warn('[new-family-cache] device-cache write failed', error);
+          setNotice(closedNotice, '完整名單已載入，但無法保存到此裝置。');
+        }
+        return;
+      }
+
+      const failedSources = [];
+      if (hotResult.status === 'rejected') failedSources.push(`熱資料：${hotResult.reason?.message || '讀取失敗'}`);
+      if (coldResult.status === 'rejected') failedSources.push(`歷史資料：${coldResult.reason?.message || '讀取失敗'}`);
+      setNotice(closedNotice, `部分歷史資料讀取失敗，舊日期查詢可能不完整。${failedSources.join('；')}`, 'error');
+    } catch (error) {
+      console.warn('[new-family] background history load failed', error);
+      setNotice(closedNotice, `歷史資料背景讀取失敗；目前已載入資料仍可查詢。${error.message || String(error)}`, 'error');
+    } finally {
+      closedHistoryLoadPromise = null;
+    }
+  })();
+  return closedHistoryLoadPromise;
+}
+
+async function refreshClosedCasesView(resetHeaderFilters = false) {
+  closedCasesAll = mergeClosedCaseRows(closedHistoryCases, closedRecentCases);
+  await renderCurrentClosedSearch(resetHeaderFilters);
+}
+
+async function renderCurrentClosedSearch(resetHeaderFilters = false) {
+  if (resetHeaderFilters) activeClosedFilters = {};
+  const renderRevision = ++closedRenderRevision;
+  const filters = getClosedSearchFilters();
+  const filteredRows = filterCases(closedCasesAll, filters);
+  const enrichedRows = await enrichRowsWithSundayMemberData(filteredRows);
+  if (renderRevision !== closedRenderRevision) return;
+  renderClosedCases(enrichedRows);
 }
 
 function renderClosedCases(rows) {
@@ -842,9 +1211,11 @@ function renderClosedCases(rows) {
 
 function renderFilteredClosedCases() {
   const filtered = getFilteredClosedCases();
-  
-  const isFiltered = Object.keys(activeClosedFilters).length > 0;
-  closedCount.textContent = `共 ${filtered.length} 筆${isFiltered ? ' (已篩選)' : ''}`;
+
+  const searchFilters = getClosedSearchFilters();
+  const isFiltered = Object.keys(activeClosedFilters).length > 0 ||
+    Boolean(String(searchFilters.name || '').trim() || searchFilters.startDate || searchFilters.endDate);
+  closedCount.textContent = `共 ${filtered.length} 筆${isFiltered ? ' (符合查詢條件)' : ''}`;
 
   if (!filtered.length) {
     setEmptyState(closedContent, '沒有符合篩選條件的已結案家人 🌱');
@@ -2163,18 +2534,33 @@ async function saveTrackingCase(event) {
   const noticeElement = isClosed ? closedNotice : trackingNotice;
 
   try {
+    const values = Object.fromEntries(new FormData(editCaseForm).entries());
+    const editedCaseKey = getClosedCaseKey(editingCase);
     const result = await callApi(action, {
       id: editingCase.id,
       rowNumber: editingCase.rowNumber,
       formNumber: editingCase['表單號'],
       form_number: editingCase['表單號'],
       name: editingCase['姓名'],
-      values: Object.fromEntries(new FormData(editCaseForm).entries())
+      values
     });
     setNotice(noticeElement, result.message, 'success');
     closeEditModal();
     if (isClosed) {
-      await loadClosedCases();
+      const applyUpdate = rows => rows.map(item => getClosedCaseKey(item) === editedCaseKey
+        ? { ...item, ...values }
+        : item);
+      closedRecentCases = applyUpdate(closedRecentCases);
+      closedHistoryCases = applyUpdate(closedHistoryCases);
+      closedCasesAll = mergeClosedCaseRows(closedHistoryCases, closedRecentCases);
+      await renderCurrentClosedSearch();
+      if (closedHistoryLoaded) {
+        try {
+          await writeClosedCasesDeviceCache(closedHistoryCases);
+        } catch (cacheError) {
+          console.warn('[new-family-cache] failed to save edited case to device cache', cacheError);
+        }
+      }
     } else {
       await loadTrackingCases();
     }
@@ -2615,7 +3001,7 @@ function saveColumnsSettings() {
   } else if (activeTab === 'closed') {
     visibleColumnsClosed = checkedCols;
     setCookie('visible_columns_closed', JSON.stringify(visibleColumnsClosed), 365);
-    loadClosedCases();
+    void renderCurrentClosedSearch();
   } else if (activeTab === 'analysis') {
     visibleColumnsAnalysis = checkedCols;
     setCookie('visible_columns_analysis', JSON.stringify(visibleColumnsAnalysis), 365);
