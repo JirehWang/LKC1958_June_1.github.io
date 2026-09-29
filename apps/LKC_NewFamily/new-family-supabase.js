@@ -515,35 +515,6 @@
       return { success: true, message: '已成功結案' };
     },
 
-    // ── 8. 小組與教區選單 (getDistrictsAndClusters / getGroups) ──
-    async getDistrictsAndClusters() {
-      const sb = getSupabase();
-      if (!sb) return null;
-
-      const [pagesRes, gmRes] = await Promise.all([
-        sb.from('ministry_pages').select('page_name, template_type'),
-        sb.from('group_members').select('group_name')
-      ]);
-
-      const groupNames = new Set();
-      (pagesRes.data || []).forEach(p => {
-        if (p.page_name) groupNames.add(p.page_name.trim());
-      });
-      (gmRes.data || []).forEach(g => {
-        if (g.group_name) groupNames.add(g.group_name.trim());
-      });
-
-      const groups = Array.from(groupNames).sort().map(name => ({
-        name,
-        cluster: 'group'
-      }));
-
-      return { success: true, clusters: groups, groups: groups };
-    },
-
-    async getGroups() {
-      return this.getDistrictsAndClusters();
-    }
   };
 
   // 🎯 自動劫持 / 增強 window.churchAPI（支援 newfamily 路由）

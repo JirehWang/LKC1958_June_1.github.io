@@ -418,15 +418,6 @@ async function callSundayAttendancePayloadApi(action, payload) {
 }
 
 async function callGroupAttendanceApi(action, data = {}) {
-  if (window.NewFamilySupabaseService && typeof window.NewFamilySupabaseService[action] === 'function') {
-    try {
-      const sbRes = await window.NewFamilySupabaseService[action](data);
-      if (sbRes !== null) return sbRes;
-    } catch (e) {
-      console.warn('[NewFamily] Supabase group attendance fallback:', e);
-    }
-  }
-
   const apiUrl = window.GROUP_ATTENDANCE_API_URL || '';
   const token = window.NEW_FAMILY_AUTH_TOKEN || '';
 
@@ -434,21 +425,43 @@ async function callGroupAttendanceApi(action, data = {}) {
     throw new Error('尚未設定小組點名 API URL');
   }
 
-  showGlobalLoading();
-  try {
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action, token, data })
-    });
+  const loadFromGas = async () => {
+    showGlobalLoading();
+    try {
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action, token, data })
+      });
 
-    const result = await response.json();
-    if (!result.success) {
-      throw new Error(result.message || '小組清單讀取失敗');
+      const result = await response.json();
+      if (!result.success) {
+        throw new Error(result.message || '小組群清單讀取失敗');
+      }
+      return result;
+    } finally {
+      hideGlobalLoading();
     }
-    return result;
-  } finally {
-    hideGlobalLoading();
+  };
+
+  if (action !== 'getDistrictsAndClusters') return loadFromGas();
+
+  let gasCalled = false;
+  try {
+    const cache = await getFirebaseCacheModule();
+    return await cache.cacheGetOrFetch(
+      action,
+      '_default',
+      () => {
+        gasCalled = true;
+        return loadFromGas();
+      },
+      newFamilyCacheTtl
+    );
+  } catch (error) {
+    if (gasCalled) throw error;
+    console.warn('[new-family-cache] Firebase read failed; direct Group GAS once', error);
+    return loadFromGas();
   }
 }
 
@@ -494,17 +507,9 @@ async function loadSettlementStatusOptions() {
       .filter(Boolean);
     settlementOptions = Array.from(new Set([...groupNames, '請安拜訪', '尚未落戶']));
   } catch (error) {
-    console.warn('[new-family] failed to load group clusters, fallback to groups list', error);
-    try {
-      const fallbackResult = await callGroupAttendanceApi('getGroups');
-      const groupNames = (fallbackResult.groups || [])
-        .map(group => String(group.name || '').trim())
-        .filter(Boolean);
-      settlementOptions = Array.from(new Set([...groupNames, '請安拜訪', '尚未落戶']));
-    } catch (fallbackError) {
-      settlementOptions = ['請安拜訪', '尚未落戶'];
-      setNotice(formNotice, fallbackError.message || String(fallbackError), 'error');
-    }
+    console.warn('[new-family] failed to load official group clusters', error);
+    settlementOptions = ['請安拜訪', '尚未落戶'];
+    setNotice(formNotice, `小組群清單讀取失敗：${error.message || String(error)}`, 'error');
   }
 }
 
@@ -1047,43 +1052,23 @@ async function exportCombinedWorkbook() {
       return;
     }
 
-    const defaultGroups = [
-      '葡萄樹',
-      '以斯帖',
-      '松年團契',
-      '棕樹',
-      '芥菜種',
-      '香柏樹',
-      '橄欖樹',
-      '種子',
-      '提摩太',
-      '恩典團契',
-      '尚未落戶'
-    ];
-    let clustersList = [];
-    try {
-      const hierarchyResult = await callGroupAttendanceApi('getDistrictsAndClusters');
-      if (hierarchyResult && Array.isArray(hierarchyResult.clusters)) {
-        clustersList = hierarchyResult.clusters.map(c => String(c.name || '').trim()).filter(Boolean);
-      }
-    } catch (e) {
-      console.warn('[export] failed to fetch GroupClusters', e);
+    const hierarchyResult = await callGroupAttendanceApi('getDistrictsAndClusters');
+    if (!hierarchyResult || hierarchyResult.success !== true || !Array.isArray(hierarchyResult.clusters)) {
+      throw new Error('小組群清單格式不正確，無法產生落戶統計');
     }
 
-    let groups = (clustersList.length ? clustersList : defaultGroups.filter(g => g !== '尚未落戶'))
-      .map(g => {
-        const name = g.trim();
-        if (name === '松年' || name === '松年團契') return '松年團契';
-        if (name === '恩典' || name === '恩典團契') return '恩典團契';
-        return name;
-      });
-    groups = Array.from(new Set(groups)).filter(g => g !== '請安拜訪' && g !== '尚未落戶');
+    let groups = Array.from(new Set(
+      hierarchyResult.clusters
+        .map(cluster => String(cluster.name || '').trim())
+        .filter(name => name && name !== '請安拜訪' && name !== '尚未落戶')
+    ));
+    if (!groups.length) throw new Error('小組群清單是空的，無法產生落戶統計');
     groups.push('尚未落戶');
 
     function mapGroup(status) {
       const s = String(status || '').trim();
-      if (s === '松年' || s === '松年團契') return '松年團契';
-      if (s === '恩典' || s === '恩典團契') return '恩典團契';
+      if ((s === '松年' || s === '松年團契') && groups.includes('松年團契')) return '松年團契';
+      if ((s === '恩典' || s === '恩典團契') && groups.includes('恩典團契')) return '恩典團契';
       if (groups.includes(s)) return s;
       return '尚未落戶';
     }
