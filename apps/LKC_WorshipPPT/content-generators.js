@@ -47,7 +47,11 @@
               2,
               {
                 languageLabel: Array.isArray(config.languageLabels) ? config.languageLabels[versionIndex] : '',
-                bibleVersion: versions[versionIndex]
+                bibleVersion: versions[versionIndex],
+                layoutState: typeof root.getWorshipLayoutStateForExport === 'function'
+                  ? root.getWorshipLayoutStateForExport()
+                  : null,
+                item
               }
             )
           : []

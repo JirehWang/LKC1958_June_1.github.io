@@ -129,14 +129,94 @@
     const pageSize = Math.max(1, Number(versesPerPage) || 2);
     const recordPages = [];
     let currentPage = [];
+    const languagePrefix = options.languageLabel ? `(${options.languageLabel})` : '';
+    const recordBody = record => String(record.sec == null ? '' : record.sec) + ' '
+      + cleanText(record.bible_text || record.text);
+    const pageBody = pageRecords => pageRecords
+      .map(record => record._pageDisplayBody || recordBody(record))
+      .join('\n\n');
+    const layoutForPageIndex = pageIndex => {
+      const page = {
+        id: sectionId + ':' + (pageIndex + 1),
+        sectionId,
+        kind: 'scripture',
+        layout: {}
+      };
+      if (options.layoutState && typeof resolvedLayoutForPage === 'function') {
+        return {
+          ...DEFAULT_LAYOUT_PARAMS,
+          ...resolvedLayoutForPage(options.layoutState, page, options.item || {})
+        };
+      }
+      return { ...DEFAULT_LAYOUT_PARAMS, ...page.layout };
+    };
+    const wrappedLineCount = (text, layout) => {
+      const wrapped = wrapTextForBox(text, {
+        fontSize: layout.contentSize,
+        boxWidth: layout.contentW,
+        bold: true
+      });
+      return wrapped ? wrapped.split('\n').length : 0;
+    };
+    const displayedLineCount = (pageRecords, layout) => {
+      const body = pageBody(pageRecords);
+      return wrappedLineCount([languagePrefix, body].filter(Boolean).join('\n'), layout);
+    };
+    const maxLinesForLayout = layout => {
+      const contentHeightPx = (Number(layout.contentH) || DEFAULT_LAYOUT_PARAMS.contentH) / 100 * 720;
+      const fontSizePx = (Number(layout.contentSize) || DEFAULT_LAYOUT_PARAMS.contentSize) / 9.6 / 100 * 1280;
+      const lineSpacing = Number(layout.lineSpacing) > 0
+        ? Number(layout.lineSpacing)
+        : DEFAULT_LAYOUT_PARAMS.lineSpacing;
+      return Math.max(1, Math.floor(contentHeightPx / (fontSizePx * lineSpacing)));
+    };
+    const splitOversizedRecord = (record, firstLayout) => {
+      const wrapped = wrapTextForBox(recordBody(record), {
+        fontSize: firstLayout.contentSize,
+        boxWidth: firstLayout.contentW,
+        bold: true
+      }).split('\n');
+      let lineIndex = 0;
+      let firstChunk = true;
+      while (lineIndex < wrapped.length) {
+        const layout = layoutForPageIndex(recordPages.length);
+        const pageCapacity = maxLinesForLayout(layout);
+        const currentPrefixLines = languagePrefix ? wrappedLineCount(languagePrefix, layout) : 0;
+        const continuationLines = firstChunk ? 0 : 1;
+        const chunkSize = Math.max(1, pageCapacity - currentPrefixLines - continuationLines);
+        const chunk = wrapped.slice(lineIndex, lineIndex + chunkSize);
+        const pageDisplayBody = firstChunk
+          ? chunk.join('\n')
+          : '（續）\n' + chunk.join('\n');
+        recordPages.push([{ ...record, _pageDisplayBody: pageDisplayBody }]);
+        lineIndex += chunk.length;
+        firstChunk = false;
+      }
+    };
+    const startPageWithRecord = record => {
+      const layout = layoutForPageIndex(recordPages.length);
+      if (displayedLineCount([record], layout) > maxLinesForLayout(layout)) {
+        splitOversizedRecord(record, layout);
+      } else {
+        currentPage = [record];
+      }
+    };
+
     safeRecords.forEach(record => {
-      const crossesQueryGroup = currentPage.length > 0
-        && currentPage[0].queryGroupKey
+      if (!currentPage.length) {
+        startPageWithRecord(record);
+        return;
+      }
+      const crossesQueryGroup = currentPage[0].queryGroupKey
         && record.queryGroupKey
         && currentPage[0].queryGroupKey !== record.queryGroupKey;
-      if (crossesQueryGroup || currentPage.length >= pageSize) {
+      const layout = layoutForPageIndex(recordPages.length);
+      const exceedsTextBox = displayedLineCount(currentPage.concat(record), layout) > maxLinesForLayout(layout);
+      if (crossesQueryGroup || currentPage.length >= pageSize || exceedsTextBox) {
         recordPages.push(currentPage);
         currentPage = [];
+        startPageWithRecord(record);
+        return;
       }
       currentPage.push(record);
     });
@@ -158,7 +238,7 @@
         id: `${sectionId}:${pages.length + 1}`,
         kind: 'scripture',
         title: `${label}－${titleReference}`,
-        body: pageRecords.map(record => `${record.sec} ${cleanText(record.bible_text || record.text)}`).join('\n\n'),
+        body: pageBody(pageRecords),
         languageLabel: options.languageLabel || '',
         bibleVersion: options.bibleVersion || '',
         layout: {}
