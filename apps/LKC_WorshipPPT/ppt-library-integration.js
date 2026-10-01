@@ -166,10 +166,19 @@
       item.includeSectionTitle = true;
     }
     const number = library.normalizeLibraryNumber(item && item.sourceValue);
-    if (!item || !number) return { sectionId, state: 'empty' };
+    if (!item) return { sectionId, state: 'empty' };
+    if (!number) {
+      delete item.pptPages;
+      delete item.libraryFileId;
+      item.includeSectionTitle = false;
+      item.libraryError = '';
+      return { sectionId, state: 'empty' };
+    }
     const entry = library.findLibraryEntry(entries, kind, number);
     if (!entry) {
       delete item.pptPages;
+      delete item.libraryFileId;
+      item.includeSectionTitle = false;
       item.libraryError = `資料庫找不到 ${kind === 'hymn' ? '聖詩' : '啟應文'} ${number}`;
       return { sectionId, state: 'missing', message: item.libraryError };
     }
@@ -181,6 +190,10 @@
     try {
       pages = await pagesForEntry(entry);
     } catch (error) {
+      // Never leave stale or unmergeable imported pages in the export deck.
+      delete item.pptPages;
+      delete item.libraryFileId;
+      item.includeSectionTitle = false;
       item.libraryError = 'PPTX 載入失敗：' + String(error && error.message || error);
       return { sectionId, state: 'error', message: item.libraryError };
     }
@@ -248,7 +261,28 @@
     const profile = window.activeWorshipTemplateProfile || {};
     const sources = (Array.isArray(profile.externalPresentations) ? profile.externalPresentations : [])
       .filter(source => !sourceIds || sourceIds.includes(source.id));
-    return Promise.all(sources.map(loadExternalPresentationSource));
+    const loadPromise = Promise.all(sources.map(source =>
+      loadExternalPresentationSource(source).catch(error => {
+        console.warn('固定簡報載入失敗，略過素材：', source.id, error);
+        return null;
+      })
+    )).then(results => results.filter(Boolean));
+    const configuredWaitMs = Number(window.LKC_PPT_EXPORT_IMPORT_WAIT_MS);
+    const waitMs = Number.isFinite(configuredWaitMs) && configuredWaitMs >= 0 ? configuredWaitMs : 8000;
+    return new Promise(resolve => {
+      const timeout = setTimeout(() => {
+        console.warn('固定簡報載入逾時，繼續匯出並略過尚未載入素材。');
+        resolve([]);
+      }, waitMs);
+      loadPromise.then(results => {
+        clearTimeout(timeout);
+        resolve(results);
+      }).catch(error => {
+        clearTimeout(timeout);
+        console.warn('固定簡報載入失敗，繼續匯出並略過素材：', error);
+        resolve([]);
+      });
+    });
   };
 
   window.worshipExternalPresentationsReady = Promise.resolve([]);

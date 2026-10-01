@@ -310,7 +310,6 @@ $('#export-ppt').onclick = async () => {
     status('正在匯出 PPTX 簡報檔…');
     await window.worshipTemplateAssetsReady;
     await (window.worshipExternalPresentationsReady || Promise.resolve([]));
-    await window.ensureNativeLibrarySources();
     const exportOptions = { model, backgroundColor, backgroundImage };
     if (typeof window.getWorshipLayoutStateForExport === 'function') {
       exportOptions.layoutState = window.getWorshipLayoutStateForExport();
@@ -322,6 +321,31 @@ $('#export-ppt').onclick = async () => {
       exportOptions.reflowReportPages = () => window.reflowReportPagesForLayout(reportLayout);
     }
     await window.TaiwaneseWorshipPptExport.exportWorshipPPTX(exportOptions);
+    const defaultLibrarySections = [
+      'pre-hymn-1', 'pre-hymn-2', 'hymn-1', 'hymn-2', 'doxology',
+      'response', 'prayer-song', 'offering', 'amen'
+    ];
+    const exportProfile = window.activeWorshipTemplateProfile || {};
+    const librarySectionIds = Array.isArray(exportProfile.librarySections)
+      ? exportProfile.librarySections.map(([sectionId]) => sectionId)
+      : defaultLibrarySections;
+    const skippedLibraryCount = librarySectionIds.filter(sectionId => {
+      const item = model[sectionId];
+      if (!item) return false;
+      const library = window.TaiwaneseWorshipPptxLibrary;
+      const normalize = library && library.normalizeLibraryNumber;
+      const requestedNumber = typeof normalize === 'function'
+        ? normalize(item.sourceValue)
+        : String(item.sourceValue || '').trim();
+      const loadedNumber = typeof normalize === 'function'
+        ? normalize(item.libraryEntry && item.libraryEntry.number)
+        : String(item.libraryEntry && item.libraryEntry.number || '').trim();
+      const hasPages = Array.isArray(item.pptPages) && item.pptPages.length > 0;
+      return hasPages ? (!requestedNumber || requestedNumber !== loadedNumber) : Boolean(requestedNumber);
+    }).length;
+    if (skippedLibraryCount) {
+      setTimeout(() => status('PPTX 已匯出；已略過 ' + skippedLibraryCount + ' 個未載入的聖詩／啟應文素材。'), 0);
+    }
     status('PPTX 簡報檔已成功下載！');
   } catch (error) {
     status(`簡報匯出失敗：${error.message}`);

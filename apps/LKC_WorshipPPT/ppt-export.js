@@ -228,10 +228,36 @@
 
     if (typeof reflowReportPagesFn === 'function') reflowReportPagesFn();
     const rawDeck = getDeckEntriesFn();
-    const deck = (rawDeck || []).filter(entry => {
+    const hasNativeSource = entry => {
+      if (!entry || !entry.nativeExport || !pptxLibrary || typeof pptxLibrary.getNativeSource !== 'function') return true;
+      try {
+        return Boolean(pptxLibrary.getNativeSource(entry.nativeSource));
+      } catch (_) {
+        return false;
+      }
+    };
+    const matchesSelectedLibraryEntry = entry => {
+      if (!entry || !entry.nativeExport || !pptxLibrary || typeof pptxLibrary.normalizeLibraryNumber !== 'function') return true;
+      const modelEntry = model && model[entry.sectionId];
+      if (!modelEntry || !Object.prototype.hasOwnProperty.call(modelEntry, 'sourceValue')) return true;
+      const requestedNumber = pptxLibrary.normalizeLibraryNumber(modelEntry && modelEntry.sourceValue);
+      const loadedNumber = pptxLibrary.normalizeLibraryNumber(modelEntry && modelEntry.libraryEntry && modelEntry.libraryEntry.number);
+      return Boolean(requestedNumber && loadedNumber && requestedNumber === loadedNumber);
+    };
+    const rawEntries = rawDeck || [];
+    const unavailableNativeSections = new Set(
+      rawEntries
+        .filter(entry => entry && entry.nativeExport && (!hasNativeSource(entry) || !matchesSelectedLibraryEntry(entry)))
+        .map(entry => entry.sectionId)
+    );
+    const deck = rawEntries.filter(entry => {
       if (entry && entry.includeInExport === false) return false;
       const modelEntry = model && model[entry.sectionId];
       if (modelEntry && modelEntry.includeInExport === false) return false;
+      if (entry && entry.nativeExport && (!hasNativeSource(entry) || !matchesSelectedLibraryEntry(entry))) return false;
+      if (entry && entry.kind === 'section' && unavailableNativeSections.has(entry.sectionId)) return false;
+      if (entry && entry.kind === 'section' && modelEntry
+        && (!Array.isArray(modelEntry.pptPages) || !modelEntry.pptPages.length)) return false;
       return true;
     });
     if (!deck || !deck.length) {
