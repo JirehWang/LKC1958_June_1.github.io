@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#f6f8fc">
+  <title>行事曆行程彙整</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+  <main class="dashboard-shell">
+    <header class="topbar">
+      <a class="brand" href="calendar.html" aria-label="返回行事曆">
+        <span class="brand-mark">L</span>
+        <span class="brand-copy"><strong>LKC</strong><span>MASTER SCHEDULE</span></span>
+      </a>
+      <a class="back-link" href="calendar.html"><span aria-hidden="true">←</span> 返回行事曆</a>
+    </header>
+
+    <section class="page-heading" aria-labelledby="pageTitle">
+      <div>
+        <p class="eyebrow">SCHEDULE SUMMARY</p>
+        <h1 id="pageTitle">行程彙整</h1>
+        <p class="page-description">依所選類別與日期區間彙整行程，每個日期一列。</p>
+      </div>
+      <div class="category-picker" role="group" aria-label="選擇行事曆類別">
+        <label class="category-select-field">
+          <span>主類別</span>
+          <select id="categoryRootSelect" class="form-select" aria-label="選擇主類別" disabled>
+            <option value="">載入類別中…</option>
+          </select>
+        </label>
+        <label class="category-select-field">
+          <span>子類別</span>
+          <select id="categoryChildSelect" class="form-select" aria-label="選擇子類別" disabled>
+            <option value="">請先選主類別</option>
+          </select>
+        </label>
+      </div>
+    </section>
+
+    <section class="range-toolbar" aria-label="行程日期範圍">
+      <label class="range-preset">
+        <span>時間範圍</span>
+        <select id="rangePreset" class="form-select" aria-label="快速選擇時間範圍">
+          <option value="thisMonth">本月</option>
+          <option value="last30">最近 30 天</option>
+          <option value="last90">最近 90 天</option>
+          <option value="thisYear">今年</option>
+          <option value="custom">自訂日期</option>
+        </select>
+      </label>
+      <div class="quarter-shortcuts" role="group" aria-label="季度快捷範圍">
+        <span class="quarter-shortcuts-label"><span id="quarterYear"></span> 年季度</span>
+        <div class="quarter-shortcuts-buttons">
+          <button class="quarter-button" type="button" data-quarter="1" aria-pressed="false">Q1</button>
+          <button class="quarter-button" type="button" data-quarter="2" aria-pressed="false">Q2</button>
+          <button class="quarter-button" type="button" data-quarter="3" aria-pressed="false">Q3</button>
+          <button class="quarter-button" type="button" data-quarter="4" aria-pressed="false">Q4</button>
+        </div>
+      </div>
+      <label class="date-picker">
+        <span>開始日期</span>
+        <input id="rangeStart" class="form-control" type="date" aria-label="開始日期">
+      </label>
+      <span class="range-separator" aria-hidden="true">至</span>
+      <label class="date-picker">
+        <span>結束日期</span>
+        <input id="rangeEnd" class="form-control" type="date" aria-label="結束日期">
+      </label>
+      <button id="applyRangeButton" class="button-range" type="button">套用範圍</button>
+      <span id="rangeSummary" class="range-summary" aria-live="polite"></span>
+    </section>
+
+    <section id="errorPanel" class="error-panel" role="alert" hidden></section>
+    <section id="emptyPanel" class="empty-panel" hidden>
+      <div class="empty-icon" aria-hidden="true">◌</div>
+      <h2>目前沒有可檢視的類別</h2>
+      <p>請先到類別管理新增行事曆類別。</p>
+      <a href="types.html" class="button-secondary">前往類別管理</a>
+    </section>
+
+    <div id="dashboardContent" hidden>
+      <section class="category-banner" aria-live="polite">
+        <div class="category-identity">
+          <span id="categoryIcon" class="category-icon" aria-hidden="true">◷</span>
+          <div>
+            <p class="category-kicker">SCHEDULE CATEGORY</p>
+            <h2 id="categoryName">—</h2>
+            <p id="categoryPath" class="category-path"></p>
+          </div>
+        </div>
+        <div class="banner-actions">
+          <span class="scope-badge"><span class="scope-dot"></span>僅顯示此類別與所選期間</span>
+          <button id="exportButton" class="button-export" type="button" disabled>
+            <span aria-hidden="true">↓</span> 匯出區間 XLSX
+          </button>
+        </div>
+      </section>
+
+      <section id="loadingPanel" class="loading-panel" aria-live="polite">
+        <span class="loading-spinner" aria-hidden="true"></span>
+        <span>正在載入此類別的活動…</span>
+      </section>
+
+      <div id="categoryData" hidden>
+        <section class="panel schedule-panel" aria-labelledby="scheduleTitle">
+          <div class="panel-heading schedule-heading">
+            <div>
+              <p class="panel-kicker">SCHEDULE SUMMARY</p>
+              <h3 id="scheduleTitle">行程表</h3>
+            </div>
+            <span id="scheduleMeta" class="schedule-meta"></span>
+          </div>
+          <div class="schedule-table-wrap">
+            <table id="scheduleTable" class="schedule-table">
+              <caption class="visually-hidden">依日期彙整的行程，每個日期一列</caption>
+              <thead id="scheduleHead"></thead>
+              <tbody id="scheduleBody"></tbody>
+            </table>
+          </div>
+          <div id="scheduleEmpty" class="schedule-empty" hidden>所選類別與日期範圍內沒有行程。</div>
+          <p id="dataFootnote" class="data-footnote"></p>
+        </section>
+      </div>
+    </div>
+
+    <div id="toastMessage" class="toast-message" role="status" aria-live="polite"></div>
+  </main>
+
+  <script>window._GAS_KEY = 'LKC_MasterSchedule'; window._FORCE_PRODUCTION_GAS = true;</script>
+  <script src="../../config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="../../supabase/supabase-config.js"></script>
+  <script src="calendar-supabase.js?v=20260910_2"></script>
+  <script src="dashboard.js"></script>
+</body>
+</html>
