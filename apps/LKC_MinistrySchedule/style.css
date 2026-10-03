@@ -668,6 +668,20 @@ body {
   box-shadow: 0 4px 12px rgba(6, 78, 59, 0.15) !important;
 }
 
+/* Keep canceled date-range toggles white with a green outline, even on hover or focus. */
+#recentThreeMonthsToggle.btn-outline-success,
+#recentThreeMonthsToggle.btn-outline-success:hover,
+#recentThreeMonthsToggle.btn-outline-success:focus,
+#recentThreeMonthsToggle.btn-outline-success:active,
+#ms-filter-rolling.btn-outline-success,
+#ms-filter-rolling.btn-outline-success:hover,
+#ms-filter-rolling.btn-outline-success:focus,
+#ms-filter-rolling.btn-outline-success:active {
+  background-color: #fff !important;
+  border-color: var(--lkc-green) !important;
+  color: var(--lkc-green) !important;
+}
+
 /* Secondary Actions */
 .btn-outline-secondary {
   color: var(--text-muted) !important;
