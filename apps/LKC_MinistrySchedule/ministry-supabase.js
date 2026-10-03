@@ -439,10 +439,6 @@
       if (!sb) return null;
 
       const reportType = (payload && payload.type) || 'smallGroup';
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const minDate = new Date(today.getTime() - 14 * 86400000).toISOString().slice(0, 10);
-      const maxDate = new Date(today.getTime() + 60 * 86400000).toISOString().slice(0, 10);
 
       // 查詢分頁與欄位（支援 30 秒記憶體快取避免並發重複查詢）
       const now = Date.now();
@@ -460,15 +456,22 @@
       const pageMap = {};
       (_cachedPages || []).forEach(p => { pageMap[p.page_name] = p; });
 
-      // 查詢排班紀錄
-      const { data: schedules, error } = await sb
-        .from('ministry_schedules')
-        .select('*')
-        .gte('date', minDate)
-        .lte('date', maxDate)
-        .order('date', { ascending: true });
+      // 讀取所有排班紀錄並分頁，讓年度／季度篩選能取得完整資料。
+      const schedules = [];
+      const pageSize = 1000;
+      for (let from = 0; ; from += pageSize) {
+        const { data: pageRows, error } = await sb
+          .from('ministry_schedules')
+          .select('*')
+          .order('date', { ascending: true })
+          .order('page_name', { ascending: true })
+          .range(from, from + pageSize - 1);
 
-      if (error) throw error;
+        if (error) throw error;
+        const rows = pageRows || [];
+        schedules.push(...rows);
+        if (rows.length < pageSize) break;
+      }
 
       // 整理所有欄位
       const fieldNamesSet = new Set(['破冰', '敬拜', '話語分享', '主題', '經文', '地點', '套用講道']);
