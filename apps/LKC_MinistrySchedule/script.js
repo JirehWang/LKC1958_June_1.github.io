@@ -2595,7 +2595,7 @@ function _ms_renderFilterableTable({ container, fullMatrix, tableMinWidth, rende
   const filterBar = noDateCol ? '' : `
     <div class="ms-filter-toolbar d-flex align-items-center gap-2 mb-2 flex-wrap p-2 bg-light rounded border">
       <span class="text-muted small fw-bold">📅 顯示範圍：</span>
-      <button type="button" id="ms-filter-rolling" class="btn btn-sm btn-primary">近 3 個月</button>
+      <button type="button" id="ms-filter-rolling" class="btn btn-sm btn-success rounded-pill px-3" aria-pressed="true">近 3 個月</button>
       <span class="text-muted">|</span>
       <select id="ms-filter-year" class="form-select form-select-sm" style="width: auto;">
         ${years.map(y => `<option value="${y}" ${y === state.year ? 'selected' : ''}>${y} 年</option>`).join('')}
@@ -2628,8 +2628,9 @@ function _ms_renderFilterableTable({ container, fullMatrix, tableMinWidth, rende
     }
     const rollingBtn = document.getElementById('ms-filter-rolling');
     if (rollingBtn) {
-      rollingBtn.classList.toggle('btn-primary', state.mode === 'rolling');
-      rollingBtn.classList.toggle('btn-outline-primary', state.mode !== 'rolling');
+      rollingBtn.classList.toggle('btn-success', state.mode === 'rolling');
+      rollingBtn.classList.toggle('btn-outline-success', state.mode !== 'rolling');
+      rollingBtn.setAttribute('aria-pressed', String(state.mode === 'rolling'));
     }
     if (typeof onFilteredChange === 'function') onFilteredChange(filtered);
 
@@ -2643,7 +2644,10 @@ function _ms_renderFilterableTable({ container, fullMatrix, tableMinWidth, rende
   }
 
   if (!noDateCol) {
-    document.getElementById('ms-filter-rolling').onclick = () => { state.mode = 'rolling'; rerender(); };
+    document.getElementById('ms-filter-rolling').onclick = () => {
+      state.mode = state.mode === 'rolling' ? 'quarter' : 'rolling';
+      rerender();
+    };
     document.getElementById('ms-filter-year').onchange = e => { state.mode = 'quarter'; state.year = +e.target.value; rerender(); };
     document.getElementById('ms-filter-quarter').onchange = e => { state.mode = 'quarter'; state.quarter = +e.target.value; rerender(); };
   }
