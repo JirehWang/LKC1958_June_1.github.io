@@ -951,6 +951,8 @@ function renderTable(data) {
       }
     }
   });
+
+  if (dateColIdx !== -1) filterByDate(true, true);
 }
 
 
@@ -1570,6 +1572,8 @@ function initGridInteraction() {
 // ============================================================
 //  📅 日期篩選
 // ============================================================
+let currentDateFilterMode = "recent-three-months";
+
 function initDateQuickFilter() {
   const yearSelect = document.getElementById('dateQuickYear');
   const quarterSelect = document.getElementById('dateQuickQuarter');
@@ -1585,6 +1589,9 @@ function initDateQuickFilter() {
     .map(year => `<option value="${year}" ${year === currentYear ? 'selected' : ''}>${year}</option>`)
     .join('');
   quarterSelect.value = String(currentQuarter);
+  currentDateFilterMode = "recent-three-months";
+  setRecentThreeMonthsToggleState(true);
+  setRecentThreeMonthsDateRange();
 }
 
 function quarterDateRange(year, quarter) {
@@ -1604,24 +1611,68 @@ function formatDateInputValue(date) {
   return `${year}-${month}-${day}`;
 }
 
+function setRecentThreeMonthsToggleState(isActive) {
+  const button = document.getElementById('recentThreeMonthsToggle');
+  if (!button) return;
+
+  button.classList.toggle('btn-success', isActive);
+  button.classList.toggle('btn-outline-success', !isActive);
+  button.setAttribute('aria-pressed', String(isActive));
+}
+
+function setRecentThreeMonthsDateRange() {
+  const end = new Date();
+  const start = new Date(end.getFullYear(), end.getMonth(), 1);
+  start.setMonth(start.getMonth() - 3);
+  const lastDayOfStartMonth = new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate();
+  start.setDate(Math.min(end.getDate(), lastDayOfStartMonth));
+
+  document.getElementById('startDate').value = formatDateInputValue(start);
+  document.getElementById('endDate').value = formatDateInputValue(end);
+}
+
+function applyRecentThreeMonthsDateFilter() {
+  currentDateFilterMode = "recent-three-months";
+  setRecentThreeMonthsToggleState(true);
+  setRecentThreeMonthsDateRange();
+  filterByDate(true);
+}
+
+function toggleRecentThreeMonthsFilter() {
+  if (currentDateFilterMode === "recent-three-months") {
+    applyQuarterDateFilter();
+    return;
+  }
+
+  applyRecentThreeMonthsDateFilter();
+}
+
 function applyQuarterDateFilter() {
   const year = Number(document.getElementById('dateQuickYear').value);
   const quarter = Number(document.getElementById('dateQuickQuarter').value);
   const range = quarterDateRange(year, quarter);
+  currentDateFilterMode = "quarter";
+  setRecentThreeMonthsToggleState(false);
   document.getElementById('startDate').value = range.start;
   document.getElementById('endDate').value = range.end;
-  filterByDate();
+  filterByDate(true);
 }
 
 function applyYearDateFilter() {
   const year = Number(document.getElementById('dateQuickYear').value);
+  currentDateFilterMode = "year";
+  setRecentThreeMonthsToggleState(false);
   document.getElementById('startDate').value = `${year}-01-01`;
   document.getElementById('endDate').value = `${year}-12-31`;
-  filterByDate();
+  filterByDate(true);
 }
 
-function filterByDate() {
+function filterByDate(preserveFilterMode = false, silent = false) {
   if (window.event) window.event.preventDefault();
+  if (!preserveFilterMode) {
+    currentDateFilterMode = "custom";
+    setRecentThreeMonthsToggleState(false);
+  }
   const start = document.getElementById('startDate').value;
   const end = document.getElementById('endDate').value;
   const recordRows = document.querySelectorAll('.record-row');
@@ -1654,13 +1705,15 @@ function filterByDate() {
     }
   });
 
-  if (start || end) {
+  if (!silent && (start || end)) {
     getNotifier().success(`✅ 已篩選出 ${visibleCount} 筆資料`);
   }
 }
 
 function clearDateFilter() {
   if (window.event) window.event.preventDefault();
+  currentDateFilterMode = "all";
+  setRecentThreeMonthsToggleState(false);
   document.getElementById('startDate').value = "";
   document.getElementById('endDate').value = "";
   document.querySelectorAll('.record-row').forEach(rowDiv => rowDiv.classList.remove('hidden'));
