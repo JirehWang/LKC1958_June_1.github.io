@@ -10,7 +10,7 @@ body {
 /* 頂部標題與選單列精緻化 */
 .header-section {
   position: relative !important;
-  z-index: 1060 !important;
+  z-index: 10 !important;
   background: rgba(255, 255, 255, 0.6) !important;
   backdrop-filter: blur(12px) !important;
   -webkit-backdrop-filter: blur(12px) !important;
