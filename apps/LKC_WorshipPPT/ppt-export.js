@@ -250,13 +250,18 @@
         .filter(entry => entry && entry.nativeExport && (!hasNativeSource(entry) || !matchesSelectedLibraryEntry(entry)))
         .map(entry => entry.sectionId)
     );
+    const librarySectionIds = new Set(
+      (Array.isArray(templateProfile.librarySections) ? templateProfile.librarySections : [])
+        .map(section => Array.isArray(section) ? section[0] : section && section.sectionId)
+        .filter(Boolean)
+    );
     const deck = rawEntries.filter(entry => {
       if (entry && entry.includeInExport === false) return false;
       const modelEntry = model && model[entry.sectionId];
       if (modelEntry && modelEntry.includeInExport === false) return false;
       if (entry && entry.nativeExport && (!hasNativeSource(entry) || !matchesSelectedLibraryEntry(entry))) return false;
       if (entry && entry.kind === 'section' && unavailableNativeSections.has(entry.sectionId)) return false;
-      if (entry && entry.kind === 'section' && modelEntry
+      if (entry && entry.kind === 'section' && librarySectionIds.has(entry.sectionId) && modelEntry
         && (!Array.isArray(modelEntry.pptPages) || !modelEntry.pptPages.length)) return false;
       return true;
     });
