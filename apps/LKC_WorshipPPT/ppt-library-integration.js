@@ -75,6 +75,9 @@
     for (let attempt = 1; attempt <= PPT_MAX_ATTEMPTS; attempt += 1) {
       try {
         const pages = await library.downloadAndParse(entry, window.JSZip, window.worshipReadAPI);
+        if (!Array.isArray(pages) || !pages.length) {
+          throw new Error('PPTX 沒有可用的投影片');
+        }
         const nativeExport = entry.kind === 'hymn' || entry.kind === 'response';
         let previewPages;
         try {
@@ -96,15 +99,16 @@
 
   async function getIndex() {
     if (!indexPromise) {
-      indexPromise = (async function() {
+      const request = (async function() {
         const result = await window.worshipReadAPI('cal_getPptLibraryIndex', {});
         const rows = extractIndexRows(result);
         if (!rows) throw new Error('PPT 資料庫索引格式不正確');
         return rows.map(normalizeIndexEntry).filter(Boolean);
       })().catch(error => {
-        indexPromise = null;
+        if (indexPromise === request) indexPromise = null;
         throw error;
       });
+      indexPromise = request;
     }
     return indexPromise;
   }
@@ -222,11 +226,20 @@
     return { sectionId, state: 'loaded', pageCount: pages.length, entry };
   }
 
-  window.syncHymnLibraryIndex = async function() {
+  window.syncHymnLibraryIndex = async function(number) {
     if (typeof window.worshipSyncAPI !== 'function') {
       throw new Error('聖詩索引同步介面尚未載入');
     }
-    const result = await window.worshipSyncAPI('cal_syncPptHymnIndex', { kind: 'hymn' });
+    const data = { kind: 'hymn' };
+    const requestedNumber = library.normalizeLibraryNumber(number);
+    if (requestedNumber) data.number = requestedNumber;
+    let result;
+    try {
+      result = await window.worshipSyncAPI('cal_syncPptHymnIndex', data);
+    } finally {
+      // GAS can commit its upsert even if the browser loses the response.
+      indexPromise = null;
+    }
     if (result && result.success === false) {
       throw new Error(result.message || '聖詩索引同步失敗');
     }
@@ -263,7 +276,7 @@
       .filter(source => !sourceIds || sourceIds.includes(source.id));
     const loadPromise = Promise.all(sources.map(source =>
       loadExternalPresentationSource(source).catch(error => {
-        console.warn('固定簡報載入失敗，略過素材：', source.id, error);
+        console.warn('固定簡報匯入失敗，將略過這份簡報。', source.id, error);
         return null;
       })
     )).then(results => results.filter(Boolean));
@@ -271,7 +284,7 @@
     const waitMs = Number.isFinite(configuredWaitMs) && configuredWaitMs >= 0 ? configuredWaitMs : 8000;
     return new Promise(resolve => {
       const timeout = setTimeout(() => {
-        console.warn('固定簡報載入逾時，繼續匯出並略過尚未載入素材。');
+        console.warn('固定簡報匯入逾時；匯出將略過尚未載入的投影片。');
         resolve([]);
       }, waitMs);
       loadPromise.then(results => {
@@ -279,7 +292,7 @@
         resolve(results);
       }).catch(error => {
         clearTimeout(timeout);
-        console.warn('固定簡報載入失敗，繼續匯出並略過素材：', error);
+        console.warn('固定簡報匯入失敗；匯出將略過無法載入的投影片。', error);
         resolve([]);
       });
     });
@@ -294,8 +307,8 @@
     return results;
   };
 
-  window.reloadCurrentPptLibrarySection = async function() {
-    const result = await window.loadPptLibraryContent([active]);
+  window.reloadCurrentPptLibrarySection = async function(sectionId = active) {
+    const result = await window.loadPptLibraryContent([sectionId]);
     render();
     return result[0];
   };

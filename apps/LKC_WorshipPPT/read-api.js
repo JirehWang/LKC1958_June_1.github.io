@@ -7,7 +7,6 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function(root) {
   let callbackSequence = 0;
   const JSONP_TIMEOUT_MS = 45000;
-  const JSONP_LATE_CALLBACK_GRACE_MS = 10000;
   const JSONP_READ_ACTIONS = new Set([
     'cal_getEvents',
     'cal_getPptLibraryIndex',
@@ -21,6 +20,41 @@
   const PPT_LIBRARY_SYNC_ACTIONS = new Set([
     'cal_syncPptHymnIndex'
   ]);
+
+  function timeoutFor(setting, fallback) {
+    const value = Number(root[setting]);
+    return Number.isFinite(value) && value > 0 ? value : fallback;
+  }
+
+  function withTimeout(operation, timeoutMs, message, onTimeout) {
+    let timer;
+    const deadline = new Promise((resolve, reject) => {
+      timer = setTimeout(() => {
+        const error = new Error(message);
+        error.type = 'TIMEOUT';
+        reject(error);
+        if (onTimeout) onTimeout();
+      }, timeoutMs);
+    });
+    return Promise.race([Promise.resolve().then(operation), deadline])
+      .finally(() => clearTimeout(timer));
+  }
+
+  function fetchText(url, options, timeoutMs, message) {
+    const controller = typeof root.AbortController === 'function' ? new root.AbortController() : null;
+    return withTimeout(async () => {
+      const response = await root.fetch(url, {
+        ...options,
+        ...(controller ? { signal: controller.signal } : {})
+      });
+      if (!response || !response.ok) {
+        const error = new Error(`GAS 回傳 HTTP ${response && response.status || 0}`);
+        error.type = 'INVALID_RESPONSE';
+        throw error;
+      }
+      return response.text();
+    }, timeoutMs, message, () => { if (controller) controller.abort(); });
+  }
 
   function endpointForAction(action) {
     if (PPT_LIBRARY_ACTIONS.has(action) || PPT_LIBRARY_SYNC_ACTIONS.has(action)) {
@@ -47,33 +81,27 @@
       const timeoutMs = Number(root.LKC_JSONP_TIMEOUT_MS) > 0
         ? Number(root.LKC_JSONP_TIMEOUT_MS)
         : JSONP_TIMEOUT_MS;
-      const graceMs = Number(root.LKC_JSONP_LATE_CALLBACK_GRACE_MS) >= 0
-        ? Number(root.LKC_JSONP_LATE_CALLBACK_GRACE_MS)
-        : JSONP_LATE_CALLBACK_GRACE_MS;
       let settled = false;
       let timer;
       const removeCallback = () => {
         try { delete root[callbackName]; } catch (_) { root[callbackName] = undefined; }
       };
-      const cleanup = ({ keepCallback = false } = {}) => {
+      const cleanup = ({ keepCallback = false, keepScript = false } = {}) => {
         clearTimeout(timer);
-        script.remove();
+        if (!keepScript) script.remove();
         if (!keepCallback) removeCallback();
       };
-      const fail = (error, { keepCallback = false } = {}) => {
+      const fail = (error, { keepCallback = false, keepScript = false } = {}) => {
         if (settled) return;
         settled = true;
-        cleanup({ keepCallback });
-        if (keepCallback) {
-          root[callbackName] = () => {};
-          setTimeout(removeCallback, graceMs);
-        }
+        cleanup({ keepCallback, keepScript });
+        if (keepCallback) root[callbackName] = () => {};
         reject(error);
       };
       timer = setTimeout(() => {
         const error = new Error('雲端行事曆讀取逾時');
         error.type = 'TIMEOUT';
-        fail(error, { keepCallback: true });
+        fail(error, { keepCallback: true, keepScript: true });
       }, timeoutMs);
       root[callbackName] = result => {
         if (settled) return;
@@ -83,7 +111,20 @@
         else resolve(result);
       };
       script.async = true;
+      script.onload = () => {
+        if (settled) {
+          cleanup();
+          return;
+        }
+        const error = new Error('GAS 已回傳頁面，但未提供 JSONP 資料');
+        error.type = 'INVALID_RESPONSE';
+        fail(error);
+      };
       script.onerror = () => {
+        if (settled) {
+          cleanup();
+          return;
+        }
         fail(new Error('無法連線至雲端行事曆'));
       };
       script.src = buildJsonpUrl(endpoint, action, data, token, callbackName);
@@ -108,36 +149,28 @@
   async function fetchJsonp(endpoint, action, data, token) {
     if (typeof root.fetch !== 'function') throw new Error('瀏覽器 fetch 尚未載入');
     const callbackName = `__lkcWorshipFetch_${Date.now()}_${++callbackSequence}`;
-    const response = await root.fetch(
+    const body = await fetchText(
       buildJsonpUrl(endpoint, action, data, token, callbackName),
-      { credentials: 'omit' }
+      { credentials: 'omit' },
+      timeoutFor('LKC_GAS_FETCH_TIMEOUT_MS', JSONP_TIMEOUT_MS),
+      'PPT 資料庫備援讀取逾時'
     );
-    if (!response || !response.ok) {
-      const error = new Error(`GAS 回傳 HTTP ${response && response.status || 0}`);
-      error.type = 'INVALID_RESPONSE';
-      throw error;
-    }
-    const result = parseJsonpPayload(await response.text(), callbackName);
+    const result = parseJsonpPayload(body, callbackName);
     if (result && result.success === false) throw new Error(result.message || '雲端資料讀取失敗');
     return result;
   }
 
   async function postJson(endpoint, action, data, token) {
     if (typeof root.fetch !== 'function') throw new Error('瀏覽器 fetch 尚未載入');
-    const response = await root.fetch(endpoint, {
+    const body = await fetchText(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       credentials: 'omit',
       body: JSON.stringify({ action, token: token || '', data: data || {} })
-    });
-    if (!response || !response.ok) {
-      const error = new Error(`GAS 回傳 HTTP ${response && response.status || 0}`);
-      error.type = 'INVALID_RESPONSE';
-      throw error;
-    }
+    }, timeoutFor('LKC_PPT_SYNC_POST_TIMEOUT_MS', 15000), '聖詩索引同步 POST 逾時');
     let result;
     try {
-      result = JSON.parse(await response.text());
+      result = JSON.parse(body);
     } catch (error) {
       const parseError = new Error('GAS 回應不是可解析 JSON');
       parseError.type = 'INVALID_RESPONSE';
@@ -182,7 +215,10 @@
   async function read(action, data) {
     if (root.WorshipPptSupabaseService && typeof root.WorshipPptSupabaseService[action] === 'function') {
       try {
-        const res = await root.WorshipPptSupabaseService[action](data || {});
+        const operation = () => root.WorshipPptSupabaseService[action](data || {});
+        const res = action === 'cal_getPptLibraryIndex'
+          ? await withTimeout(operation, timeoutFor('LKC_PPT_INDEX_READ_TIMEOUT_MS', 10000), 'PPT 資料庫索引讀取逾時')
+          : await operation();
         if (res !== null) return res;
       } catch (err) {
         console.warn(`[WorshipSupabase] Error calling ${action}, falling back:`, err);

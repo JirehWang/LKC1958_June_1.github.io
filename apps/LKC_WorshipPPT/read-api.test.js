@@ -1,6 +1,48 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { buildJsonpUrl, jsonp, read, sync } = require('./read-api.js');
+const vm = require('node:vm');
+const fs = require('node:fs');
+const path = require('node:path');
+
+function isolatedReadApi(options = {}) {
+  const scripts = [];
+  const context = {
+    URL, AbortController, setTimeout, clearTimeout, console: { warn() {} },
+    LKC_WORSHIP_PPT_LIBRARY_GAS_URL: 'https://script.google.com/macros/s/library/exec',
+    location: { protocol: 'https:', hostname: 'jirehwang.github.io' },
+    LKC_JSONP_TIMEOUT_MS: 50,
+    LKC_PPT_SYNC_POST_TIMEOUT_MS: 5,
+    LKC_PPT_INDEX_READ_TIMEOUT_MS: 5,
+    LKC_GAS_FETCH_TIMEOUT_MS: 5,
+    ...options
+  };
+  context.window = context;
+  context.document = {
+    createElement() { return { removed: false, remove() { this.removed = true; } }; },
+    head: { appendChild(script) {
+      scripts.push(script);
+      if (options.onScript) options.onScript(script, context);
+      else queueMicrotask(() => {
+        const callback = new URL(script.src).searchParams.get('callback');
+        context[callback]({ success: true, data: [{ kind: 'hymn', number: '242', fileId: 'file-242' }] });
+        script.onload();
+      });
+    } }
+  };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, 'read-api.js'), 'utf8'), context);
+  return { context, scripts, api: context.TaiwaneseWorshipReadApi };
+}
+
+async function outcomeWithin(promise, milliseconds = 200) {
+  let timer;
+  try {
+    return await Promise.race([
+      promise.then(value => ({ value }), error => ({ error })),
+      new Promise(resolve => { timer = setTimeout(() => resolve({ stalled: true }), milliseconds); })
+    ]);
+  } finally { clearTimeout(timer); }
+}
 
 test('builds a JSONP URL for read-only GAS actions from file pages', () => {
   const url = new URL(buildJsonpUrl(
@@ -16,6 +58,74 @@ test('builds a JSONP URL for read-only GAS actions from file pages', () => {
   assert.deepEqual(JSON.parse(url.searchParams.get('data')), {
     startDate: '2026-07-12', endDate: '2026-07-12'
   });
+});
+
+test('a stalled sync POST times out, aborts, and continues through JSONP', async () => {
+  let signal;
+  const { api, scripts } = isolatedReadApi({ fetch: (url, init) => {
+    signal = init.signal;
+    return new Promise(() => {});
+  } });
+  const outcome = await outcomeWithin(api.sync('cal_syncPptHymnIndex', { kind: 'hymn', number: '242' }));
+  assert.equal(outcome.stalled, undefined, 'sync must not wait forever for POST');
+  assert.equal(outcome.value.success, true);
+  assert.equal(signal.aborted, true);
+  assert.equal(scripts.length, 1);
+});
+
+test('the sync POST deadline also covers a stalled response body', async () => {
+  let signal;
+  const { api } = isolatedReadApi({ fetch: async (url, init) => {
+    signal = init.signal;
+    return { ok: true, text: () => new Promise(() => {}) };
+  } });
+  const outcome = await outcomeWithin(api.sync('cal_syncPptHymnIndex', { kind: 'hymn' }));
+  assert.equal(outcome.stalled, undefined, 'headers alone must not disable the deadline');
+  assert.equal(outcome.value.success, true);
+  assert.equal(signal.aborted, true);
+});
+
+test('a stalled Supabase index read falls back to the GAS index', async () => {
+  const { api, scripts } = isolatedReadApi({ WorshipPptSupabaseService: {
+    cal_getPptLibraryIndex: () => new Promise(() => {})
+  } });
+  const outcome = await outcomeWithin(api.read('cal_getPptLibraryIndex', {}));
+  assert.equal(outcome.stalled, undefined, 'Supabase must not prevent the GAS fallback forever');
+  assert.equal(outcome.value.data[0].number, '242');
+  assert.equal(scripts.length, 1);
+});
+
+test('a loaded script without its JSONP callback reports an invalid response immediately', async () => {
+  const { api } = isolatedReadApi({ onScript: script => queueMicrotask(() => script.onload()) });
+  const outcome = await outcomeWithin(api.jsonp('https://example.com/exec', 'cal_getPptLibraryFile', {}, ''), 100);
+  assert.equal(outcome.error.type, 'INVALID_RESPONSE');
+});
+
+test('a stalled fetch fallback after a script error also times out', async () => {
+  let signal;
+  const { api } = isolatedReadApi({
+    onScript: script => queueMicrotask(() => script.onerror()),
+    fetch: (url, init) => { signal = init.signal; return new Promise(() => {}); }
+  });
+  const outcome = await outcomeWithin(api.read('cal_getPptLibraryFile', { fileId: 'file-242' }));
+  assert.equal(outcome.stalled, undefined, 'the fallback transport must have a deadline');
+  assert.equal(outcome.error.type, 'TIMEOUT');
+  assert.equal(signal.aborted, true);
+});
+
+test('a late JSONP response stays harmless until the script finishes loading', async () => {
+  const { api, scripts, context } = isolatedReadApi({
+    LKC_JSONP_TIMEOUT_MS: 5, LKC_JSONP_LATE_CALLBACK_GRACE_MS: 1, onScript() {}
+  });
+  await assert.rejects(api.jsonp('https://example.com/exec', 'cal_getPptLibraryFile', {}, ''), error => error.type === 'TIMEOUT');
+  await new Promise(resolve => setTimeout(resolve, 15));
+  const script = scripts[0];
+  const callback = new URL(script.src).searchParams.get('callback');
+  assert.equal(script.removed, false);
+  assert.doesNotThrow(() => context[callback]({ success: true, data: { base64: 'late' } }));
+  script.onload();
+  assert.equal(context[callback], undefined);
+  assert.equal(script.removed, true);
 });
 
 test('manual hymn index sync posts only to the dedicated Library GAS endpoint', async () => {

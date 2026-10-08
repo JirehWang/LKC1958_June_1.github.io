@@ -82,6 +82,7 @@ flowchart LR
 | PptxGenJS 3.12.0 | `ppt-export.js` | 產生可編輯的 PowerPoint 原生文字與圖片物件 | 預覽與 PowerPoint 是兩套文字引擎，必須共用換行與座標規則 |
 | CSS container-width 單位 `cqw` | 預覽字級 | 讓 16:9 預覽縮放時維持與 960pt PowerPoint 畫布一致的比例 | 換算固定為 `1pt = 1/9.6cqw` |
 | localStorage | 草稿與離線版面備份 | 瀏覽器重開後可恢復內容；雲端故障仍有最後備份 | 不是跨裝置主資料源；資料量受瀏覽器限制 |
+| Cookie | 聖詩白色色塊透明度偏好 | 滑桿及同步選項調整後立即記住一年；按模板分開保存 | 限同一瀏覽器及網站，清除 Cookie 後回到草稿／雲端設定 |
 | Node `node:test` + 語法檢查 | `*.test.js`、`scripts/verify.ps1` | 在不啟動瀏覽器的情況回歸資料契約、排版算法及來源結構 | 視覺變更仍需桌面 snapshot／瀏覽器 QA |
 
 ## 4. 執行階段分層
@@ -284,10 +285,16 @@ WorshipPPT 不複製行事曆與週報內容到 Firebase；資料直接由既有
 ### 8.4 聖詩索引手動同步
 
 1. `production-editor.js` 只在 `kind=hymn` 的資料庫段落顯示同步標籤；啟應文段落維持原本的唯讀載入行為。
-2. `syncHymnLibraryIndex()` 固定送出 `{ action: 'cal_syncPptHymnIndex', data: { kind: 'hymn' } }` 到 `LKC_WORSHIP_PPT_LIBRARY`，先嘗試 `POST`，跨來源失敗時才使用同一 action 的 JSONP 備援。
-3. Library GAS 以 `LockService` 鎖定，繞過 5 分鐘索引快取重新掃描聖詩 Drive 資料夾，與 Supabase `worship_ppt_library_index` 只比對 `kind / number / file_id / title / file_name`。
+2. `syncHymnLibraryIndex(number)` 送出 `{ action: 'cal_syncPptHymnIndex', data: { kind: 'hymn', number } }` 到 `LKC_WORSHIP_PPT_LIBRARY`，先嘗試 `POST`，跨來源失敗時才使用同一 action 的 JSONP 備援。`number` 是目前要載入的聖詩編號；不傳時仍可同步全部聖詩。
+3. Library GAS 以 `LockService` 鎖定，繞過 5 分鐘索引快取重新掃描聖詩 Drive 資料夾，與 Supabase `worship_ppt_library_index` 只比對 `kind / number / file_id / title / file_name`。有指定編號時只同步該編號，其他編號的重複檔案不阻擋本次載入；不指定編號時保留整批同步。同步只讀聖詩資料夾，不依賴啟應文資料夾的可用性。
 4. GAS 只 upsert 新增／內容變更的聖詩 metadata；Supabase 已有但 Drive 本次未出現的資料只計為 `preserved`，不刪除。服務金鑰只存在 GAS Script Properties：`PPT_LIBRARY_SUPABASE_URL`、`PPT_LIBRARY_SUPABASE_SERVICE_ROLE_KEY`。
-5. 每次成功、錯誤或被短暫冷卻的結果都由 GAS 寫入 `PPT_LIBRARY_SYNC_LOG`；前端收到成功結果後才載入目前段落的 PPTX。同步失敗時不宣稱載入成功。
+5. 每次成功、錯誤或被短暫冷卻的結果都由 GAS 寫入 `PPT_LIBRARY_SYNC_LOG`。即使同步回應失敗，前端仍讀取目前索引並嘗試載入，處理 GAS 已寫入而回應遺失的情況；畫面保留「索引同步未能確認」警示，只有 PPTX 實際載入後才顯示頁數，不宣稱同步成功。
+6. 手動同步強制掃描時清除 GAS 的五分鐘索引快取，避免新檔案已寫入 Supabase 卻被檔案下載的舊索引拒絕。同步請求結束時，無論成功或失敗，前端清除本頁的索引 Promise 快取，重新讀取 Supabase，再載入按鈕被點擊時的段落；同步期間切換段落不改變本次載入目標。
+7. 按鈕保留同步新增／更新／未變更的摘要；冷卻期間標示沿用上次結果。找不到檔案或 PPTX 下載失敗都顯示實際原因，不顯示「已載入 0 頁」。聖詩檔名必須符合第 11.1 節的 `.pptx` 結尾格式。
+8. 若指定的聖詩編號尚未存在於 Supabase 索引，GAS 繞過短暫同步冷卻，完成掃描與新增索引後才回覆；既有編號仍可沿用冷卻期間的同步結果。真正沒有符合檔名的來源檔案時，前端顯示找不到並保留同步摘要。
+9. GAS 的索引快取依聖詩／啟應文分開；下載先驗證聖詩資料夾，再驗證啟應文資料夾，已找到檔案便不依賴另一個資料夾。快取 JSON 損毀時重新掃描；快取寫入失敗不改變掃描或已提交同步的結果。指定編號不存在時回傳 `status=MISSING`，不寫入其他聖詩索引；指定編號有多份檔案時回報重複，不任意選檔。
+10. 同步 POST 的連線與回應內容共用 15 秒上限，逾時中止 Fetch 並轉 JSONP；Supabase 索引讀取 10 秒後轉 GAS；Fetch 備援讀取 45 秒後中止。JSONP 載入完卻未呼叫 callback 時立即回報 `INVALID_RESPONSE`，逾時後晚到的 callback 保留空函式至 script 完成，避免 `ReferenceError`。
+11. 失敗與零頁 PPTX 都不保留舊聖詩頁面；下一首仍可繼續下載。預覽點陣化失敗時保留原始 PPTX 供原生匯出。匯出略過缺少原始來源的聖詩及其標題頁，保留其他成功帶入的段落。
 
 ## 9. 行事曆欄位契約
 
@@ -536,6 +543,8 @@ canvasCqwToPoints(cqw) = cqw × 9.6
 - `hymnOpacityBySection`：各樂譜段落 40–80%。
 - 「聖詩頁白底透明度同步」決定調整一段時是否同步所有樂譜段落。
 
+`app.js` 以 `lkc-worship-hymn-opacity-{templateId}` Cookie 自動保存各聖詩段落的 40–80% 數值及同步選項，期限一年、路徑限定 app 目錄，使用 SameSite=Lax（HTTPS 時加 Secure）。滑桿每次 input 都保存，不需按儲存草稿；同步開啟時保存調整後所有段落，關閉時保留各段落數值。Cookie 只接受有效範圍，缺少或無效時沿用原有草稿／雲端設定。草稿與雲端版面套用後，`layout-groups.js` 再恢復本機偏好，並同步滑桿顯示；預覽及匯出均讀取相同的 model.opacity。這是個人偏好，寫入 Cookie 不會觸發共用版面的雲端儲存。
+
 白色色塊只套用 `ppt-import`／`score`，不套聖詩 section title，避免標題頁被洗白。
 
 ## 16. Firebase 共用版面、權限與離線一致性
@@ -634,7 +643,7 @@ PptxGenJS 產生 blob 後，若 JSZip 可用，系統會再次打開輸出 PPTX�
 | 版面 Firebase SDK 載入失敗 | 清除 promise，下一次可重試 |
 | GAS POST network/CORS 失敗 | 回退 JSONP |
 | JSONP 逾時／載入失敗 | 清理 script/callback，回報可讀訊息 |
-| 聖詩索引同步失敗 | 保留既有 Supabase 索引，不載入本次段落，顯示 GAS 錯誤訊息並由 `PPT_LIBRARY_SYNC_LOG` 留痕 |
+| 聖詩索引同步失敗 | 保留同步警示並重讀已有索引；已有原始檔仍可載入，缺少素材時顯示原因，由 `PPT_LIBRARY_SYNC_LOG` 留痕 |
 | PPT Library 索引失敗 | 清除 `indexPromise`，下一次可重試 |
 | 單一 PPTX 解析失敗 | 清除該 file ID cache，不污染其他素材 |
 | Library 找不到編號 | 清除該 section pages，保存 `libraryError` |
@@ -672,6 +681,15 @@ PptxGenJS 產生 blob 後，若 JSZip 可用，系統會再次打開輸出 PPTX�
 - UI 三欄、色彩、busy overlay 與產品命名。
 
 文件或純資料契約變更至少跑完整 verify；排版、CSS、Canvas 或互動變更還要做桌面瀏覽器 visual QA。只有測試通過不能取代畫面檢查。
+
+### 20.1 聖詩同步失敗流程驗證（2026-10-09）
+
+- 本次範圍：同步傳輸、Supabase 索引讀取、GAS 資料夾掃描／upsert／快取、按鈕結果與失敗聖詩的匯出隔離；不變更資料表、認證或素材內容。
+- 重現：新加失敗情境後，45 項聚焦測試有 12 項失敗，涵蓋無上限等待、回應遺失後舊索引、其他資料夾／編號干擾、快取例外與缺檔結果。再補上零頁 PPTX，確認會被誤報為載入成功。
+- 修正後驗證：`read-api`、`ppt-library-integration`、`production-editor`、`pptx-library`、`ppt-export`、`worship-ppt-supabase`、`calendar-integration` 與後端 `PptLibrary.test.cjs`，共 107 項測試通過、0 失敗；四份修改的程式語法檢查通過。
+- 擴大回歸：app 全部 `*.test.js` 加後端測試共 198 項通過、0 失敗、0 跳過；app 的 21 份非 vendor 程式與後端 `PptLibrary.js` 語法檢查通過。原文件所列 `scripts/verify.ps1` 目前不存在，因此直接執行完整 Node 測試與語法檢查；另同步更新版本號檢查的舊預期。
+- 後端測試位於 GAS 工作目錄的 `PptLibrary.test.cjs`，以 `node --test <GAS工作目錄>/PptLibrary.test.cjs` 執行；`.cjs` 不屬於 clasp 設定的 GAS script extensions。
+- 證據限制：本次為本機失敗注入與回歸測試；前端尚未 push，GAS 尚未部署，不能據此宣稱線上失敗率已降低。
 
 ## 21. 四種模板的擴充邊界
 

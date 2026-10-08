@@ -10,6 +10,52 @@ const {
   deduplicatePptxMedia
 } = require('./ppt-export.js');
 
+test('missing hymn pages and titles are skipped while an available native hymn still exports', async () => {
+  const previousDocument = global.document;
+  const mergedDecks = [];
+  const blob = { kind: 'exported-pptx' };
+  const validSource = { kind: 'original-513' };
+  const zip = { files: {}, generateAsync: async () => blob };
+  class MockPptx {
+    addSlide() { return { addText() {}, addShape() {}, addImage() {} }; }
+    write() { return Promise.resolve({ kind: 'base-pptx' }); }
+  }
+  global.document = {};
+  try {
+    const result = await exportWorshipPPTX({
+      PptxGenJS: MockPptx, returnBlob: true, serviceDate: '2026-10-04',
+      JSZip: { loadAsync: async () => zip },
+      production: require('./slide-production.js'),
+      layoutState: { groups: {}, pageAssignments: {} },
+      templateProfile: { librarySections: [['hymn-1', 'hymn'], ['doxology', 'hymn']] },
+      model: {
+        'hymn-1': { sourceValue: '51', libraryError: 'PPTX 載入失敗' },
+        doxology: { sourceValue: '513', libraryEntry: { number: '513' }, pptPages: [{ nativeExport: true }] }
+      },
+      pptxLibrary: {
+        normalizeLibraryNumber: value => String(value || ''),
+        getNativeSource: ref => ref && ref.packageId === 'file-513' ? validSource : null
+      },
+      nativePptx: { merge: async (target, deck, sourceFor) => {
+        mergedDecks.push(deck);
+        assert.equal(sourceFor({ packageId: 'file-513' }), validSource);
+      } },
+      getDeckEntries: () => [
+        { kind: 'cover', sectionId: 'cover' },
+        { kind: 'section', sectionId: 'hymn-1' },
+        { kind: 'ppt-import', sectionId: 'hymn-1', nativeExport: true, nativeSource: { packageId: 'lost-file' } },
+        { kind: 'section', sectionId: 'doxology' },
+        { kind: 'ppt-import', sectionId: 'doxology', nativeExport: true, nativeSource: { packageId: 'file-513' } }
+      ]
+    });
+    assert.equal(result, blob);
+    assert.deepEqual(mergedDecks[0].map(entry => entry.sectionId), ['cover', 'doxology', 'doxology']);
+  } finally {
+    if (previousDocument === undefined) delete global.document;
+    else global.document = previousDocument;
+  }
+});
+
 test('exports slides correctly with mock pptxgenjs', async () => {
   const slides = [];
   let createdPptx;

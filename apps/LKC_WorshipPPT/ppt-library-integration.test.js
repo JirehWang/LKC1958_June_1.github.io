@@ -35,7 +35,7 @@ function loadIntegration(profile, sourcePages, options = {}) {
   if (options.pptRetryDelayMs !== undefined) {
     window.LKC_PPT_RETRY_DELAY_MS = options.pptRetryDelayMs;
   }
-  const context = { window, model, active: 'worship-moment', render() {} };
+  const context = { window, model, active: 'worship-moment', render() {}, setTimeout, clearTimeout };
   vm.runInNewContext(
     fs.readFileSync(path.join(__dirname, 'ppt-library-integration.js'), 'utf8'),
     context
@@ -81,7 +81,7 @@ test('loads fixed Google presentations and maps selected slides to their worship
   assert.equal(model.thanksgiving.externalSourceFileId, 'offering-file');
 });
 
-test('keeps the built-in fallback pages when an external presentation cannot load', async () => {
+test('skips a failed external presentation and keeps its built-in fallback pages', async () => {
   const profile = {
     externalPresentations: [{
       id: 'broken-source',
@@ -94,7 +94,7 @@ test('keeps the built-in fallback pages when an external presentation cannot loa
     throw new Error('download failed');
   };
 
-  await assert.rejects(window.loadExternalPresentationSources(), /download failed/);
+  assert.equal((await window.loadExternalPresentationSources()).length, 0);
   assert.equal(model['worship-moment'].pptPages[0].kind, 'fallback-worship');
 });
 
@@ -139,7 +139,7 @@ test('serializes PPT library downloads so only one GAS file request is active', 
   assert.equal(model['prayer-song'].pptPages[0].objects[0].text, 'file-261');
 });
 
-test('retries a timed-out PPTX once, preserves fallback, and continues the queue', async () => {
+test('retries a timed-out PPTX once, removes stale hymn pages, and continues the queue', async () => {
   const entries = [
     { kind: 'hymn', number: '261', title: '祈禱詩', fileId: 'file-261', fileName: '261.pptx' },
     { kind: 'hymn', number: '306B', title: '奉獻', fileId: 'file-306B', fileName: '306B.pptx' },
@@ -176,7 +176,7 @@ test('retries a timed-out PPTX once, preserves fallback, and continues the queue
     requestedEntries.map(entry => entry.fileId),
     ['file-261', 'file-261', 'file-306B', 'file-522']
   );
-  assert.equal(model['prayer-song'].pptPages[0].kind, 'fallback-prayer');
+  assert.equal(model['prayer-song'].pptPages, undefined);
   assert.match(model['prayer-song'].libraryError, /雲端行事曆讀取逾時/);
 });
 
@@ -225,7 +225,7 @@ test('index.html includes vendor-jszip before pptx-library.js', () => {
   assert.ok(jszipIndex !== -1, 'vendor-jszip.min.js must be present in index.html');
   assert.ok(pptxLibraryIndex !== -1, 'pptx-library.js must be present in index.html');
   assert.ok(jszipIndex < pptxLibraryIndex, 'vendor-jszip.min.js must be loaded before pptx-library.js');
-  assert.match(indexHtml, /ppt-library-integration\.js\?v=20260922a/);
+  assert.match(indexHtml, /ppt-library-integration\.js\?v=20261009a/);
 });
 
 test('manual hymn index sync requests a full GAS hymn scan before loading a section', async () => {
@@ -296,5 +296,82 @@ test('accepts the legacy GAS index envelope and normalizes snake_case file metad
   assert.equal(result[0].state, 'loaded');
   assert.equal(requestedEntries[0].fileId, 'file-261');
   assert.equal(model['prayer-song'].pptPages[0].objects[0].text, 'file-261');
+});
+
+test('loads a newly indexed hymn without refreshing a page that already cached a missing index', async () => {
+  let entries = [];
+  let reads = 0;
+  const { window, model } = loadIntegration({ librarySections: [['prayer-song', 'hymn']] }, {}, {
+    worshipReadAPI: async () => { reads += 1; return { data: entries }; },
+    worshipSyncAPI: async (action, data) => {
+      assert.equal(data.number, '242');
+      entries = [{ kind: 'hymn', number: '242', fileId: 'file-242', fileName: '第242首 祈禱.pptx' }];
+      return { success: true, data: { inserted: 1 } };
+    },
+    downloadAndParse: async () => [{ objects: [{ type: 'text', text: '242' }] }]
+  });
+  model['prayer-song'].sourceValue = '242';
+  assert.equal((await window.loadPptLibraryContent())[0].state, 'missing');
+  await window.syncHymnLibraryIndex('242');
+  assert.equal((await window.loadPptLibraryContent())[0].state, 'loaded');
+  assert.equal(reads, 2);
+  assert.equal(model['prayer-song'].libraryFileId, 'file-242');
+});
+
+test('rechecks the index when GAS committed a sync but its response timed out', async () => {
+  let entries = [];
+  const { window, model } = loadIntegration({ librarySections: [['prayer-song', 'hymn']] }, {}, {
+    worshipReadAPI: async () => ({ data: entries }),
+    worshipSyncAPI: async () => {
+      entries = [{ kind: 'hymn', number: '242', fileId: 'file-242', fileName: '第242首 祈禱.pptx' }];
+      const error = new Error('同步回應逾時');
+      error.type = 'TIMEOUT';
+      throw error;
+    },
+    downloadAndParse: async () => [{ objects: [] }]
+  });
+  model['prayer-song'].sourceValue = '242';
+  assert.equal((await window.loadPptLibraryContent())[0].state, 'missing');
+  await assert.rejects(window.syncHymnLibraryIndex('242'), /同步回應逾時/);
+  assert.equal((await window.loadPptLibraryContent())[0].state, 'loaded');
+});
+
+test('a rejected index read can recover on the next load', async () => {
+  let reads = 0;
+  const { window } = loadIntegration({ librarySections: [['prayer-song', 'hymn']] }, {}, {
+    worshipReadAPI: async () => {
+      if (++reads === 1) throw new Error('network unavailable');
+      return { data: [{ kind: 'hymn', number: '261', fileId: 'file-261' }] };
+    },
+    downloadAndParse: async () => [{ objects: [] }]
+  });
+  await assert.rejects(window.loadPptLibraryContent(), /network unavailable/);
+  assert.equal((await window.loadPptLibraryContent())[0].state, 'loaded');
+});
+
+test('an empty PPTX reports an error and does not block the following hymn', async () => {
+  const { window, model } = loadIntegration({ librarySections: [['prayer-song', 'hymn'], ['amen', 'hymn']] }, {}, {
+    worshipReadAPI: async () => ({ data: [
+      { kind: 'hymn', number: '261', fileId: 'empty-file' },
+      { kind: 'hymn', number: '513', fileId: 'file-513' }
+    ] }),
+    downloadAndParse: async entry => entry.fileId === 'empty-file' ? [] : [{ objects: [] }]
+  });
+  model.amen.sourceValue = '513';
+  const result = await window.loadPptLibraryContent();
+  assert.deepEqual(Array.from(result, item => item.state), ['error', 'loaded']);
+  assert.match(result[0].message, /沒有可用的投影片/);
+  assert.equal(model.amen.libraryFileId, 'file-513');
+});
+
+test('a preview rasterization failure preserves the original hymn for native export', async () => {
+  const { window, model } = loadIntegration({ librarySections: [['prayer-song', 'hymn']] }, {}, {
+    worshipReadAPI: async () => ({ data: [{ kind: 'hymn', number: '261', fileId: 'file-261' }] }),
+    downloadAndParse: async () => [{ objects: [], nativeSource: { packageId: 'file-261' } }]
+  });
+  window.TaiwaneseWorshipPptxLibrary.rasterizeImportedPages = async () => { throw new Error('preview image failed'); };
+  assert.equal((await window.loadPptLibraryContent())[0].state, 'loaded');
+  assert.equal(model['prayer-song'].pptPages[0].nativeExport, true);
+  assert.match(model['prayer-song'].pptPages[0].previewError, /preview image failed/);
 });
 

@@ -25,6 +25,8 @@ let backgroundColor = activeWorshipTemplateProfile.defaultBackgroundColor || '#f
 let backgroundImage = '';
 let syncHymnOpacity = true;
 let hasSavedBackground = false;
+const hymnOpacityCookieName = `lkc-worship-hymn-opacity-${activeTemplateId}`;
+let hymnOpacityPreference = null;
 
 try {
   const draft = JSON.parse(localStorage.getItem(draftKey) || '{}');
@@ -52,7 +54,58 @@ try {
   console.warn('背景、內容與透明度草稿讀取失敗', error);
 }
 
-if (syncHymnOpacity && hymnOpacitySectionIds.length) {
+try {
+  const cookie = document.cookie.split(';').map(value => value.trim())
+    .find(value => value.startsWith(`${hymnOpacityCookieName}=`));
+  if (cookie) {
+    const saved = JSON.parse(decodeURIComponent(cookie.slice(hymnOpacityCookieName.length + 1)));
+    const opacityBySection = {};
+    hymnOpacitySectionIds.forEach(id => {
+      const opacity = saved && saved.opacityBySection && saved.opacityBySection[id];
+      if (Number.isFinite(opacity) && opacity >= 40 && opacity <= 80) opacityBySection[id] = opacity;
+    });
+    if (Object.keys(opacityBySection).length) {
+      hymnOpacityPreference = { opacityBySection, syncHymnOpacity: saved.syncHymnOpacity !== false };
+    }
+  }
+} catch (error) {
+  console.warn('聖詩透明度偏好讀取失敗', error);
+}
+
+window.restoreRememberedHymnOpacity = () => {
+  if (hymnOpacityPreference) {
+    syncHymnOpacity = hymnOpacityPreference.syncHymnOpacity;
+    Object.entries(hymnOpacityPreference.opacityBySection).forEach(([id, opacity]) => {
+      if (model[id]) model[id].opacity = opacity;
+    });
+  }
+  const syncControl = document.getElementById('sync-hymn-opacity-global');
+  if (syncControl) syncControl.checked = syncHymnOpacity;
+  const slider = document.getElementById('library-image-opacity') || document.getElementById('opacity');
+  if (slider && model[active]) {
+    slider.value = model[active].opacity;
+    if (slider.nextElementSibling) slider.nextElementSibling.textContent = `${model[active].opacity}%`;
+  }
+};
+
+window.rememberHymnOpacity = () => {
+  if (!hymnOpacitySectionIds.length) return;
+  hymnOpacityPreference = {
+    syncHymnOpacity,
+    opacityBySection: Object.fromEntries(hymnOpacitySectionIds.filter(id => model[id])
+      .map(id => [id, Math.max(40, Math.min(80, Number(model[id].opacity) || 60))]))
+  };
+  try {
+    const cookiePath = window.location.pathname.replace(/[^/]*$/, '') || '/';
+    const secure = window.location.protocol === 'https:' ? '; Secure' : '';
+    document.cookie = `${hymnOpacityCookieName}=${encodeURIComponent(JSON.stringify(hymnOpacityPreference))}; Max-Age=31536000; Path=${cookiePath}; SameSite=Lax${secure}`;
+  } catch (error) {
+    console.warn('聖詩透明度偏好儲存失敗', error);
+  }
+};
+
+window.restoreRememberedHymnOpacity();
+if (!hymnOpacityPreference && syncHymnOpacity && hymnOpacitySectionIds.length) {
   const sourceId = hymnOpacitySectionIds.find(id => model[id]);
   if (sourceId) window.TaiwaneseWorshipSlideProduction.applyHymnOpacity(model, hymnOpacitySectionIds, sourceId, model[sourceId].opacity, true);
 }
@@ -80,7 +133,10 @@ window.worshipTemplateAssetsReady = Promise.all(Object.entries(activeWorshipTemp
 });
 
 window.isHymnOpacitySyncEnabled = () => syncHymnOpacity;
-window.setHymnOpacitySyncEnabled = value => { syncHymnOpacity = Boolean(value); };
+window.setHymnOpacitySyncEnabled = value => {
+  syncHymnOpacity = Boolean(value);
+  window.rememberHymnOpacity();
+};
 
 const $ = selector => document.querySelector(selector);
 const esc = value => String(value == null ? '' : value).replace(/[&<>]/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[character]));
@@ -211,6 +267,7 @@ function editor() {
   if (opacity) {
     opacity.oninput = event => {
       window.TaiwaneseWorshipSlideProduction.applyHymnOpacity(model, hymnOpacitySectionIds, active, event.target.value, syncHymnOpacity);
+      window.rememberHymnOpacity();
       $('.range-value').textContent = `${event.target.value}%`;
       preview();
     };

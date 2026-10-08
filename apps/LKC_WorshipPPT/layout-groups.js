@@ -48,6 +48,8 @@
     if (normalized.outputScale) {
       layoutState.outputScale = { text: 100, image: 100, ...normalized.outputScale };
     }
+    // Keep this browser's slider preference when a draft or cloud layout arrives.
+    if (window.restoreRememberedHymnOpacity) window.restoreRememberedHymnOpacity();
   }
 
   function captureHymnOpacity() {

@@ -38,7 +38,7 @@
         ? '同步聖詩索引並載入'
         : '載入雲端 PPT 資料庫';
       form.insertAdjacentHTML('beforeend', `<button type="button" class="button" id="load-library-section">${libraryButtonLabel}</button>${item.libraryError ? `<p class="inline-note">${item.libraryError}</p>` : ''}`);
-      if (active !== 'response') form.insertAdjacentHTML('beforeend', `<label class="field"><span>聖詩頁白色色塊透明度</span><div class="range-wrap"><input id="library-image-opacity" type="range" min="40" max="80" value="${item.opacity || 60}"><output class="range-value">${item.opacity || 60}%</output></div><small>數值越高，背景越淡。</small></label>`);
+      if (active !== 'response') form.insertAdjacentHTML('beforeend', `<label class="field"><span>聖詩頁白色色塊透明度</span><div class="range-wrap"><input id="library-image-opacity" type="range" min="40" max="80" value="${item.opacity || 60}"><output class="range-value">${item.opacity || 60}%</output></div><small>數值越高，背景越淡。調整後會自動記住，下次開啟沿用。</small></label>`);
     }
     form.querySelector('[data-key="sourceValue"]').addEventListener('input', event => {
       item.sourceValue = event.target.value;
@@ -59,28 +59,40 @@
     };
     const loadLibrary = document.getElementById('load-library-section');
     if (loadLibrary) loadLibrary.onclick = async () => {
+      const sectionId = active;
+      let syncSummary = '';
       try {
         loadLibrary.disabled = true;
         let syncResult = null;
         if (activeLibraryKind === 'hymn') {
-          if (typeof window.syncHymnLibraryIndex !== 'function') {
-            throw new Error('聖詩索引同步介面尚未載入');
-          }
           status('正在掃描並同步聖詩索引…');
-          syncResult = await window.syncHymnLibraryIndex();
+          try {
+            if (typeof window.syncHymnLibraryIndex !== 'function') {
+              throw new Error('聖詩索引同步介面尚未載入');
+            }
+            syncResult = await window.syncHymnLibraryIndex(item.sourceValue);
+          } catch (error) {
+            // Still read the index: the sync may have committed before timing out.
+            syncSummary = `索引同步未能確認：${error.message}；`;
+          }
+          if (syncResult) {
+            const reusedResult = syncResult.cooldown || syncResult.status === 'COOLDOWN';
+            syncSummary = `${reusedResult ? '沿用上次同步結果；' : ''}索引新增 ${syncResult.inserted || 0}、更新 ${syncResult.updated || 0}、未變更 ${syncResult.unchanged || 0}；`;
+          }
         }
-        status('正在下載並解析雲端 PPTX…');
-        const result = await window.reloadCurrentPptLibrarySection();
-        if (result && result.state === 'missing') {
-          status(result.message);
+        status(`${syncSummary}正在下載並解析雲端 PPTX…`);
+        const result = await window.reloadCurrentPptLibrarySection(sectionId);
+        if (result && ['missing', 'error'].includes(result.state)) {
+          status(`${syncSummary}${result.message}`);
           return;
         }
-        const syncSummary = syncResult
-          ? `索引新增 ${syncResult.inserted || 0}、更新 ${syncResult.updated || 0}、未變更 ${syncResult.unchanged || 0}；`
-          : '';
+        if (!result || result.state === 'empty') {
+          status(`${syncSummary}請輸入要載入的${activeLibraryKind === 'hymn' ? '聖詩' : '啟應文'}編號`);
+          return;
+        }
         status(`${syncSummary}已載入 ${result && result.pageCount || 0} 頁`);
       } catch (error) {
-        status(`資料庫載入失敗：${error.message}`);
+        status(`${syncSummary}資料庫載入失敗：${error.message}`);
       } finally {
         loadLibrary.disabled = false;
       }
@@ -88,6 +100,7 @@
     const imageOpacity = document.getElementById('library-image-opacity');
     if (imageOpacity) imageOpacity.oninput = event => {
       window.TaiwaneseWorshipSlideProduction.applyHymnOpacity(model, window.hymnOpacitySectionIds, active, Number(event.target.value), hymnOpacityIds.has(active) && window.isHymnOpacitySyncEnabled());
+      window.rememberHymnOpacity();
       imageOpacity.nextElementSibling.textContent = `${item.opacity}%`;
       preview();
     };
