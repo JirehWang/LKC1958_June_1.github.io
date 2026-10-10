@@ -1,4 +1,5 @@
 const { Client } = require('../node_modules/pg');
+const { buildMigrationSql: buildPraiseUuidMigrationSql } = require('./migrate_sunday_bulletin_praise_uuid');
 
 function getDatabaseConfig(env = process.env) {
   const required = ['SUPABASE_DB_USER', 'SUPABASE_DB_PASSWORD', 'SUPABASE_DB_HOST'];
@@ -76,15 +77,26 @@ async function migrate() {
 
       -- 4. 永久歌名索引：只保存歌名，完整歌詞與日期紀錄仍由 GAS 管理
       CREATE TABLE IF NOT EXISTS public.sunday_bulletin_praise_titles (
-          title TEXT PRIMARY KEY,
+          song_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          title TEXT NOT NULL,
+          deleted_at TIMESTAMPTZ,
+          deleted_by TEXT,
           created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
           updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
           updated_by TEXT DEFAULT 'praise-title-index'
       );
 
+      -- 若這支總 migration 在舊版 title 主鍵資料庫上重跑，先完成 UUID 主鍵轉換。
+      ${buildPraiseUuidMigrationSql()}
+
+      CREATE UNIQUE INDEX IF NOT EXISTS sunday_bulletin_praise_titles_active_title_uq
+          ON public.sunday_bulletin_praise_titles (lower(btrim(title)))
+          WHERE deleted_at IS NULL;
+
       -- 先把舊 Supabase 完整表中的歌名補入新索引；GAS 歷史資料由頁面首次載入時同步。
-      INSERT INTO public.sunday_bulletin_praise_titles (title, created_at, updated_at, updated_by)
+      INSERT INTO public.sunday_bulletin_praise_titles (song_id, title, created_at, updated_at, updated_by)
       SELECT
+          gen_random_uuid(),
           trim(title),
           COALESCE(min(created_at), now()),
           COALESCE(max(updated_at), now()),
@@ -92,7 +104,7 @@ async function migrate() {
       FROM public.sunday_bulletin_praise
       WHERE trim(title) <> ''
       GROUP BY trim(title)
-      ON CONFLICT (title) DO NOTHING;
+      ON CONFLICT DO NOTHING;
 
       -- 啟用 RLS
       ALTER TABLE public.sunday_bulletins ENABLE ROW LEVEL SECURITY;

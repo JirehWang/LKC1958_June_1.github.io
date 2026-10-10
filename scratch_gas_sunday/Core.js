@@ -49,6 +49,11 @@ function doPost(e) {
 
     const action = body.action;
 
+    // 🎵 讚美歌曲：歌曲 UUID、歌曲內容與日期綁定分離
+    if (typeof action === 'string' && action.indexOf('praise_') === 0) {
+      return praiseJson_(praiseHandleRequest_(body));
+    }
+
     // 🗓️ 行事曆分流
     if (typeof action === 'string' && (action.indexOf('cal_') === 0 || action === 'load' || action === 'save' || action === 'ai_parse')) {
       return _handleCalendarRequest(body);
@@ -343,6 +348,11 @@ function doGet(e) {
     const action = e.parameter.action;
     const cat = e.parameter.cat;
     const grp = e.parameter.grp;
+
+    // 🎵 讚美歌曲對外讀取 API
+    if (action === 'loadPraiseByDate' || action === 'loadPraiseSong' || action === 'listPraiseSongs') {
+      return praiseHandleGet_(e);
+    }
 
     // 1. 處理 QR 掃描點名請求
     if (action === 'syncClickToServer') {

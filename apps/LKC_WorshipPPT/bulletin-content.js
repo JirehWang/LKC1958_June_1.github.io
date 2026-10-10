@@ -23,6 +23,14 @@
     return `${endpoint}${separator}action=load&key=${encodeURIComponent(prefix + clean(date))}&_lkc=${encodeURIComponent(`bulletin_${nonce}`)}`;
   }
 
+  function buildPraiseByDateUrl(endpoint, date, requestNonce = '') {
+    const url = new URL(String(endpoint), 'https://localhost/');
+    url.searchParams.set('action', 'loadPraiseByDate');
+    url.searchParams.set('date', clean(date));
+    url.searchParams.set('_lkc', clean(requestNonce) || `${Date.now()}_${Math.random().toString(36).slice(2)}`);
+    return url.toString();
+  }
+
   function normalizeReports(data) {
     const source = data && typeof data === 'object' ? data : {};
     const prayer = source.prayer && typeof source.prayer === 'object' ? source.prayer : {};
@@ -228,6 +236,7 @@
       kicker: clean(source.kicker != null ? source.kicker : rawData.kicker),
       lyrics: clean(source.lyrics != null ? source.lyrics : rawData.lyrics)
     };
+    if (source.songId || rawData.songId) mapped.songId = clean(source.songId || rawData.songId);
     ['performanceType', 'tune', 'arrangement', 'performers'].forEach(key => {
       const value = source[key] != null ? source[key] : rawData[key];
       if (value != null) mapped[key] = value;
@@ -238,18 +247,28 @@
   async function loadCloudRecord(endpoint, kind, date, fetchImpl) {
     const bulletinService = (typeof root !== 'undefined' && root && root.SundayBulletinSupabaseService) ||
                              (typeof window !== 'undefined' && window && window.SundayBulletinSupabaseService);
-    const loaderName = kind === 'praise' ? 'loadPraise' : 'loadReports';
-    if (bulletinService && typeof bulletinService[loaderName] === 'function') {
-      try {
-        const data = await bulletinService[loaderName](date);
-        if (data) {
-          const mappedData = kind === 'praise'
-            ? mapPraiseData(data)
-            : { announcements: data.announcements, churchNews: data.churchNews, prayer: data.prayer };
-          return { state: 'loaded', data: mappedData };
+    const loaderNames = kind === 'praise'
+      ? ['loadPraiseByDate', 'loadPraise']
+      : ['loadReports'];
+    if (bulletinService) {
+      for (const loaderName of loaderNames) {
+        if (typeof bulletinService[loaderName] !== 'function') continue;
+        try {
+          const data = await bulletinService[loaderName](date, kind === 'praise' ? endpoint : undefined);
+          if (data) {
+            const mappedData = kind === 'praise'
+              ? mapPraiseData(data)
+              : { announcements: data.announcements, churchNews: data.churchNews, prayer: data.prayer };
+            return { state: 'loaded', data: mappedData };
+          }
+        } catch (e) {
+          // 日期 resolver 已明確回覆未綁定時，不以舊 full-record 取代它。
+          if (kind === 'praise' && loaderName === 'loadPraiseByDate'
+            && ['PRAISE_DATE_NOT_BOUND', 'PRAISE_SONG_NOT_FOUND', 'PRAISE_SONG_ARCHIVED'].includes(e.code)) {
+            return { state: 'missing', data: null };
+          }
+          // 否則繼續嘗試舊 Supabase/GAS 相容來源。
         }
-      } catch (e) {
-        // Fallback to the existing GAS endpoint
       }
     }
 
@@ -304,6 +323,7 @@
 
   return {
     buildBulletinCloudUrl,
+    buildPraiseByDateUrl,
     normalizeReports,
     normalizeReportLayout,
     reportLineCapacity,

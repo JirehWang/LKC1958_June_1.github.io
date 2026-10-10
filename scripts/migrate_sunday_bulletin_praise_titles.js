@@ -1,4 +1,5 @@
 const { Client } = require('pg');
+const { buildMigrationSql } = require('./migrate_sunday_bulletin_praise_uuid');
 
 function getDatabaseConfig(env = process.env) {
   const required = ['SUPABASE_DB_USER', 'SUPABASE_DB_PASSWORD', 'SUPABASE_DB_HOST'];
@@ -28,18 +29,28 @@ async function migrate() {
     await client.connect();
     const ddl = [
       'CREATE TABLE IF NOT EXISTS public.sunday_bulletin_praise_titles (',
-      '  title TEXT PRIMARY KEY,',
+      '  song_id UUID NOT NULL DEFAULT gen_random_uuid(),',
+      '  title TEXT NOT NULL,',
+      '  deleted_at TIMESTAMPTZ,',
+      '  deleted_by TEXT,',
       '  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),',
       '  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),',
-      '  updated_by TEXT DEFAULT \'praise-title-index\'',
+      '  updated_by TEXT DEFAULT \'praise-title-index\',',
+      '  PRIMARY KEY (song_id)',
       ');',
       '',
-      'INSERT INTO public.sunday_bulletin_praise_titles (title, created_at, updated_at, updated_by)',
-      'SELECT trim(title), COALESCE(min(created_at), now()), COALESCE(max(updated_at), now()), \'migration\'',
+      buildMigrationSql(),
+      '',
+      'CREATE UNIQUE INDEX IF NOT EXISTS sunday_bulletin_praise_titles_active_title_uq',
+      '  ON public.sunday_bulletin_praise_titles (lower(btrim(title)))',
+      '  WHERE deleted_at IS NULL;',
+      '',
+      'INSERT INTO public.sunday_bulletin_praise_titles (song_id, title, created_at, updated_at, updated_by)',
+      'SELECT gen_random_uuid(), trim(title), COALESCE(min(created_at), now()), COALESCE(max(updated_at), now()), \'migration\'',
       'FROM public.sunday_bulletin_praise',
       'WHERE trim(title) <> \'\'',
       'GROUP BY trim(title)',
-      'ON CONFLICT (title) DO NOTHING;',
+      'ON CONFLICT DO NOTHING;',
       '',
       'ALTER TABLE public.sunday_bulletin_praise_titles ENABLE ROW LEVEL SECURITY;',
       '',

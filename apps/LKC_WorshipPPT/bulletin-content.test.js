@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 
 const {
   buildBulletinCloudUrl,
+  buildPraiseByDateUrl,
   buildReportPages,
   reportLineCapacity,
   reportLines,
@@ -23,6 +24,9 @@ const june28Announcements = [
 test('uses the Sunday bulletin cloud keys for the selected service date', () => {
   assert.match(buildBulletinCloudUrl('https://example.test/exec', 'reports', '2026-07-12'), /key=reports_2026-07-12/);
   assert.match(buildBulletinCloudUrl('https://example.test/exec', 'praise', '2026-07-12'), /key=praise_songs_2026-07-12/);
+  const praiseResolverUrl = new URL(buildPraiseByDateUrl('https://example.test/exec', '2026-07-12', 'test'));
+  assert.equal(praiseResolverUrl.searchParams.get('action'), 'loadPraiseByDate');
+  assert.equal(praiseResolverUrl.searchParams.get('date'), '2026-07-12');
 });
 
 test('prefers the shared Sunday Bulletin Supabase service and preserves its field mapping', async () => {
@@ -83,6 +87,48 @@ test('prefers the shared Sunday Bulletin Supabase service and preserves its fiel
     else globalThis.SundayBulletinSupabaseService = previousService;
     if (previousClient === undefined) delete globalThis._supabase;
     else globalThis._supabase = previousClient;
+  }
+});
+
+test('prefers the UUID date-binding resolver for praise data', async () => {
+  const previousService = globalThis.SundayBulletinSupabaseService;
+  const calls = [];
+  globalThis.SundayBulletinSupabaseService = {
+    async loadPraiseByDate(date) {
+      calls.push(['praiseByDate', date]);
+      return {
+        date,
+        songId: '11111111-1111-4111-8111-111111111111',
+        title: 'UUID 歌曲',
+        kicker: '聖歌隊',
+        lyrics: '由日期綁定解析'
+      };
+    },
+    async loadPraise() {
+      throw new Error('legacy praise loader should not run');
+    }
+  };
+
+  try {
+    const result = await loadCloudRecord(
+      'https://example.test/gas',
+      'praise',
+      '2026-10-11',
+      async () => { throw new Error('GAS fallback should not run'); }
+    );
+    assert.deepEqual(result, {
+      state: 'loaded',
+      data: {
+        songId: '11111111-1111-4111-8111-111111111111',
+        title: 'UUID 歌曲',
+        kicker: '聖歌隊',
+        lyrics: '由日期綁定解析'
+      }
+    });
+    assert.deepEqual(calls, [['praiseByDate', '2026-10-11']]);
+  } finally {
+    if (previousService === undefined) delete globalThis.SundayBulletinSupabaseService;
+    else globalThis.SundayBulletinSupabaseService = previousService;
   }
 });
 
