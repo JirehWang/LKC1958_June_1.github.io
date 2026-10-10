@@ -4,7 +4,7 @@
   <script type="module" src="../../firebase/observability-browser.js"></script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>林口教會 - 聖歌隊讚美詩名與歌詞上傳</title>
+  <title>林口教會 - 讚美歌曲資料上傳</title>
   <link rel="stylesheet" href="css/style.css">
   <style>
     body {
@@ -227,7 +227,7 @@
       <span class="church-icon">🎵</span>
       <div>
         <h1>林口教會週報系統</h1>
-        <div class="subtitle">聖歌隊讚美詩名與歌詞上傳</div>
+        <div class="subtitle">讚美歌曲資料上傳</div>
       </div>
     </div>
   </div>
@@ -247,7 +247,7 @@
           <input type="date" id="bulletinDate" class="form-input" style="width: auto; display: inline-block;">
         </div>
         <div style="font-size: 13px; color: #555;">
-          說明：可登記演唱歌詞或器樂演奏資料，週報與 PPT 系統將可自動同步。
+          說明：請填寫歌名、署名與演出者；歌詞可留白，週報與 PPT 會使用相同格式。
         </div>
         <div id="praiseDateBindingStatus" role="status" aria-live="polite" style="font-size: 13px; color: #2c5f8a; width: 100%;">
           本日尚未指定歌曲
@@ -256,7 +256,7 @@
 
       <div class="form-group song-title-lookup" aria-labelledby="songTitleLookupHeading">
         <div class="song-title-lookup-heading">
-          <label id="songTitleLookupHeading" for="songTitle" style="font-weight: bold;">讚美／聖歌隊詩名：</label>
+          <label id="songTitleLookupHeading" for="songTitle" style="font-weight: bold;">讚美歌曲名稱（必填）：</label>
           <span id="songHistoryStatus" class="song-history-status" role="status" aria-live="polite">正在載入歌曲清單...</span>
         </div>
         <div class="song-title-input-row">
@@ -271,41 +271,30 @@
       </div>
 
       <div class="form-group">
-        <label for="praisePerformanceType" style="font-weight: bold;">表演方式：</label>
-        <select id="praisePerformanceType" class="form-input">
-          <option value="vocal">演唱（有歌詞）</option>
-          <option value="instrumental">演奏（無歌詞）</option>
-        </select>
+        <div style="font-weight: bold; color: #1a3f5c; margin-bottom: 10px;">署名</div>
+        <label for="songComposer" style="font-weight: bold;">曲（必填）：</label>
+        <input type="text" id="songComposer" class="form-input" placeholder="作曲者／原曲來源">
+        <label for="songLyricist" style="font-weight: bold; margin-top: 12px;">詞（必填）：</label>
+        <input type="text" id="songLyricist" class="form-input" placeholder="作詞者">
+        <label for="songTaiwaneseTranslator" style="font-weight: bold; margin-top: 12px;">台語譯詞（必填）：</label>
+        <input type="text" id="songTaiwaneseTranslator" class="form-input" placeholder="台語譯詞者">
+        <label for="songArrangement" style="font-weight: bold; margin-top: 12px;">編曲（選填）：</label>
+        <input type="text" id="songArrangement" class="form-input" placeholder="編曲者">
       </div>
 
       <div class="form-group">
-        <label id="songKickerLabel" for="songKicker" style="font-weight: bold;">演唱者／團體：</label>
-        <input type="text" id="songKicker" class="form-input" value="聖歌隊" placeholder="例：聖歌隊">
-      </div>
-
-      <div id="instrumentalFields" hidden>
-        <div class="form-group">
-          <label for="songTune" style="font-weight: bold;">曲／原曲（選填）：</label>
-          <textarea id="songTune" class="form-input" rows="2" placeholder="例：Terra Beata、英國傳統曲調、美國靈歌"></textarea>
-        </div>
-        <div class="form-group">
-          <label for="songArrangement" style="font-weight: bold;">編曲（選填）：</label>
-          <input type="text" id="songArrangement" class="form-input" placeholder="例：Brant Adams">
-        </div>
-        <div class="form-group">
-          <label for="songPerformers" style="font-weight: bold;">樂器／演奏者（選填）：</label>
-          <textarea id="songPerformers" class="form-input" rows="3" placeholder="每行一位，例如：長笛 / 黃慈恩&#10;鋼琴 / 蔡宜婷"></textarea>
-        </div>
+        <label for="songPerformer" style="font-weight: bold;">演出者（必填）：</label>
+        <textarea id="songPerformer" class="form-input" rows="2" placeholder="例：聖歌隊；可填演唱者或演出團體"></textarea>
       </div>
 
       <div id="songLyricsGroup" class="form-group">
         <label for="songLyrics" style="font-weight: bold; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 5px; width: 100%;">
-          <span>歌詞（段落之間請空一行，以便 PPT 自動分頁）：</span>
+          <span>歌詞（選填；段落之間請空一行，以便 PPT 自動分頁）：</span>
           <span id="longestLineIndicator" style="font-weight: normal; font-size: 12px; color: #64748b; display: none;">
             最長列：<span id="maxLineLen" style="font-weight: 700; color: #2c5f8a;">0</span> 字
           </span>
         </label>
-        <textarea id="songLyrics" class="form-input" rows="10" placeholder="請在此貼入讚美詩歌之完整歌詞..."></textarea>
+        <textarea id="songLyrics" class="form-input" rows="10" placeholder="可留白；若有歌詞，請貼入完整內容..."></textarea>
       </div>
 
       <hr style="border: 0; border-top: 1px solid #dee2e6; margin: 25px 0;">
@@ -342,16 +331,71 @@
     boundSongTitle: '',
     title: '',
     performanceType: 'vocal',
-    kicker: '聖歌隊',
-    tune: '',
+    composer: '',
+    lyricist: '',
+    taiwaneseTranslator: '',
     arrangement: '',
-    performers: '',
+    performer: '',
     lyrics: '',
     songOrigin: 'new',
     sourceTitle: '',
     sourceLyrics: '',
     sourceDate: ''
   };
+
+  function cleanPraiseText(value) {
+    return String(value == null ? '' : value).trim();
+  }
+
+  function mergePraisePerformers(...values) {
+    const lines = [];
+    const seen = new Set();
+    values.forEach((value) => {
+      String(value == null ? '' : value).split(/\r?\n/).forEach((line) => {
+        const cleanLine = line.trim();
+        const identity = cleanLine.toLocaleLowerCase('zh-TW');
+        if (cleanLine && !seen.has(identity)) {
+          lines.push(cleanLine);
+          seen.add(identity);
+        }
+      });
+    });
+    return lines.join('\n');
+  }
+
+  function normalizePraiseRecord(source) {
+    const record = source && typeof source === 'object' ? source : {};
+    return {
+      songId: cleanPraiseText(record.songId || record.song_id),
+      title: cleanPraiseText(record.title),
+      performanceType: record.performanceType === 'instrumental' ? 'instrumental' : 'vocal',
+      composer: cleanPraiseText(record.composer || record.tune),
+      lyricist: cleanPraiseText(record.lyricist),
+      taiwaneseTranslator: cleanPraiseText(record.taiwaneseTranslator || record.translator),
+      arrangement: cleanPraiseText(record.arrangement),
+      performer: cleanPraiseText(record.performer) || mergePraisePerformers(record.kicker, record.performers),
+      lyrics: String(record.lyrics == null ? '' : record.lyrics),
+      updatedAt: cleanPraiseText(record.updatedAt || record.updated_at)
+    };
+  }
+
+  function hasPraiseRecordData(source) {
+    const record = normalizePraiseRecord(source);
+    return Boolean(record.title || record.composer || record.lyricist || record.taiwaneseTranslator
+      || record.arrangement || record.performer || record.lyrics);
+  }
+
+  function missingPraiseFields() {
+    const required = [
+      ['title', '歌名'],
+      ['composer', '曲'],
+      ['lyricist', '詞'],
+      ['taiwaneseTranslator', '台語譯詞'],
+      ['performer', '演出者']
+    ];
+    return required.filter(([key]) => !cleanPraiseText(state[key])).map(([, label]) => label);
+  }
+
   const praiseHistory = {
     songs: [],
     gasRecords: null,
@@ -406,23 +450,15 @@
       }
     });
 
-    document.getElementById('songKicker').addEventListener('input', (e) => {
-      state.kicker = e.target.value;
-      saveLocalBackup();
-    });
-
-    document.getElementById('praisePerformanceType').addEventListener('change', (e) => {
-      const previousType = state.performanceType;
-      state.performanceType = e.target.value === 'instrumental' ? 'instrumental' : 'vocal';
-      if (state.performanceType === 'instrumental' && state.kicker === '聖歌隊') state.kicker = '';
-      if (state.performanceType === 'vocal' && !state.kicker && previousType === 'instrumental') state.kicker = '聖歌隊';
-      renderState();
-      saveLocalBackup();
-    });
-
-    ['songTune', 'songArrangement', 'songPerformers'].forEach((id) => {
+    ['songComposer', 'songLyricist', 'songTaiwaneseTranslator', 'songArrangement', 'songPerformer'].forEach((id) => {
       document.getElementById(id).addEventListener('input', (e) => {
-        const key = { songTune: 'tune', songArrangement: 'arrangement', songPerformers: 'performers' }[id];
+        const key = {
+          songComposer: 'composer',
+          songLyricist: 'lyricist',
+          songTaiwaneseTranslator: 'taiwaneseTranslator',
+          songArrangement: 'arrangement',
+          songPerformer: 'performer'
+        }[id];
         state[key] = e.target.value;
         saveLocalBackup();
       });
@@ -447,24 +483,24 @@
   function collectState() {
     state.date = document.getElementById('bulletinDate').value;
     state.title = document.getElementById('songTitle').value.trim();
-    state.performanceType = document.getElementById('praisePerformanceType').value === 'instrumental' ? 'instrumental' : 'vocal';
-    state.kicker = document.getElementById('songKicker').value.trim();
-    state.tune = document.getElementById('songTune').value.trim();
+    state.composer = document.getElementById('songComposer').value.trim();
+    state.lyricist = document.getElementById('songLyricist').value.trim();
+    state.taiwaneseTranslator = document.getElementById('songTaiwaneseTranslator').value.trim();
     state.arrangement = document.getElementById('songArrangement').value.trim();
-    state.performers = document.getElementById('songPerformers').value.trim();
+    state.performer = document.getElementById('songPerformer').value.trim();
     state.lyrics = document.getElementById('songLyrics').value.trim();
+    state.performanceType = state.lyrics ? 'vocal' : 'instrumental';
     updateSongActionButtons();
   }
 
   function renderState() {
     document.getElementById('songTitle').value = state.title || '';
-    document.getElementById('praisePerformanceType').value = state.performanceType === 'instrumental' ? 'instrumental' : 'vocal';
-    document.getElementById('songKicker').value = state.kicker || (state.performanceType === 'instrumental' ? '' : '聖歌隊');
-    document.getElementById('songTune').value = state.tune || '';
+    document.getElementById('songComposer').value = state.composer || '';
+    document.getElementById('songLyricist').value = state.lyricist || '';
+    document.getElementById('songTaiwaneseTranslator').value = state.taiwaneseTranslator || '';
     document.getElementById('songArrangement').value = state.arrangement || '';
-    document.getElementById('songPerformers').value = state.performers || '';
+    document.getElementById('songPerformer').value = state.performer || '';
     document.getElementById('songLyrics').value = state.lyrics || '';
-    renderPerformanceMode();
     updateLyricsMonitor();
     updateSongActionButtons();
   }
@@ -495,13 +531,6 @@
     status.textContent = `本日歌曲：${title}${selectedNote}`;
   }
 
-  function renderPerformanceMode() {
-    const isInstrumental = state.performanceType === 'instrumental';
-    document.getElementById('instrumentalFields').hidden = !isInstrumental;
-    document.getElementById('songLyricsGroup').hidden = isInstrumental;
-    document.getElementById('songKickerLabel').textContent = isInstrumental ? '演出團體（選填）：' : '演唱者／團體：';
-  }
-
   // 本地快取
   function saveLocalBackup() {
     collectState();
@@ -519,13 +548,15 @@
       state.dateBound = data.dateBound === true;
       state.boundSongId = String(data.boundSongId || (state.dateBound ? data.songId : '')).trim();
       state.boundSongTitle = String(data.boundSongTitle || '').trim();
-      state.title = data.title || '';
-      state.performanceType = data.performanceType === 'instrumental' ? 'instrumental' : 'vocal';
-      state.kicker = data.kicker || (state.performanceType === 'instrumental' ? '' : '聖歌隊');
-      state.tune = data.tune || '';
-      state.arrangement = data.arrangement || '';
-      state.performers = data.performers || '';
-      state.lyrics = data.lyrics || '';
+      const praise = normalizePraiseRecord(data);
+      state.title = praise.title;
+      state.performanceType = praise.performanceType;
+      state.composer = praise.composer;
+      state.lyricist = praise.lyricist;
+      state.taiwaneseTranslator = praise.taiwaneseTranslator;
+      state.arrangement = praise.arrangement;
+      state.performer = praise.performer;
+      state.lyrics = praise.lyrics;
       state.songOrigin = data.songOrigin === 'existing' ? 'existing' : 'new';
       state.sourceTitle = data.sourceTitle || '';
       state.sourceLyrics = data.sourceLyrics || '';
@@ -554,10 +585,11 @@
       state.boundSongTitle = '';
       state.title = '';
       state.performanceType = 'vocal';
-      state.kicker = '聖歌隊';
-      state.tune = '';
+      state.composer = '';
+      state.lyricist = '';
+      state.taiwaneseTranslator = '';
       state.arrangement = '';
-      state.performers = '';
+      state.performer = '';
       state.lyrics = '';
       state.songOrigin = 'new';
       state.sourceTitle = '';
@@ -581,18 +613,7 @@
 
   function normalizePraiseHistory(items) {
     const normalized = (Array.isArray(items) ? items : [])
-      .map((item) => ({
-        date: String(item?.date || '').trim().slice(0, 10),
-        songId: String(item?.songId || item?.song_id || '').trim(),
-        title: String(item?.title || '').trim(),
-        kicker: String(item?.kicker || '').trim(),
-        performanceType: item?.performanceType === 'instrumental' ? 'instrumental' : 'vocal',
-        tune: String(item?.tune || '').trim(),
-        arrangement: String(item?.arrangement || '').trim(),
-        performers: String(item?.performers || '').trim(),
-        lyrics: String(item?.lyrics || '').trim(),
-        updatedAt: String(item?.updatedAt || item?.updated_at || '').trim()
-      }))
+      .map((item) => ({ ...normalizePraiseRecord(item), date: cleanPraiseText(item?.date).slice(0, 10) }))
       .filter((item) => item.title)
       .sort((left, right) => {
         const dateCompare = right.date.localeCompare(left.date);
@@ -816,17 +837,18 @@
       input.setAttribute('aria-busy', 'true');
     }
     if (toggle) toggle.disabled = true;
-    if (status) status.textContent = '正在從 GAS 載入「' + selected.title + '」的完整歌詞...';
+    if (status) status.textContent = '正在從 GAS 載入「' + selected.title + '」的歌曲資料...';
 
     // 先替換表單內容，避免上一首歌的歌詞殘留或與新歌詞串接。
     state.songId = selected.songId || '';
     // 選歌只切換目前正在編輯的歌曲；本日原本綁定的歌曲要另外由「指定／清除本日歌曲」管理。
     state.title = selected.title;
     state.performanceType = 'vocal';
-    state.kicker = '聖歌隊';
-    state.tune = '';
+    state.composer = '';
+    state.lyricist = '';
+    state.taiwaneseTranslator = '';
     state.arrangement = '';
-    state.performers = '';
+    state.performer = '';
     state.lyrics = '';
     state.songOrigin = 'existing';
     state.sourceTitle = selected.title;
@@ -839,12 +861,14 @@
       if (requestId !== praiseHistory.selectionRequestId) return;
       state.songId = gasData.songId || selected.songId || '';
       state.title = gasData.title || selected.title;
-      state.performanceType = gasData.performanceType === 'instrumental' ? 'instrumental' : 'vocal';
-      state.kicker = gasData.kicker || (state.performanceType === 'instrumental' ? '' : '聖歌隊');
-      state.tune = gasData.tune || '';
-      state.arrangement = gasData.arrangement || '';
-      state.performers = gasData.performers || '';
-      state.lyrics = gasData.lyrics || '';
+      const praise = normalizePraiseRecord(gasData);
+      state.performanceType = praise.performanceType;
+      state.composer = praise.composer;
+      state.lyricist = praise.lyricist;
+      state.taiwaneseTranslator = praise.taiwaneseTranslator;
+      state.arrangement = praise.arrangement;
+      state.performer = praise.performer;
+      state.lyrics = praise.lyrics;
       state.sourceTitle = selected.title;
       state.sourceLyrics = state.lyrics;
       state.sourceDate = '';
@@ -857,13 +881,15 @@
       console.error('[praise.html] GAS 載入歷史歌曲失敗:', err);
       state.performanceType = 'vocal';
       state.lyrics = '';
-      state.tune = '';
+      state.composer = '';
+      state.lyricist = '';
+      state.taiwaneseTranslator = '';
       state.arrangement = '';
-      state.performers = '';
+      state.performer = '';
       state.sourceLyrics = '';
       renderState();
       if (status) status.textContent = '歌曲資料載入失敗：' + selected.title;
-      showToast('❌ 無法從 GAS 載入「' + selected.title + '」的歌詞', 'error');
+      showToast('❌ 無法從 GAS 載入「' + selected.title + '」的歌曲資料', 'error');
     } finally {
       if (requestId === praiseHistory.selectionRequestId) {
         if (input) {
@@ -1134,7 +1160,7 @@
       (record) => normalizeSongTitle(record.title) === targetTitle
     );
     if (!matches.length) {
-      throw new Error('GAS 找不到對應歌名的歌詞');
+      throw new Error('GAS 找不到對應的歌曲資料');
     }
     // records 已按日期由新到舊排序；同名時先帶入最新版本供使用者確認。
     return matches[0];
@@ -1203,12 +1229,9 @@
   // 雲端同步：Supabase 維護歌名 UUID，GAS 維護歌詞與日期綁定。
   async function saveToCloud() {
     collectState();
-    if (!state.title) {
-      showToast('請填寫讚美詩歌名稱', 'error');
-      return;
-    }
-    if (state.performanceType !== 'instrumental' && !state.lyrics) {
-      showToast('請填寫歌詞；無歌詞的曲目請選擇「演奏」', 'error');
+    const missingFields = missingPraiseFields();
+    if (missingFields.length) {
+      showToast('尚未填寫：' + missingFields.join('、') + '。目前無法儲存；請補齊後再試。歌詞可留白。', 'error');
       return;
     }
 
@@ -1285,11 +1308,16 @@
         songId: state.songId,
         date: state.date,
         title: state.title,
-        performanceType: state.performanceType,
-        kicker: state.kicker,
-        tune: state.tune,
+        performanceType: state.lyrics ? 'vocal' : 'instrumental',
+        composer: state.composer,
+        lyricist: state.lyricist,
+        taiwaneseTranslator: state.taiwaneseTranslator,
+        performer: state.performer,
+        // 舊版讀取端仍使用這些欄位名稱，先同步相同內容維持相容。
+        kicker: state.performer,
+        tune: state.composer,
         arrangement: state.arrangement,
-        performers: state.performers,
+        performers: state.performer,
         lyrics: state.lyrics,
         updatedAt: new Date().toISOString(),
         updatedBy: 'praise-admin'
@@ -1333,7 +1361,7 @@
         : '狀態：已使用舊版 GAS 依日期暫存，待新版 GAS 部署';
       showToast(
         savedGas._praiseCanonical
-          ? '🎉 歌曲 UUID 與歌詞已儲存；如要換成本日歌曲，請按「指定為本日歌曲」'
+          ? '🎉 歌曲 UUID 與歌曲資料已儲存；如要換成本日歌曲，請按「指定為本日歌曲」'
           : '⚠️ 舊版 GAS 已依本日日期暫存；新版 GAS 部署後會切換至分離的歌曲庫。',
         savedGas._praiseCanonical ? 'success' : 'info'
       );
@@ -1424,10 +1452,11 @@
       state.boundSongTitle = '';
       state.title = '';
       state.performanceType = 'vocal';
-      state.kicker = '聖歌隊';
-      state.tune = '';
+      state.composer = '';
+      state.lyricist = '';
+      state.taiwaneseTranslator = '';
       state.arrangement = '';
-      state.performers = '';
+      state.performer = '';
       state.lyrics = '';
       state.songOrigin = 'new';
       state.sourceTitle = '';
@@ -1468,6 +1497,29 @@
     }
   }
 
+  function applyLoadedPraiseRecord(source) {
+    const praise = normalizePraiseRecord(source);
+    const indexedSong = findPraiseHistorySong(praise.title, praise.songId);
+    state.songId = praise.songId || indexedSong?.songId || '';
+    state.title = praise.title;
+    state.performanceType = praise.performanceType;
+    state.composer = praise.composer;
+    state.lyricist = praise.lyricist;
+    state.taiwaneseTranslator = praise.taiwaneseTranslator;
+    state.arrangement = praise.arrangement;
+    state.performer = praise.performer;
+    state.lyrics = praise.lyrics;
+    state.songOrigin = 'existing';
+    state.dateBound = true;
+    state.boundSongId = state.songId;
+    state.boundSongTitle = state.title;
+    state.sourceTitle = state.title;
+    state.sourceLyrics = state.lyrics;
+    state.sourceDate = '';
+    renderState();
+    saveLocalBackup();
+  }
+
   async function loadFromCloud() {
     collectState();
     if (!state.date) {
@@ -1481,54 +1533,20 @@
     // 先走新版 resolver：日期只查 binding，再由 GAS 回傳 UUID 對應的歌曲本體。
     try {
       const gasData = await loadPraiseByDateFromGas(state.date);
-      if (gasData && (gasData.title || gasData.lyrics || gasData.tune || gasData.arrangement || gasData.performers)) {
-        const indexedSong = findPraiseHistorySong(gasData.title, gasData.songId);
-        state.songId = gasData.songId || indexedSong?.songId || '';
-        state.title = gasData.title || '';
-        state.performanceType = gasData.performanceType === 'instrumental' ? 'instrumental' : 'vocal';
-        state.kicker = gasData.kicker || (state.performanceType === 'instrumental' ? '' : '聖歌隊');
-        state.tune = gasData.tune || '';
-        state.arrangement = gasData.arrangement || '';
-        state.performers = gasData.performers || '';
-        state.lyrics = gasData.lyrics || '';
-        state.songOrigin = 'existing';
-        state.dateBound = true;
-        state.boundSongId = state.songId;
-        state.boundSongTitle = state.title;
-        state.sourceTitle = state.title;
-        state.sourceLyrics = state.lyrics;
-        state.sourceDate = '';
-        renderState();
+      if (gasData && hasPraiseRecordData(gasData)) {
+        applyLoadedPraiseRecord(gasData);
         document.getElementById('syncStatus').textContent = '狀態：已依日期綁定載入 GAS 歌曲';
         showToast('📂 成功依日期綁定載入 GAS 歌曲資料！', 'success');
-        saveLocalBackup();
         return;
       }
     } catch (gasErr) {
       console.warn('[praise.html] 新版 GAS 日期 resolver 失敗，嘗試舊版日期資料:', gasErr.message);
       try {
         const legacyGasData = await loadPraiseRecordFromGas(state.date);
-        if (legacyGasData && (legacyGasData.title || legacyGasData.lyrics || legacyGasData.tune || legacyGasData.arrangement || legacyGasData.performers)) {
-          const indexedSong = findPraiseHistorySong(legacyGasData.title, legacyGasData.songId);
-          state.songId = legacyGasData.songId || indexedSong?.songId || '';
-          state.title = legacyGasData.title || '';
-          state.performanceType = legacyGasData.performanceType === 'instrumental' ? 'instrumental' : 'vocal';
-          state.kicker = legacyGasData.kicker || (state.performanceType === 'instrumental' ? '' : '聖歌隊');
-          state.tune = legacyGasData.tune || '';
-          state.arrangement = legacyGasData.arrangement || '';
-          state.performers = legacyGasData.performers || '';
-          state.lyrics = legacyGasData.lyrics || '';
-          state.songOrigin = 'existing';
-          state.dateBound = true;
-          state.boundSongId = state.songId;
-          state.boundSongTitle = state.title;
-          state.sourceTitle = state.title;
-          state.sourceLyrics = state.lyrics;
-          state.sourceDate = '';
-          renderState();
+        if (legacyGasData && hasPraiseRecordData(legacyGasData)) {
+          applyLoadedPraiseRecord(legacyGasData);
           document.getElementById('syncStatus').textContent = '狀態：已載入舊版 GAS 日期資料';
           showToast('📂 已載入舊版 GAS 日期資料', 'info');
-          saveLocalBackup();
           return;
         }
       } catch (legacyGasErr) {
@@ -1541,27 +1559,10 @@
     if (sbService && typeof sbService.loadPraise === 'function') {
       try {
         const sbData = await sbService.loadPraise(state.date);
-        if (sbData && (sbData.title || sbData.lyrics || sbData.tune || sbData.arrangement || sbData.performers)) {
-          const indexedSong = findPraiseHistorySong(sbData.title, sbData.songId);
-          state.songId = sbData.songId || indexedSong?.songId || '';
-          state.title = sbData.title || '';
-          state.performanceType = sbData.performanceType === 'instrumental' ? 'instrumental' : 'vocal';
-          state.kicker = sbData.kicker || (state.performanceType === 'instrumental' ? '' : '聖歌隊');
-          state.tune = sbData.tune || '';
-          state.arrangement = sbData.arrangement || '';
-          state.performers = sbData.performers || '';
-          state.lyrics = sbData.lyrics || '';
-          state.songOrigin = 'existing';
-          state.dateBound = true;
-          state.boundSongId = state.songId;
-          state.boundSongTitle = state.title;
-          state.sourceTitle = state.title;
-          state.sourceLyrics = state.lyrics;
-          state.sourceDate = '';
-          renderState();
+        if (sbData && hasPraiseRecordData(sbData)) {
+          applyLoadedPraiseRecord(sbData);
           document.getElementById('syncStatus').textContent = '狀態：已載入 Supabase 舊資料備援';
           showToast('📂 GAS 無法連線，已載入 Supabase 舊資料', 'info');
-          saveLocalBackup();
           return;
         }
       } catch (sbErr) {

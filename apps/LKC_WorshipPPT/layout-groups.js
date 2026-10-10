@@ -517,7 +517,7 @@
     }
 
     const contentTabLabel = isPraise ? '歌名' : isDual ? '台語內文' : '內文';
-    const secondaryTabLabel = isPraise ? '演唱者' : '華語內文';
+    const secondaryTabLabel = isPraise ? '署名／演出者' : '華語內文';
 
     const secondaryColorDefault = isPraise ? '#111111' : '#0070c0';
     const secondaryAlignDefault = isPraise ? 'center' : 'left';

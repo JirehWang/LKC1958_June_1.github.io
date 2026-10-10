@@ -230,12 +230,19 @@
 
   function applyPraiseToModel(model, data) {
     if (!model || !model.praise || !data) return model;
-    model.praise.title = clean(data.title) || '讚美';
+    model.praise.title = clean(data.title);
     model.praise.performanceType = data.performanceType === 'instrumental' ? 'instrumental' : 'vocal';
-    model.praise.kicker = clean(data.kicker) || (model.praise.performanceType === 'instrumental' ? '' : '聖歌隊');
-    model.praise.tune = clean(data.tune);
+    model.praise.composer = clean(data.composer || data.tune);
+    model.praise.lyricist = clean(data.lyricist);
+    model.praise.taiwaneseTranslator = clean(data.taiwaneseTranslator || data.translator);
+    model.praise.performer = clean(data.performer || [data.kicker, data.performers]
+      .filter(Boolean)
+      .filter((value, index, values) => values.indexOf(value) === index)
+      .join('\n'));
+    model.praise.kicker = model.praise.performer;
+    model.praise.tune = model.praise.composer;
     model.praise.arrangement = clean(data.arrangement);
-    model.praise.performers = clean(data.performers);
+    model.praise.performers = model.praise.performer;
     model.praise.body = clean(data.lyrics);
     return model;
   }
@@ -245,13 +252,30 @@
     const rawData = source.raw_data && typeof source.raw_data === 'object' && !Array.isArray(source.raw_data)
       ? source.raw_data
       : {};
+    const performer = clean(source.performer != null ? source.performer : rawData.performer)
+      || [source.kicker != null ? source.kicker : rawData.kicker,
+        source.performers != null ? source.performers : rawData.performers]
+        .filter(Boolean)
+        .filter((value, index, values) => values.indexOf(value) === index)
+        .map(clean)
+        .join('\n');
+    const composer = clean(source.composer != null ? source.composer : rawData.composer)
+      || clean(source.tune != null ? source.tune : rawData.tune);
     const mapped = {
       title: clean(source.title || rawData.title),
-      kicker: clean(source.kicker != null ? source.kicker : rawData.kicker),
+      performer,
+      composer,
+      lyricist: clean(source.lyricist != null ? source.lyricist : rawData.lyricist),
+      taiwaneseTranslator: clean(source.taiwaneseTranslator != null
+        ? source.taiwaneseTranslator
+        : (rawData.taiwaneseTranslator != null ? rawData.taiwaneseTranslator : rawData.translator)),
       lyrics: clean(source.lyrics != null ? source.lyrics : rawData.lyrics)
     };
+    if (source.kicker != null || rawData.kicker != null) mapped.kicker = clean(source.kicker != null ? source.kicker : rawData.kicker);
+    if (source.tune != null || rawData.tune != null) mapped.tune = clean(source.tune != null ? source.tune : rawData.tune);
+    if (source.performers != null || rawData.performers != null) mapped.performers = clean(source.performers != null ? source.performers : rawData.performers);
     if (source.songId || rawData.songId) mapped.songId = clean(source.songId || rawData.songId);
-    ['performanceType', 'tune', 'arrangement', 'performers'].forEach(key => {
+    ['performanceType', 'arrangement'].forEach(key => {
       const value = source[key] != null ? source[key] : rawData[key];
       if (value != null) mapped[key] = value;
     });

@@ -8,21 +8,46 @@ function normalizeUploadedText(value) {
 
 function normalizeUploadedPraise(data) {
   const source = data && typeof data === 'object' ? data : {};
+  const performerParts = [source.kicker, source.performers]
+    .flatMap(value => String(value || '').split(/\r?\n/))
+    .map(normalizeUploadedText)
+    .filter(Boolean);
+  const performer = normalizeUploadedText(source.performer)
+    || [...new Set(performerParts)].join('\n');
   return {
     title: normalizeUploadedText(source.title),
     performanceType: source.performanceType === 'instrumental' ? 'instrumental' : 'vocal',
-    kicker: normalizeUploadedText(source.kicker),
-    tune: normalizeUploadedText(source.tune),
+    composer: normalizeUploadedText(source.composer || source.tune),
+    lyricist: normalizeUploadedText(source.lyricist),
+    taiwaneseTranslator: normalizeUploadedText(source.taiwaneseTranslator || source.translator),
+    performer,
     arrangement: normalizeUploadedText(source.arrangement),
-    performers: normalizeUploadedText(source.performers),
     lyrics: normalizeUploadedText(source.lyrics)
   };
 }
 
 function hasUploadedPraiseData(praise) {
   return Boolean(praise && [
-    praise.title, praise.lyrics, praise.tune, praise.arrangement, praise.performers
+    praise.title, praise.lyrics, praise.composer, praise.lyricist, praise.taiwaneseTranslator,
+    praise.arrangement, praise.performer
   ].some(value => normalizeUploadedText(value)));
+}
+
+function applyUploadedPraiseToBulletin(source) {
+  const praise = normalizeUploadedPraise(source);
+  BulletinModel.set('taiwanese.choirSong', praise.title);
+  BulletinModel.set('taiwanese.choirComposer', praise.composer);
+  BulletinModel.set('taiwanese.choirLyricist', praise.lyricist);
+  BulletinModel.set('taiwanese.choirTaiwaneseTranslator', praise.taiwaneseTranslator);
+  BulletinModel.set('taiwanese.choirPerformer', praise.performer);
+  BulletinModel.set('taiwanese.choirArrangement', praise.arrangement);
+  BulletinModel.set('taiwanese.choirLyrics', praise.lyrics);
+  // Keep old model keys available to saved drafts and older export paths.
+  BulletinModel.set('taiwanese.choirType', praise.performanceType);
+  BulletinModel.set('taiwanese.choirKicker', praise.performer);
+  BulletinModel.set('taiwanese.choirTune', praise.composer);
+  BulletinModel.set('taiwanese.choirPerformers', praise.performer);
+  return praise;
 }
 
 function normalizeUploadedReports(data) {
@@ -135,6 +160,13 @@ const App = {
       const f = e.target.dataset.field;
       if (!f) return;
       BulletinModel.set(f, e.target.value);
+      const praiseLegacyAliases = {
+        'taiwanese.choirComposer': 'taiwanese.choirTune',
+        'taiwanese.choirPerformer': ['taiwanese.choirKicker', 'taiwanese.choirPerformers']
+      };
+      const aliases = praiseLegacyAliases[f];
+      (Array.isArray(aliases) ? aliases : aliases ? [aliases] : [])
+        .forEach(alias => BulletinModel.set(alias, e.target.value));
       if (f === 'taiwanese.goldenVerse' || f === 'mandarin.goldenVerse') {
         const textField = f.replace('.goldenVerse', '.goldenVerseText');
         BulletinModel.set(textField, '');
@@ -662,29 +694,25 @@ const App = {
     
     if (!silent) {
       this.showLoading(true);
-      this.showToast('正在載入上傳的讚美詩名與歌詞...', 'info');
+      this.showToast('正在載入上傳的讚美歌曲資料...', 'info');
     }
 
     // 1. 優先自 Supabase 載入 (<50ms 熱響應)
     const sbService = (typeof window !== 'undefined' && window.SundayBulletinSupabaseService) || (typeof SundayBulletinSupabaseService !== 'undefined' && SundayBulletinSupabaseService);
-    if (sbService && typeof sbService.loadPraise === 'function') {
-      try {
-        const sbRes = await sbService.loadPraise(date);
-        if (hasUploadedPraiseData(sbRes)) {
-          const praise = normalizeUploadedPraise(sbRes);
-          BulletinModel.set('taiwanese.choirSong', praise.title);
-          BulletinModel.set('taiwanese.choirType', praise.performanceType);
-          BulletinModel.set('taiwanese.choirKicker', praise.kicker || (praise.performanceType === 'instrumental' ? '' : '聖歌隊'));
-          BulletinModel.set('taiwanese.choirTune', praise.tune);
-          BulletinModel.set('taiwanese.choirArrangement', praise.arrangement);
-          BulletinModel.set('taiwanese.choirPerformers', praise.performers);
-          BulletinModel.set('taiwanese.choirLyrics', praise.lyrics);
+    if (sbService) {
+      const loaderNames = ['loadPraiseByDate', 'loadPraise']
+        .filter(name => typeof sbService[name] === 'function');
+      for (const loaderName of loaderNames) {
+        try {
+          const sbRes = await sbService[loaderName](date);
+          if (!hasUploadedPraiseData(sbRes)) continue;
+          applyUploadedPraiseToBulletin(sbRes);
           this.syncFormFromModel();
-          if (!silent) this.showToast('🎉 成功載入上傳的讚美詩名與歌詞！', 'success');
+          if (!silent) this.showToast('🎉 成功載入上傳的讚美歌曲資料！', 'success');
           return { failed: [] };
+        } catch (sbErr) {
+          console.warn('[App] ' + loaderName + ' 失敗，嘗試下一個讚美來源:', sbErr.message);
         }
-      } catch (sbErr) {
-        console.warn('[App] Supabase loadPraise 失敗，嘗試 GAS 備援:', sbErr.message);
       }
     }
     
@@ -699,15 +727,9 @@ const App = {
       if (json.success && json.data) {
         const praise = normalizeUploadedPraise(json.data);
         if (hasUploadedPraiseData(praise)) {
-          BulletinModel.set('taiwanese.choirSong', praise.title);
-          BulletinModel.set('taiwanese.choirType', praise.performanceType);
-          BulletinModel.set('taiwanese.choirKicker', praise.kicker || (praise.performanceType === 'instrumental' ? '' : '聖歌隊'));
-          BulletinModel.set('taiwanese.choirTune', praise.tune);
-          BulletinModel.set('taiwanese.choirArrangement', praise.arrangement);
-          BulletinModel.set('taiwanese.choirPerformers', praise.performers);
-          BulletinModel.set('taiwanese.choirLyrics', praise.lyrics);
+          applyUploadedPraiseToBulletin(praise);
           this.syncFormFromModel();
-          if (!silent) this.showToast('🎉 成功載入上傳的讚美詩名與歌詞！', 'success');
+          if (!silent) this.showToast('🎉 成功載入上傳的讚美歌曲資料！', 'success');
           return { failed: [] };
         } else {
           if (!silent) this.showToast('ℹ️ 該日期上傳記錄中無讚美詩名或歌詞', 'warning');

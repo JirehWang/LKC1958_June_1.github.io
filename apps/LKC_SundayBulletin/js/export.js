@@ -148,15 +148,22 @@ const BulletinExport = {
       zhGoldenVerseFull = `${zhGoldenVerseFull}（${zh.goldenVerseText}）`;
     }
 
-    const instrumentalPraise = tw.choirType === 'instrumental';
-    const praisePerformer = tw.choirKicker || (instrumentalPraise ? '器樂演奏' : '聖歌隊');
+    const praisePerformer = tw.choirPerformer || [tw.choirKicker, tw.choirPerformers]
+      .filter(Boolean)
+      .filter((value, index, values) => values.indexOf(value) === index)
+      .join('\n');
+    const praiseCredits = [
+      tw.choirComposer || tw.choirTune ? '曲 / ' + (tw.choirComposer || tw.choirTune) : '',
+      tw.choirLyricist ? '詞 / ' + tw.choirLyricist : '',
+      tw.choirTaiwaneseTranslator ? '台語譯詞 / ' + tw.choirTaiwaneseTranslator : '',
+      tw.choirArrangement ? '編曲 / ' + tw.choirArrangement : ''
+    ].filter(Boolean).join('\n');
     const choirDisplay = [
-      tw.choirSong ? tw.choirSong + ' (' + praisePerformer + ')' : '',
-      tw.choirTune ? '曲／' + tw.choirTune : '',
-      tw.choirArrangement ? '編曲／' + tw.choirArrangement : '',
-      tw.choirPerformers || '',
-      instrumentalPraise ? '' : (tw.choirLyrics || '')
-    ].filter(Boolean).join('\n') || '(聖歌隊)';
+      tw.choirSong || '',
+      praiseCredits,
+      praisePerformer,
+      tw.choirLyrics || ''
+    ].filter(Boolean).join('\n\n');
 
     // 左欄 - 台語程序
     const twLines = [

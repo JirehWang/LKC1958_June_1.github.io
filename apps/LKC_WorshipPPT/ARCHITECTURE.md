@@ -199,7 +199,7 @@ flowchart LR
 | `liturgical` | 信經／主禱文 | 保留對齊與標題設定的原生文字 |
 | `dual-liturgical` | 聯合華語信經／主禱文 | 標題＋左右兩個獨立原生文字框；台語黑字、華語藍字，分別保存座標、字級、行距與對齊 |
 | `full-image` | 全心敬拜、奉獻、獻上感恩 | 直接使用專案內的三張 16:9 PNG 原圖；圖片已包含完整文字排版、背景與視覺效果，預覽與匯出不再重建文字 |
-| `praise-title` | 讚美標題 | 「讚美」＋歌名／團體，自動垂直置中 |
+| `praise-title` | 讚美標題 | 「讚美」＋歌名、署名、演出者；歌詞有內容時才接續產生歌詞頁 |
 | `praise-lyrics` | 讚美歌詞 | 只顯示置中內文 |
 | `sermon-title` | 講道標題 | 「講道：題目」＋講員／經文，自動垂直置中 |
 | `report` | 本會／教界／關懷代禱 | 依實際 layout 動態分頁的原生文字 |
@@ -414,7 +414,7 @@ Canvas 並非 PowerPoint 的文字排版引擎，依座標重畫也無法保證�
 | 週報服務 | Supabase table／欄位 | PPT model 欄位 |
 | --- | --- | --- |
 | `loadReports(date)` | `sunday_bulletin_reports.date`、`announcements`、`church_news`、`prayer` | `model.announcements.announcements`、`churchNews`、`prayer` |
-| `loadPraise(date)` | `sunday_bulletin_praise.date`、`title`、`kicker`、`lyrics` | `model.praise.title`、`kicker`、`body` |
+| `loadPraiseByDate(date)`／`loadPraise(date)` | GAS 日期綁定歌曲，舊資料則由 `sunday_bulletin_praise.date`、`title`、`kicker`、`lyrics` 回退 | `model.praise.title`、`composer`、`lyricist`、`taiwaneseTranslator`、`performer`、`body`；歌詞可空白 |
 
 `sunday_bulletins` 是週報主檔／草稿的完整資料表；PPT 報告與讚美目前使用上面兩張專用表，因為 `reports.html` 與 `praise.html` 就是寫入這兩張表。GAS 回退仍使用日期 key：
 

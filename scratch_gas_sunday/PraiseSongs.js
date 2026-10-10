@@ -21,10 +21,11 @@ const PRAISE_SONG_SHEET_NAME = '讚美歌曲';
 const PRAISE_BINDING_SHEET_NAME = '讚美日期綁定';
 const PRAISE_SONG_HEADERS = [
   'songId', 'title', 'lyrics', 'performanceType', 'kicker',
-  'tune', 'arrangement', 'performers', 'deletedAt', 'updatedAt', 'updatedBy'
+  'tune', 'arrangement', 'performers', 'deletedAt', 'updatedAt', 'updatedBy',
+  'composer', 'lyricist', 'taiwaneseTranslator', 'performer'
 ];
 const PRAISE_BINDING_HEADERS = ['date', 'songId', 'status', 'updatedAt', 'updatedBy'];
-const PRAISE_API_SCHEMA_VERSION = 2;
+const PRAISE_API_SCHEMA_VERSION = 3;
 
 function praiseClean_(value) {
   return String(value == null ? '' : value).trim();
@@ -54,12 +55,43 @@ function praiseSheet_(name, headers, create) {
   if (sheet.getLastRow() === 0) {
     sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
   } else {
-    const actual = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), headers.length)).getValues()[0]
-      .map(praiseClean_);
-    const missing = headers.some((header, index) => actual[index] !== header);
-    if (missing) throw new Error('讚美資料表欄位不符合預期：' + name);
+    const lastColumn = sheet.getLastColumn();
+    const actual = lastColumn
+      ? sheet.getRange(1, 1, 1, lastColumn).getValues()[0].map(praiseClean_)
+      : [];
+    const sharedWidth = Math.min(actual.length, headers.length);
+    const matchesPrefix = headers.slice(0, sharedWidth).every((header, index) => actual[index] === header);
+    if (matchesPrefix && actual.length < headers.length) {
+      // 只在現有欄位完全符合舊版前綴時，於右側新增欄位，保留既有資料與欄位順序。
+      sheet.getRange(1, actual.length + 1, 1, headers.length - actual.length)
+        .setValues([headers.slice(actual.length)]);
+    } else if (!headers.every((header, index) => actual[index] === header)) {
+      throw new Error('讚美資料表欄位不符合預期：' + name);
+    }
   }
   return sheet;
+}
+
+function praiseComposer_(row) {
+  return praiseClean_(row && (row.composer || row.tune));
+}
+
+function praisePerformer_(row) {
+  const direct = praiseClean_(row && row.performer);
+  if (direct) return direct;
+  const lines = [];
+  const seen = new Set();
+  [row && row.kicker, row && row.performers].forEach(value => {
+    String(value == null ? '' : value).split(/\r?\n/).forEach(line => {
+      const cleanLine = line.trim();
+      const identity = cleanLine.toLocaleLowerCase();
+      if (cleanLine && !seen.has(identity)) {
+        lines.push(cleanLine);
+        seen.add(identity);
+      }
+    });
+  });
+  return lines.join('\n');
 }
 
 function praiseRows_(sheet, headers) {
@@ -74,15 +106,21 @@ function praiseRows_(sheet, headers) {
 
 function praiseSongObject_(row) {
   if (!row) return null;
+  const composer = praiseComposer_(row);
+  const performer = praisePerformer_(row);
   return {
     songId: praiseClean_(row.songId),
     title: praiseClean_(row.title),
     lyrics: String(row.lyrics == null ? '' : row.lyrics),
     performanceType: praiseClean_(row.performanceType) === 'instrumental' ? 'instrumental' : 'vocal',
-    kicker: praiseClean_(row.kicker),
-    tune: praiseClean_(row.tune),
+    composer,
+    lyricist: praiseClean_(row.lyricist),
+    taiwaneseTranslator: praiseClean_(row.taiwaneseTranslator),
+    performer,
+    kicker: performer,
+    tune: composer,
     arrangement: praiseClean_(row.arrangement),
-    performers: String(row.performers == null ? '' : row.performers),
+    performers: performer,
     deletedAt: row.deletedAt ? String(row.deletedAt) : '',
     updatedAt: row.updatedAt ? String(row.updatedAt) : '',
     updatedBy: praiseClean_(row.updatedBy)
@@ -126,7 +164,18 @@ function praiseWriteRow_(sheet, rowNumber, headers, object) {
 function praiseSaveSong_(data) {
   const payload = data || {};
   const title = praiseClean_(payload.title);
-  if (!title) throw new Error('缺少歌曲名稱');
+  const composer = praiseClean_(payload.composer || payload.tune);
+  const lyricist = praiseClean_(payload.lyricist);
+  const taiwaneseTranslator = praiseClean_(payload.taiwaneseTranslator || payload.translator);
+  const performer = praisePerformer_(payload);
+  const missing = [
+    ['title', '歌名', title],
+    ['composer', '曲', composer],
+    ['lyricist', '詞', lyricist],
+    ['taiwaneseTranslator', '台語譯詞', taiwaneseTranslator],
+    ['performer', '演出者', performer]
+  ].filter(([, , value]) => !value).map(([, label]) => label);
+  if (missing.length) throw new Error('尚未填寫：' + missing.join('、') + '。歌詞可留白。');
 
   const now = new Date().toISOString();
   const existing = payload.songId ? praiseFindSongRow_(payload.songId, true) : null;
@@ -136,11 +185,15 @@ function praiseSaveSong_(data) {
     songId,
     title,
     lyrics: String(payload.lyrics == null ? '' : payload.lyrics),
-    performanceType: payload.performanceType === 'instrumental' ? 'instrumental' : 'vocal',
-    kicker: praiseClean_(payload.kicker),
-    tune: praiseClean_(payload.tune),
+    performanceType: String(payload.lyrics == null ? '' : payload.lyrics).trim() ? 'vocal' : 'instrumental',
+    composer,
+    lyricist,
+    taiwaneseTranslator,
+    performer,
+    kicker: performer,
+    tune: composer,
     arrangement: praiseClean_(payload.arrangement),
-    performers: String(payload.performers == null ? '' : payload.performers),
+    performers: performer,
     deletedAt: existing ? (existing.deletedAt || '') : '',
     updatedAt: now,
     updatedBy: praiseClean_(payload.updatedBy) || 'praise-admin'
@@ -238,10 +291,14 @@ function praiseLoadByDate_(date) {
     title: praiseClean_(song.title),
     lyrics: String(song.lyrics == null ? '' : song.lyrics),
     performanceType: praiseClean_(song.performanceType) === 'instrumental' ? 'instrumental' : 'vocal',
-    kicker: praiseClean_(song.kicker),
-    tune: praiseClean_(song.tune),
+    composer: praiseComposer_(song),
+    lyricist: praiseClean_(song.lyricist),
+    taiwaneseTranslator: praiseClean_(song.taiwaneseTranslator),
+    performer: praisePerformer_(song),
+    kicker: praisePerformer_(song),
+    tune: praiseComposer_(song),
     arrangement: praiseClean_(song.arrangement),
-    performers: String(song.performers == null ? '' : song.performers),
+    performers: praisePerformer_(song),
     songDeletedAt: song.deletedAt ? String(song.deletedAt) : '',
     songUpdatedAt: song.updatedAt ? String(song.updatedAt) : '',
     bindingUpdatedAt: binding.updatedAt ? String(binding.updatedAt) : ''

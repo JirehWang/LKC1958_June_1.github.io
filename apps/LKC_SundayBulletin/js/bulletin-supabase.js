@@ -225,10 +225,11 @@
       if (!date) throw new Error('缺少主日日期 (date)');
 
       const nowIso = new Date().toISOString();
+      const performer = praiseData.performer || praiseData.kicker || praiseData.performers || '';
       const row = {
         date,
         title: String(praiseData.title || '').trim(),
-        kicker: String(praiseData.kicker || (praiseData.performanceType === 'instrumental' ? '' : '聖歌隊')).trim(),
+        kicker: String(performer).trim(),
         lyrics: String(praiseData.lyrics || '').trim(),
         raw_data: praiseData,
         updated_at: nowIso,
@@ -422,15 +423,24 @@
         ? data.raw_data
         : {};
       const performanceType = rawData.performanceType === 'instrumental' ? 'instrumental' : 'vocal';
+      const composer = rawData.composer || rawData.tune || '';
+      const performer = String(rawData.performer || [rawData.kicker || data.kicker, rawData.performers]
+        .filter(Boolean)
+        .filter((value, index, values) => values.indexOf(value) === index)
+        .join('\n')).trim();
       return {
         ...rawData,
         date: data.date,
         title: data.title || rawData.title || '',
         performanceType,
-        kicker: data.kicker || rawData.kicker || (performanceType === 'instrumental' ? '' : '聖歌隊'),
-        tune: rawData.tune || '',
+        composer,
+        lyricist: rawData.lyricist || '',
+        taiwaneseTranslator: rawData.taiwaneseTranslator || rawData.translator || '',
+        performer,
+        kicker: performer,
+        tune: composer,
         arrangement: rawData.arrangement || '',
-        performers: rawData.performers || '',
+        performers: performer,
         lyrics: data.lyrics || rawData.lyrics || '',
         updatedAt: data.updated_at || rawData.updatedAt || ''
       };

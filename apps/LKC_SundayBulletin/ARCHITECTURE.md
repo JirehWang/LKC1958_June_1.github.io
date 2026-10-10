@@ -1,6 +1,6 @@
 # 週報生成與管理系統 — 前端 ARCHITECTURE.md
 
-本專案為林口教會（LKC）每週主日週報編輯與 Word 導出系統的前端 Web 應用程式，部署於 GitHub Pages。本系統提供一鍵並行拉取跨子系統數據、本地編輯與校對、草稿自動儲存，以及利用 `docx.js` 動態渲染導出排版精美之 Microsoft Word（.docx）週報檔案之功能。
+本專案為林口教會（LKC）每週主日週報編輯與 Word 導出系統的前端 Web 應用程式，部署於 GitHub Pages。本系統提供一鍵並行拉取跨子系統數據、本地編輯與校對、草稿自動儲存、讚美歌曲資料上傳，以及利用 `docx.js` 動態渲染導出 Microsoft Word（.docx）週報檔案之功能。
 
 ---
 
@@ -18,7 +18,13 @@
   * `LKWORSHIP_GAS_URL`：對接敬拜團系統，讀取敬拜主領與當週曲目。(`AKfycbyk_6tUucVg-U4rRQjYHvk632teZyxufDkNX_X1WRUXPMGgsTaemVXD_mv9kBDjuSwOnA/exec`)
   * `LKC_ATTENDANCE_GAS_URL`：對接主日點名系統，讀取上週日禮拜人數統計。(`AKfycbxBOFeLiXu23kBMGU8iSvRyJci6fruTfk7HdahhcQFY777sCPSgasuNM7Z1CeuzuS-r/exec`)
   * `LKGROUP_GAS_URL`：對接小組點名系統，讀取小組聚會出席人數。(`AKfycbxBOFeLiXu23kBMGU8iSvRyJci6fruTfk7HdahhcQFY777sCPSgasuNM7Z1CeuzuS-r/exec`)
-  * `GAS_SYNC_URL`：週報系統專屬 GAS，用於信望愛聖經經文查詢。(`AKfycbyLLQZsz_XZqhWVwaT_8hcvfQc8fSWztAncEmBUk7lnzGr-TcP33uzS-weUG_cavgEn/exec`)
+  * `GAS_SYNC_URL`：週報系統專屬 GAS，用於週報草稿、信望愛聖經經文查詢，以及讚美歌曲資料與日期綁定。(`AKfycbyLLQZsz_XZqhWVwaT_8hcvfQc8fSWztAncEmBUk7lnzGr-TcP33uzS-weUG_cavgEn/exec`)
+
+### 3. 讚美歌曲上傳與載入
+
+`praise.html` 維護歌曲本體與主日日期綁定。歌名、曲、詞、台語譯詞及演出者為必填；歌詞可以留白。既有歌曲載入時允許缺少新欄位，按儲存／更新時會列出尚缺欄位並阻止寫入。Supabase `sunday_bulletin_praise_titles` 維護 UUID 與歌名索引；週報 GAS `PraiseSongs.js` 以 schema v3 將歌曲欄位保存至「讚美歌曲」工作表，並以「讚美日期綁定」工作表保存 `date → songId`。
+
+`js/app.js` 與 PPT 產生器以日期綁定讀取歌曲本體。舊版 `kicker`、`tune`、`performers` 欄位仍作為相容別名；現有試算表欄位符合舊版前綴時，GAS 只在右側追加新欄位，不重排既有資料。舊 Supabase `sunday_bulletin_praise.raw_data` 仍作為讀取回退來源。
 
 ---
 
@@ -28,6 +34,7 @@
 
 ### 1. 編輯主畫面與樣式
 * `index.html`：編輯與控制主畫面。提供分頁頁籤、日期選擇、自動帶入按鈕，以及對應週報版面的各編輯區塊（主日程序、同工、聚會人數、消息、代禱、奉獻）。
+* `praise.html`：讚美歌曲上傳頁，編輯歌曲欄位、維護 Supabase 歌名索引，並呼叫週報 GAS 儲存歌曲資料與日期綁定。
 * `css/style.css`：週報專屬排版 CSS。定義了雙欄主日程序配置、統計表格捲軸容器，以及浮動通知（Toast）與進度遮罩樣式。
 
 ### 2. 業務控制邏輯與 API 封裝
@@ -41,6 +48,7 @@
   * `queryBible`：透過 API 查詢信望愛聖經經文，供編輯校對參考。
   * `fetchAll`：利用 `Promise.allSettled` 並行執行上述 6 項拉取作業。
 * `js/bulletin.js`：實作前端週報資料模型 `BulletinModel`。維護一個全域的週報 JSON 結構（含程序、同工、人數、本會消息、教界消息等欄位），提供屬性 get/set 方法。
+* `js/bulletin-supabase.js`：封裝週報 Supabase 讀寫；讚美歌曲以 GAS 日期綁定讀取為主，保留舊 `sunday_bulletin_praise` 資料回退。
 * `js/draft.js`：實作本地草稿管理。透過 `localStorage` 儲存草稿，支援定時自動儲存（預設 60 秒）與手動儲存/讀取歷史草稿（上限 10 筆）。
 * `js/app.js`：控制器核心。負責處理頁面加載初始化、頁籤切換、UI 元素與 `BulletinModel` 之間的雙向同步、點擊全部帶入時的異步流程協調。
 * `js/export.js`：Word 導出引擎。整合外部 `docx.js` 與 `FileSaver.js` 庫，讀取 `BulletinModel` 資料，動態構建包含表格、單元格邊框、粗體文字與間距設定的 `docx.Document` XML 架構，並導出下載為 Word 檔案。
@@ -78,6 +86,10 @@ JS 調用 ChurchAPI.fetchAll(date)
 2. 若有修改，自動將當前 JSON 結構序列化存入 `localStorage` 中（Key 前綴為 `bulletin_draft_`）。
 3. 使用者可隨時點擊「載入草稿」，系統會讀取本地所有草稿並列出時間戳記供使用者復原。
 
+### 4. 讚美歌曲欄位與儲存驗證
+
+上傳表單以「歌名、署名、演出者」三個區塊編輯資料；署名包含曲、詞、台語譯詞與選填編曲。歌曲缺歌詞時仍可儲存。重新載入舊歌曲時不因欄位空白而拒絕顯示；使用者再儲存時，表單與 GAS 都會檢查歌名、曲、詞、台語譯詞及演出者，未填欄位會回報名稱並阻止儲存。
+
 ---
 
 ## 前端元件與資料流向圖
@@ -86,9 +98,14 @@ JS 調用 ChurchAPI.fetchAll(date)
 ```mermaid
 graph TD
     IndexHTML[index.html 編輯器] -->|載入| AppJS[js/app.js 控制器]
+    PraiseHTML[praise.html 讚美歌曲上傳] -->|儲存歌曲／日期綁定| PraiseGAS[週報 GAS PraiseSongs.js]
+    PraiseHTML -->|UUID／歌名索引| PraiseIndex[Supabase sunday_bulletin_praise_titles]
     AppJS -->|1. 讀寫模型| BulletinJS[js/bulletin.js BulletinModel]
     AppJS -->|2. 草稿管理| DraftJS[js/draft.js 本地草稿]
     AppJS -->|3. 資料拉取| ApiJS[js/api.js ChurchAPI]
+    AppJS -->|日期歌曲與讚美資料| PraiseService[js/bulletin-supabase.js]
+    PraiseService -->|先讀日期綁定，舊資料回退| PraiseGAS
+    PraiseService -->|舊資料回退| SupabasePraise[sunday_bulletin_praise.raw_data]
     AppJS -->|4. Word 導出| ExportJS[js/export.js docx.js]
     
     ApiJS -->|1. getCalendar| GAS_Cal[LKCschedule GAS]

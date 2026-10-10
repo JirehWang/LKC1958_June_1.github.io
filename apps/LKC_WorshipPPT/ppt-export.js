@@ -35,6 +35,21 @@
   const slideX = percent => (Number(percent) / 100) * SLIDE_WIDTH;
   const slideY = percent => (Number(percent) / 100) * SLIDE_HEIGHT;
 
+  function formatPraiseMetadata(item) {
+    if (!item) return '';
+    const credits = [
+      (item.composer || item.tune) ? '曲 / ' + (item.composer || item.tune) : '',
+      item.lyricist ? '詞 / ' + item.lyricist : '',
+      item.taiwaneseTranslator ? '台語譯詞 / ' + item.taiwaneseTranslator : '',
+      item.arrangement ? '編曲 / ' + item.arrangement : ''
+    ].filter(Boolean).join('\n');
+    const performer = item.performer || [item.kicker, item.performers]
+      .filter(Boolean)
+      .filter((value, index, values) => values.indexOf(value) === index)
+      .join('\n');
+    return [credits, performer].filter(Boolean).join('\n\n');
+  }
+
   function cleanParagraphProperties(xmlString) {
     return xmlString.replace(/<a:p>([\s\S]*?)<\/a:p>/g, (pMatch, pContent) => {
       let firstPPr = null;
@@ -347,17 +362,9 @@
         : entry.kind === 'sermon-title'
           ? ['講道', titlePageTopic].filter(Boolean).join('：')
           : '';
-      const instrumentalPraise = entry.kind === 'praise-title' && modelEntry && modelEntry.performanceType === 'instrumental';
-      const praiseInstrumentalDetails = instrumentalPraise
-        ? (entry.body || [
-            modelEntry.kicker || '',
-            modelEntry.tune ? '曲／' + modelEntry.tune : '',
-            modelEntry.arrangement ? '編曲／' + modelEntry.arrangement : '',
-            modelEntry.performers || ''
-          ].filter(Boolean).join('\n'))
-        : '';
+      const praiseMetadata = entry.kind === 'praise-title' ? formatPraiseMetadata(modelEntry) : '';
       const titlePageDetails = entry.kind === 'praise-title'
-        ? [titlePageTopic, instrumentalPraise ? praiseInstrumentalDetails : (entry.kicker || (modelEntry && modelEntry.kicker))].filter(Boolean)
+        ? [titlePageTopic, praiseMetadata].filter(Boolean)
         : entry.kind === 'sermon-title'
           ? [entry.kicker || (modelEntry && modelEntry.kicker), entry.body || (modelEntry && modelEntry.body)].filter(Boolean)
           : [];
@@ -571,14 +578,11 @@
           margin: 0
         });
         if (entry.kind === 'praise-title') {
-          const performer = instrumentalPraise
-            ? praiseInstrumentalDetails
-            : (entry.kicker || (modelEntry && modelEntry.kicker) || '');
-          if (performer) addSlideText(wrapNativeText(performer, params, 'secondaryContent'), {
+          if (praiseMetadata) addSlideText(wrapNativeText(praiseMetadata, params, 'secondaryContent'), {
             x: slideX(params.secondaryContentX == null ? 8 : params.secondaryContentX),
             y: slideY(params.secondaryContentY == null ? Number(params.contentY) + 10.8 : params.secondaryContentY),
             w: slideX(params.secondaryContentW || 84), h: slideY(params.secondaryContentH || 10.8),
-            fontSize: scaledFont(params.secondaryContentSize || (instrumentalPraise ? 24 : 36)),
+            fontSize: scaledFont(params.secondaryContentSize || 24),
             color: (params.secondaryContentColor || '#111111').replace('#', ''),
             fontFace: 'Microsoft JhengHei', align: params.secondaryContentAlign || 'center',
             valign: 'top', bold: true,

@@ -457,67 +457,31 @@
     }
     if (page.kind === 'praise-title') {
       const song = page.title || (item && item.title) || '';
-      const instrumental = item && item.performanceType === 'instrumental';
-      if (instrumental) {
-        const details = page.body || [
-          item.kicker || '',
-          item.tune ? '曲／' + item.tune : '',
-          item.arrangement ? '編曲／' + item.arrangement : '',
-          item.performers || ''
-        ].filter(Boolean).join('\n');
-        const songLines = song ? wrapTextForBox(song, { fontSize: 36, boxWidth: 84, bold: true }).split('\n').filter(line => line.trim()).length : 0;
-        const wrappedDetails = details ? wrapTextForBox(details, { fontSize: 24, boxWidth: 84, bold: true }) : '';
-        const detailLines = wrappedDetails.split('\n').filter(line => line.trim()).length;
-        const secondarySize = detailLines > 6 ? 20 : 24;
-        const secondaryH = detailLines * secondarySize * 0.3;
-        const songH = songLines * 10.8;
-        const titleH = 17.8;
-        const gapAfterTitle = songLines ? 4.5 : 0;
-        const gapAfterSong = detailLines ? 2.5 : 0;
-        const totalH = titleH + gapAfterTitle + songH + gapAfterSong + secondaryH;
-        const titleY = Number(Math.max(4, (100 - totalH) / 2).toFixed(1));
-        const contentY = Number((titleY + titleH + gapAfterTitle).toFixed(1));
-        const secondaryContentY = Number((contentY + songH + gapAfterSong).toFixed(1));
-        return {
-          ...defaults,
-          titleY,
-          titleH,
-          titleAlign: 'center',
-          contentSize: 36,
-          contentX: 8,
-          contentY,
-          contentW: 84,
-          contentH: songH || 10.8,
-          contentAlign: 'center',
-          contentColor: '#111111',
-          lineSpacing: 1.2,
-          secondaryContentSize: secondarySize,
-          secondaryContentX: 8,
-          secondaryContentY,
-          secondaryContentW: 84,
-          secondaryContentH: secondaryH || 7.2,
-          secondaryContentAlign: 'center',
-          secondaryContentColor: '#111111',
-          secondaryLineSpacing: 1.2
-        };
-      }
-      const performer = page.kicker || (item && item.kicker) || '';
+      const credits = [
+        item && (item.composer || item.tune) ? '曲 / ' + (item.composer || item.tune) : '',
+        item && item.lyricist ? '詞 / ' + item.lyricist : '',
+        item && item.taiwaneseTranslator ? '台語譯詞 / ' + item.taiwaneseTranslator : '',
+        item && item.arrangement ? '編曲 / ' + item.arrangement : ''
+      ].filter(Boolean).join('\n');
+      const performer = (item && item.performer)
+        || [item && item.kicker, item && item.performers]
+          .filter(Boolean)
+          .filter((value, index, values) => values.indexOf(value) === index)
+          .join('\n');
+      const details = page.body || [credits, performer].filter(Boolean).join('\n\n');
       const songLines = song ? wrapTextForBox(song, { fontSize: 36, boxWidth: 84, bold: true }).split('\n').filter(line => line.trim()).length : 0;
-      const performerLines = performer ? wrapTextForBox(performer, { fontSize: 36, boxWidth: 84, bold: true }).split('\n').filter(line => line.trim()).length : 0;
-      const hasDetails = Boolean(songLines || performerLines);
+      const wrappedDetails = details ? wrapTextForBox(details, { fontSize: 24, boxWidth: 84, bold: true }) : '';
+      const detailLines = wrappedDetails ? wrappedDetails.split('\n').length : 0;
+      const secondarySize = detailLines <= 1 ? 36 : detailLines <= 3 ? 30 : detailLines > 7 ? 20 : 24;
+      const secondaryH = detailLines * secondarySize * 0.3;
       const songH = songLines * 10.8;
-      const performerH = performerLines * 10.8;
-      const detailH = songH + performerH;
       const titleH = 17.8;
-      const titleY = hasDetails
-        ? Number(((100 - titleH - 4.5 - detailH) / 2).toFixed(1))
-        : 41;
-      const contentY = hasDetails
-        ? Number((titleY + titleH + 4.5).toFixed(1))
-        : 55.8;
-      const secondaryContentY = hasDetails
-        ? Number((contentY + songH).toFixed(1))
-        : 66.6;
+      const gapAfterTitle = songLines ? 4.5 : 0;
+      const gapAfterSong = detailLines ? 2.5 : 0;
+      const totalH = titleH + gapAfterTitle + songH + gapAfterSong + secondaryH;
+      const titleY = Number(Math.max(4, (100 - totalH) / 2).toFixed(1));
+      const contentY = Number((titleY + titleH + gapAfterTitle).toFixed(1));
+      const secondaryContentY = Number((contentY + songH + gapAfterSong).toFixed(1));
       return {
         ...defaults,
         titleY,
@@ -531,11 +495,11 @@
         contentAlign: 'center',
         contentColor: '#111111',
         lineSpacing: 1.2,
-        secondaryContentSize: 36,
+        secondaryContentSize: secondarySize,
         secondaryContentX: 8,
         secondaryContentY,
         secondaryContentW: 84,
-        secondaryContentH: performerH || 10.8,
+        secondaryContentH: secondaryH || 7.2,
         secondaryContentAlign: 'center',
         secondaryContentColor: '#111111',
         secondaryLineSpacing: 1.2
