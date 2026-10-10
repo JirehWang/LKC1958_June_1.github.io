@@ -1,8 +1,13 @@
 (function(root, factory) {
-  const api = factory(root);
+  const sharedProduction = typeof module === 'object' && module.exports
+    ? require('./slide-production.js')
+    : root.TaiwaneseWorshipSlideProduction;
+  const api = factory(root, sharedProduction);
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.TaiwaneseWorshipPptExport = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function(root) {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function(root, sharedProduction) {
+
+  const normalizePptxText = sharedProduction.normalizePptxText;
 
   const DEFAULT_LAYOUT_PARAMS = {
     titleSize: 60,
@@ -186,29 +191,43 @@
     const textScale = normalizeScale(outputScale.text) / 100;
     const imageScale = normalizeScale(outputScale.image) / 100;
     const scaledFont = value => Number(value) * textScale;
-    const buildNativeOrderedReportText = value => {
-      const text = String(value || '');
-      if (!text.trim()) return null;
-      const blocks = text.split(/\n\n/).map(block => block.trim()).filter(Boolean);
+    const buildNativeOrderedReportText = (value, reportItems) => {
+      const text = normalizePptxText(value);
+      const blocks = (Array.isArray(reportItems) ? reportItems : text.split(/\n\n/))
+        .map(block => normalizePptxText(block).trim()).filter(Boolean);
       if (!blocks.length) return null;
       let numberStartAt = 1;
       const items = blocks.map((block, index) => {
-        const numbered = block.match(/^\s*(\d+)[.．、)]\s*(（續）)?\s*([\s\S]*)$/);
-        if (!numbered) return block.replace(/\s*\n\s*/g, ' ').trim();
-        if (index === 0) numberStartAt = Number(numbered[1]) || 1;
-        return [numbered[2] || '', numbered[3] || '']
-          .filter(Boolean)
-          .join(' ')
-          .replace(/\s*\n\s*/g, ' ')
-          .trim();
+        const numbered = block.match(/^[ \t]*(\d+)[.．、)][ \t]*([\s\S]*)$/);
+        if (numbered && index === 0) numberStartAt = Number(numbered[1]) || 1;
+        return {
+          text: numbered ? numbered[2] : block,
+          number: numbered ? Number(numbered[1]) || numberStartAt + index : numberStartAt + index
+        };
+      });
+      const bullet = {
+        type: 'number',
+        numberType: 'arabicPeriod',
+        numberStartAt
+      };
+      // A soft break stays inside the same numbered paragraph (Shift+Enter).
+      // Only the end of a report item starts another numbered paragraph.
+      const runs = [];
+      items.forEach((item, itemIndex) => {
+        const lines = item.text.split('\n');
+        lines.forEach((line, lineIndex) => {
+          const runOptions = {};
+          if (lineIndex === 0) runOptions.bullet = { ...bullet, numberStartAt: item.number };
+          if (lineIndex > 0) runOptions.softBreakBefore = true;
+          if (lineIndex === lines.length - 1 && itemIndex < items.length - 1) runOptions.breakLine = true;
+          runs.push({ text: line, options: runOptions });
+        });
       });
       return {
-        text: items.join('\n'),
-        bullet: {
-          type: 'number',
-          numberType: 'arabicPeriod',
-          numberStartAt
-        }
+        text: items.some(item => item.text.includes('\n'))
+          ? runs
+          : items.map(item => item.text).join('\n'),
+        bullet
       };
     };
     const wrapNativeText = (value, params, prefix, boxWidthMultiplier = 1) => production.wrapTextForBox
@@ -284,6 +303,12 @@
 
     deck.forEach(entry => {
       const slide = pptx.addSlide();
+      const addSlideText = (value, textOptions) => {
+        const text = Array.isArray(value)
+          ? value.map(run => ({ ...run, text: normalizePptxText(run.text) }))
+          : normalizePptxText(value);
+        return slide.addText(text, textOptions);
+      };
 
       // 1. Background
       const isDarkTemplatePage = entry.kind === 'offering-guide' || entry.kind === 'thanksgiving';
@@ -410,7 +435,7 @@
               }
             }));
             const verticalAlignMap = { start: 'top', center: 'middle', end: 'bottom' };
-            slide.addText(runsArray, {
+            addSlideText(runsArray, {
               x: slideX(obj.x),
               y: slideY(obj.y),
               w: slideX(obj.w),
@@ -426,7 +451,7 @@
         const [year, month, day] = serviceDate ? serviceDate.split('-') : [];
         const formattedDate = serviceDate ? `主後${year}年${month}月${day}日` : '';
         // Title
-        slide.addText(templateProfile.coverTitle || '台語主日禮拜', {
+        addSlideText(templateProfile.coverTitle || '台語主日禮拜', {
           x: slideX(params.titleX),
           y: slideY(params.titleY),
           w: slideX(params.titleW),
@@ -440,7 +465,7 @@
           margin: 0
         });
         // Date
-        slide.addText(formattedDate, {
+        addSlideText(formattedDate, {
           x: slideX(params.contentX),
           y: slideY(params.contentY),
           w: slideX(params.contentW),
@@ -458,7 +483,7 @@
         const secondaryText = [entry.secondaryLabel ? `(${entry.secondaryLabel})` : '', entry.secondaryBody || ''].filter(Boolean).join('\n');
         const showTitle = entry.showTitle !== false;
         if (showTitle && (entry.title || entry.sectionLabel)) {
-          slide.addText(wrapNativeText(entry.title || entry.sectionLabel, params, 'title'), {
+          addSlideText(wrapNativeText(entry.title || entry.sectionLabel, params, 'title'), {
             x: slideX(params.titleX), y: slideY(params.titleY),
             w: slideX(params.titleW), h: slideY(params.titleH),
             fontSize: scaledFont(params.titleSize || 60),
@@ -467,7 +492,7 @@
             valign: 'top', bold: true, margin: 0
           });
         }
-        slide.addText(wrapNativeText(primaryText, params, 'content', 1 / 0.92), {
+        addSlideText(wrapNativeText(primaryText, params, 'content', 1 / 0.92), {
           x: slideX(params.contentX), y: slideY(params.contentY),
           w: slideX(params.contentW), h: slideY(params.contentH),
           fontSize: scaledFont(params.contentSize || 48),
@@ -477,7 +502,7 @@
           lineSpacing: Math.round(scaledFont(params.contentSize || 48) * (params.lineSpacing || 1.5)),
           margin: 0
         });
-        slide.addText(wrapNativeText(secondaryText, params, 'secondaryContent', 1 / 0.92), {
+        addSlideText(wrapNativeText(secondaryText, params, 'secondaryContent', 1 / 0.92), {
           x: slideX(params.secondaryContentX), y: slideY(params.secondaryContentY),
           w: slideX(params.secondaryContentW), h: slideY(params.secondaryContentH),
           fontSize: scaledFont(params.secondaryContentSize || 48),
@@ -491,7 +516,7 @@
         const imageData = templateAssets[entry.assetKey] || entry.src;
         if (imageData) slide.addImage({ data: imageData, x: 0, y: 0, w: SLIDE_WIDTH, h: SLIDE_HEIGHT });
       } else if (entry.kind === 'offering-guide') {
-        slide.addText(entry.title || '【奉獻】', {
+        addSlideText(entry.title || '【奉獻】', {
           x: 0, y: 0.35, w: SLIDE_WIDTH, h: 0.85,
           fontSize: scaledFont(66.7), color: 'FFFFFF', fontFace: 'Microsoft JhengHei',
           align: 'center', valign: 'middle', bold: true, margin: 0
@@ -499,25 +524,25 @@
         const lines = String(entry.body || '').split('\n');
         lines.forEach((line, index) => {
           const color = index === 2 || index === 3 ? 'FF6699' : 'FFFFFF';
-          slide.addText(line, {
+          addSlideText(line, {
             x: 0.6, y: 1.45 + index * 0.78, w: 12.1, h: 0.72,
             fontSize: scaledFont(50.7), color, fontFace: 'Microsoft JhengHei',
             align: 'center', valign: 'middle', bold: index === 2 || index === 3, margin: 0
           });
         });
       } else if (entry.kind === 'thanksgiving') {
-        slide.addText(entry.body || '', {
+        addSlideText(entry.body || '', {
           x: 0.25, y: 0.12, w: 12.83, h: 6.35,
           fontSize: scaledFont(50.7), color: 'FFFFFF', fontFace: 'Microsoft JhengHei',
           align: 'center', valign: 'top', bold: true, lineSpacing: scaledFont(58), margin: 0
         });
-        slide.addText(entry.title || '獻上感恩', {
+        addSlideText(entry.title || '獻上感恩', {
           x: 4.22, y: 6.45, w: 4.89, h: 0.7,
           fontSize: scaledFont(58.7), color: 'FFFFFF', fontFace: 'Microsoft JhengHei',
           align: 'center', valign: 'middle', bold: true, underline: true, margin: 0
         });
       } else if (entry.kind === 'praise-title' || entry.kind === 'sermon-title') {
-        slide.addText(wrapNativeText(titlePageTitle, params, 'title'), {
+        addSlideText(wrapNativeText(titlePageTitle, params, 'title'), {
           x: slideX(params.titleX),
           y: slideY(params.titleY),
           w: slideX(params.titleW),
@@ -531,7 +556,7 @@
           margin: 0
         });
         const titlePageContent = entry.kind === 'praise-title' ? titlePageTopic : titlePageDetails.join('\n');
-        if (titlePageContent) slide.addText(wrapNativeText(titlePageContent, params, 'content'), {
+        if (titlePageContent) addSlideText(wrapNativeText(titlePageContent, params, 'content'), {
           x: slideX(params.contentX),
           y: slideY(params.contentY),
           w: slideX(params.contentW),
@@ -549,7 +574,7 @@
           const performer = instrumentalPraise
             ? praiseInstrumentalDetails
             : (entry.kicker || (modelEntry && modelEntry.kicker) || '');
-          if (performer) slide.addText(wrapNativeText(performer, params, 'secondaryContent'), {
+          if (performer) addSlideText(wrapNativeText(performer, params, 'secondaryContent'), {
             x: slideX(params.secondaryContentX == null ? 8 : params.secondaryContentX),
             y: slideY(params.secondaryContentY == null ? Number(params.contentY) + 10.8 : params.secondaryContentY),
             w: slideX(params.secondaryContentW || 84), h: slideY(params.secondaryContentH || 10.8),
@@ -562,7 +587,7 @@
           });
         }
       } else if (entry.kind === 'praise-lyrics') {
-        slide.addText(wrapNativeText(entry.body || '', params, 'content'), {
+        addSlideText(wrapNativeText(entry.body || '', params, 'content'), {
           x: slideX(params.contentX),
           y: slideY(params.contentY),
           w: slideX(params.contentW),
@@ -578,7 +603,7 @@
         });
       } else if (entry.kind === 'car-notice') {
         const noticeText = entry.title || (modelEntry && modelEntry.title) || '敬請停在車道的車主儘快移車';
-        slide.addText(wrapNativeText(noticeText, params, 'title', 1 / 0.92), {
+        addSlideText(wrapNativeText(noticeText, params, 'title', 1 / 0.92), {
           x: slideX(params.titleX != null ? params.titleX : 6.9),
           y: slideY(params.titleY != null ? params.titleY : 28.9),
           w: slideX(params.titleW != null ? params.titleW : 86.2),
@@ -595,7 +620,7 @@
         const titleText = entry.title || (model && model[entry.sectionId] && model[entry.sectionId].title) || entry.sectionLabel || '';
         const kicker = entry.kicker || (model && model[entry.sectionId] && model[entry.sectionId].kicker) || '';
         // Title
-        slide.addText(wrapNativeText(titleText, params, 'title'), {
+        addSlideText(wrapNativeText(titleText, params, 'title'), {
           x: slideX(params.titleX),
           y: slideY(params.titleY),
           w: slideX(params.titleW),
@@ -610,7 +635,7 @@
         });
         // Kicker/Sub
         if (kicker) {
-          slide.addText(wrapNativeText(kicker, params, 'content'), {
+          addSlideText(wrapNativeText(kicker, params, 'content'), {
             x: slideX(params.contentX),
             y: slideY(params.contentY || 24),
             w: slideX(params.contentW),
@@ -639,7 +664,7 @@
         const titleText = entry.title || (model && model[entry.sectionId] && model[entry.sectionId].title) || entry.sectionLabel || '';
         
         if (showTitle && titleText) {
-          slide.addText(wrapNativeText(titleText, params, 'title'), {
+          addSlideText(wrapNativeText(titleText, params, 'title'), {
             x: slideX(params.titleX),
             y: slideY(params.titleY),
             w: slideX(params.titleW),
@@ -660,7 +685,7 @@
         // Subtitles mapping
         const defaultBody = entry.kicker || (modelEntry && modelEntry.kicker) || SECTION_SUBTITLES[entry.sectionLabel] || '';
         const nativeOrderedReport = entry.kind === 'report' && entry.listType === 'ordered'
-          ? buildNativeOrderedReportText(entry.body || defaultBody)
+          ? buildNativeOrderedReportText(entry.body || defaultBody, entry.reportItems)
           : null;
         const bodyText = nativeOrderedReport
           ? nativeOrderedReport.text
@@ -687,7 +712,7 @@
             bodyOptions.bullet = nativeOrderedReport.bullet;
             bodyOptions.fit = 'shrink';
           }
-          slide.addText(nativeOrderedReport ? bodyText : wrapNativeText(bodyText, params, 'content'), bodyOptions);
+          addSlideText(nativeOrderedReport ? bodyText : wrapNativeText(bodyText, params, 'content'), bodyOptions);
         }
       }
     });

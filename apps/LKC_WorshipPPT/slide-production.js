@@ -3,7 +3,7 @@
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.TaiwaneseWorshipSlideProduction = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, function() {
-  const cleanText = value => String(value == null ? '' : value).replace(/<\/?[a-zA-Z0-9]+[^>]*>/g, '').trim();
+  const cleanText = value => normalizePptxText(value).replace(/<\/?[a-zA-Z0-9]+[^>]*>/g, '').trim();
   const DEFAULT_LAYOUT_PARAMS = {
     titleSize: 60,
     titleX: 10,
@@ -22,6 +22,14 @@
     lineSpacing: 1.5
   };
   const HYMN_TITLE_SECTIONS = new Set(['pre-hymn-1', 'pre-hymn-2', 'hymn-1', 'hymn-2', 'doxology']);
+
+  function normalizePptxText(value) {
+    // Office clipboard text can contain vertical tabs for manual line breaks.
+    // XML 1.0 cannot contain them, even inside an otherwise valid text run.
+    return String(value == null ? '' : value)
+      .replace(/\r\n?|[\u000B\u000C\u0085\u2028\u2029]/g, '\n')
+      .replace(/[\u0000-\u0008\u000E-\u001F\uD800-\uDFFF\uFFFE\uFFFF]/gu, '');
+  }
 
   function normalizeColor(value, fallback = '#111111') {
     const color = String(value || '').trim().toLowerCase();
@@ -83,7 +91,7 @@
   }
 
   function wrapTextForBox(value, options = {}) {
-    const text = String(value == null ? '' : value);
+    const text = normalizePptxText(value);
     if (!text) return '';
     const fontSize = Math.max(1, Number(options.fontSize) || 48);
     const boxWidth = Math.max(1, Number(options.boxWidth) || 84);
@@ -586,6 +594,7 @@
   }
 
   return {
+    normalizePptxText,
     normalizeColor,
     isSupportedBackgroundImage,
     normalizeBackgroundImageDataUrl,

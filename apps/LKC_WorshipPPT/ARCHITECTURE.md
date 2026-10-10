@@ -449,6 +449,8 @@ lineCapacity = floor(availableHeightPx / (fontHeightPx × lineSpacing))
 
 寬度則交給 `wrapTextForBox()`，以 1280px 寬預覽基準、內容框百分比、實際字級及 0.92 safety factor 估算換行，並避免中文標點出現在行首。
 
+編號報告先扣除清單縮排寬度（與預覽的 `ol` 1.25em 加 `li` .12em 相同），量測內文時排除自動編號本身，再把原編號放回 page 文字，避免每行可用寬度被高估。
+
 ### 12.3 分頁規則
 
 - 項目間空一行，空行也計入容量。
@@ -457,6 +459,7 @@ lineCapacity = floor(availableHeightPx / (fontHeightPx × lineSpacing))
 - 一般續頁把標記放在獨立一行。
 - 若內容框實際只能容納一行，改成 `3.（續）內容…` 同行分段，避免標記本身造成第二行溢出。
 - 估算用的軟換行不寫回 `body`；只保留來源硬換行、項目分隔與必要續頁標記。
+- 手動換行與空白行皆計入容量；有編號的 page 另存 `reportItems`，避免把項目內的空白行誤認成下一個項目。預覽與匯出都以這份項目清單保留換行；超過容量時沿用原編號與「（續）」換頁。
 - page 會記錄 `estimatedLines` 與 `lineCapacity` 供測試驗證。
 
 報告會在以下時機重新分頁：資料載入、手動修改、版面欄位變動、具名版面儲存、雲端版面載入、文字輸出比例變動，以及匯出前。
@@ -593,6 +596,10 @@ worshipPpt/layoutConfig/templates/{templateId}
 2. 樂譜頁才加白色色塊。
 3. 解析 `resolvedLayoutForPage()`。
 4. 依 page kind 加入圖片或原生文字。
+
+文字先經 `slide-production.normalizePptxText()`：將剪貼簿常見的垂直定位字元（U+000B）、換頁字元及其他換行形式轉為 LF，移除 XML 1.0 不合法的控制字元、孤立 surrogate 與 U+FFFE／U+FFFF，保留合法中文、emoji、tab 及一般換行。週報資料正規化與換行量測共用此規則；`ppt-export.js` 在所有 `addText` 入口再處理純文字與 rich-text runs，包含繞過自動換行的原生編號報告，避免預覽有字、PPTX 整頁空白。
+
+有編號的報告以同一段落內的 `softBreakBefore` 輸出手動換行（OOXML `<a:br/>`），項目結尾才使用 `breakLine` 開下一個編號段落。續頁標記仍保留獨立一行；分頁使用相同換行、字級、內容框與行距，匯出前再次重排。
 
 輸出尺寸固定 `LAYOUT_WIDE`／`13.333 × 7.5`。座標換算：
 

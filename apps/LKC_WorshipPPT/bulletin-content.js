@@ -6,7 +6,7 @@
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.TaiwaneseWorshipBulletinContent = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, function(production, root) {
-  const clean = value => String(value == null ? '' : value).trim();
+  const clean = value => production.normalizePptxText(value).trim();
   const DEFAULT_REPORT_LAYOUT = Object.freeze({
     contentSize: 48,
     contentW: 84,
@@ -15,6 +15,8 @@
     textScale: 1
   });
   const SLIDE_HEIGHT_PX = 720;
+  // Matches ol padding (1.25em) + li padding (.12em) in reference-layout.css.
+  const ORDERED_REPORT_INDENT_EM = 1.37;
 
   function buildBulletinCloudUrl(endpoint, kind, date, requestNonce = '') {
     const prefix = kind === 'praise' ? 'praise_songs_' : 'reports_';
@@ -68,21 +70,31 @@
     return Math.max(1, Math.floor(availableHeightPx / (fontHeightPx * layout.lineSpacing)));
   }
 
-  function reportLineSegments(value, params) {
+  function reportLineSegments(value, params, options = {}) {
     const text = clean(value);
     if (!text) return [];
     const layout = normalizeReportLayout(params);
+    const ordered = options.listType === 'ordered';
+    const fontSize = layout.contentSize * layout.textScale;
+    const textWidth = Math.max(1, layout.contentW - (ordered ? ORDERED_REPORT_INDENT_EM * fontSize / 9.6 : 0));
     const segments = [];
     text.split('\n').forEach((sourceLine, sourceIndex) => {
+      const numbered = ordered && sourceIndex === 0
+        ? sourceLine.match(/^([ \t]*\d+[.．、)][ \t]*)([\s\S]*)$/)
+        : null;
+      const lineText = numbered ? numbered[2] : sourceLine;
       const wrapped = typeof production.wrapTextForBox === 'function'
-        ? production.wrapTextForBox(sourceLine, {
-          fontSize: layout.contentSize * layout.textScale,
-          boxWidth: layout.contentW,
+        ? production.wrapTextForBox(lineText, {
+          fontSize,
+          boxWidth: textWidth,
           bold: true
         })
-        : sourceLine;
+        : lineText;
       String(wrapped).split('\n').forEach((line, lineIndex) => {
-        segments.push({ text: line, hardBreakBefore: sourceIndex > 0 && lineIndex === 0 });
+        segments.push({
+          text: numbered && lineIndex === 0 ? numbered[1] + line : line,
+          hardBreakBefore: sourceIndex > 0 && lineIndex === 0
+        });
       });
     });
     return segments;
@@ -99,17 +111,17 @@
     return reportLineSegments(value, params).map(segment => segment.text);
   }
 
-  function takeSingleLineContinuation(segments, continuation, layout) {
+  function takeSingleLineContinuation(segments, continuation, layout, options) {
     const characters = Array.from(segmentsToText(segments));
     let consumed = 0;
     for (let index = 1; index <= characters.length; index += 1) {
-      if (reportLineSegments(`${continuation}${characters.slice(0, index).join('')}`, layout).length > 1) break;
+      if (reportLineSegments(`${continuation}${characters.slice(0, index).join('')}`, layout, options).length > 1) break;
       consumed = index;
     }
     if (!consumed) consumed = 1;
     const text = `${continuation}${characters.slice(0, consumed).join('')}`;
     const remainder = characters.slice(consumed).join('');
-    segments.splice(0, segments.length, ...reportLineSegments(remainder, layout));
+    segments.splice(0, segments.length, ...reportLineSegments(remainder, layout, options));
     return text;
   }
 
@@ -130,13 +142,15 @@
         lineCapacity
       };
       if (listType) page.listType = listType;
+      // Keep item boundaries separate from manual blank lines inside an item.
+      if (listType === 'ordered') page.reportItems = currentParts.slice();
       pages.push(page);
       currentParts = [];
       usedLines = 0;
     };
 
     (entries || []).forEach(entry => {
-      let segments = reportLineSegments(entry.text, layout);
+      let segments = reportLineSegments(entry.text, layout, options);
       if (!segments.length) return;
       const gap = currentParts.length ? 1 : 0;
       if (segments.length + gap <= lineCapacity - usedLines) {
@@ -158,7 +172,7 @@
       while (segments.length) {
         const continuation = entry.continuation || '（續）';
         if (lineCapacity === 1) {
-          currentParts.push(takeSingleLineContinuation(segments, continuation, layout));
+          currentParts.push(takeSingleLineContinuation(segments, continuation, layout, options));
           usedLines = 1;
           if (segments.length) flush();
           continue;

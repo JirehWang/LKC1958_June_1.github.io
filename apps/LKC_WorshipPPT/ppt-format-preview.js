@@ -4,14 +4,15 @@ const safeAttr = value => safeHtml(value).replace(/"/g, '&quot;');
 function renderReportBody(page) {
   const body = String(page.body || '');
   if (page.listType !== 'ordered') return safeHtml(body);
-  const blocks = body.split(/\n\s*\n/).map(block => block.trim()).filter(Boolean);
+  const blocks = (Array.isArray(page.reportItems) ? page.reportItems : body.split(/\n\s*\n/))
+    .map(block => String(block).trim()).filter(Boolean);
   if (!blocks.length) return '';
   let start = 1;
   const items = blocks.map((block, index) => {
-    const numbered = block.match(/^\s*(\d+)[.．、)]\s*(（續）)?\s*([\s\S]*)$/);
+    const numbered = block.match(/^[ \t]*(\d+)[.．、)][ \t]*([\s\S]*)$/);
     if (!numbered) return block;
     if (index === 0) start = Number(numbered[1]) || 1;
-    return [numbered[2] || '', numbered[3] || ''].filter(Boolean).join(' ');
+    return numbered[2];
   });
   const startAttribute = start === 1 ? '' : ` start="${start}"`;
   return `<ol${startAttribute}>${items.map(item => `<li>${safeHtml(item).replace(/\n/g, '<br>')}</li>`).join('')}</ol>`;
