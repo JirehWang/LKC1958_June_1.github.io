@@ -51,6 +51,12 @@
     });
   }
 
+  function praiseTitleNotFoundError(songId) {
+    const error = new Error('找不到要修改的歌曲 UUID：' + songId);
+    error.code = 'PRAISE_TITLE_NOT_FOUND';
+    return error;
+  }
+
   const SundayBulletinSupabaseService = {
     setClient: setSupabaseClient,
     getClient: getSupabase,
@@ -311,7 +317,7 @@
         .eq('song_id', cleanSongId);
       if (currentQuery.error) throw currentQuery.error;
       const current = (currentQuery.data || [])[0];
-      if (!current) throw new Error('找不到要修改的歌曲 UUID：' + cleanSongId);
+      if (!current) throw praiseTitleNotFoundError(cleanSongId);
       if (current.deleted_at) throw new Error('歌曲已刪除，請建立新的歌曲資料');
       if (String(current.title || '').trim() === cleanNewTitle) {
         return {
@@ -336,7 +342,7 @@
 
       if (error) throw error;
       if (!Array.isArray(data) || !data.length) {
-        throw new Error('找不到要修改的歌曲 UUID：' + cleanSongId);
+        throw praiseTitleNotFoundError(cleanSongId);
       }
 
       return {

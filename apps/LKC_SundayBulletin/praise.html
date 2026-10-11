@@ -1305,7 +1305,7 @@
           sbRes = await sbService.renamePraiseTitle(state.songId, state.title);
         } catch (err) {
           // 舊草稿可能保留歌曲 UUID，但歌名索引已遺失；沿用原 UUID 補回索引再儲存歌曲。
-          if (!String(err?.message || '').includes('找不到要修改的歌曲 UUID')) throw err;
+          if (err?.code !== 'PRAISE_TITLE_NOT_FOUND') throw err;
           sbRes = await sbService.savePraiseTitle(state.title, 'praise-admin', state.songId);
           if (!sbRes?.success || String(sbRes.songId || '').trim() !== state.songId) {
             throw new Error('歌名索引中的歌曲 UUID 無法安全修復；請確認這個歌名是否已屬於其他歌曲');
