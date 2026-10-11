@@ -247,7 +247,7 @@
           <input type="date" id="bulletinDate" class="form-input" style="width: auto; display: inline-block;">
         </div>
         <div style="font-size: 13px; color: #555;">
-          說明：請填寫歌名、署名與演出者；歌詞可留白，週報與 PPT 會使用相同格式。
+          說明：請填寫歌名、署名與演出者；詞、台語譯詞及歌詞可留白，週報與 PPT 會使用相同格式。
         </div>
         <div id="praiseDateBindingStatus" role="status" aria-live="polite" style="font-size: 13px; color: #2c5f8a; width: 100%;">
           本日尚未指定歌曲
@@ -274,9 +274,9 @@
         <div style="font-weight: bold; color: #1a3f5c; margin-bottom: 10px;">署名</div>
         <label for="songComposer" style="font-weight: bold;">曲（必填）：</label>
         <input type="text" id="songComposer" class="form-input" placeholder="作曲者／原曲來源">
-        <label for="songLyricist" style="font-weight: bold; margin-top: 12px;">詞（必填）：</label>
+        <label for="songLyricist" style="font-weight: bold; margin-top: 12px;">詞（選填）：</label>
         <input type="text" id="songLyricist" class="form-input" placeholder="作詞者">
-        <label for="songTaiwaneseTranslator" style="font-weight: bold; margin-top: 12px;">台語譯詞（必填）：</label>
+        <label for="songTaiwaneseTranslator" style="font-weight: bold; margin-top: 12px;">台語譯詞（選填）：</label>
         <input type="text" id="songTaiwaneseTranslator" class="form-input" placeholder="台語譯詞者">
         <label for="songArrangement" style="font-weight: bold; margin-top: 12px;">編曲（選填）：</label>
         <input type="text" id="songArrangement" class="form-input" placeholder="編曲者">
@@ -389,8 +389,6 @@
     const required = [
       ['title', '歌名'],
       ['composer', '曲'],
-      ['lyricist', '詞'],
-      ['taiwaneseTranslator', '台語譯詞'],
       ['performer', '演出者']
     ];
     return required.filter(([key]) => !cleanPraiseText(state[key])).map(([, label]) => label);
