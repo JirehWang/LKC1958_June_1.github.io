@@ -535,12 +535,16 @@
 
   function renderFloatingPanel() {
     const panel = document.getElementById('layout-floating-panel');
+    const currentGroupName = panel.querySelector('#layout-group-name')?.value || '';
+    const activeGroup = layoutState.groups[activeLayoutGroupId];
+    const groupName = currentGroupName || (activeGroup && (activeGroup.name || activeGroup.id)) || '';
     const groups = Object.values(layoutState.groups);
     panel.innerHTML = `<header><div><small>版面參數</small><strong>調整勾選頁面</strong></div><button type="button" id="layout-panel-close" aria-label="關閉版面參數">×</button></header>
       <p class="layout-lock-note" data-layout-lock-note>${layoutUnlocked ? '已解鎖：變更會寫入全教會共用雲端配置。' : '目前未解鎖：可先儲存本機草稿與測試；解鎖後才會同步全教會共用配置。'}</p>
       <div class="floating-group-fields"><label>群組名稱<input id="layout-group-name" placeholder="例如：經文頁"></label><label>載入群組<select id="layout-group-existing"><option value="">新增群組</option>${groups.map(group => `<option value="${html(group.id)}" ${group.id === activeLayoutGroupId ? 'selected' : ''}>${html(group.name || group.id)}</option>`).join('')}</select></label></div>
       ${parameterFields()}
       <footer><button type="button" class="button quiet" id="layout-detach">解除群組</button><button type="button" class="button primary" id="layout-save-group">儲存參數組</button></footer>`;
+    document.getElementById('layout-group-name').value = groupName;
 
     document.getElementById('layout-panel-close').onclick = () => panel.classList.add('is-hidden');
     enablePanelDragging(panel);
@@ -681,9 +685,11 @@
   async function saveGroup() {
     const pageIds = selectedIds();
     const existingId = document.getElementById('layout-group-existing').value || activeLayoutGroupId;
+    const existingGroup = existingId && layoutState.groups[existingId];
     const name = document.getElementById('layout-group-name').value.trim();
-    if (!name || pageIds.length === 0) return status('請輸入群組名稱並勾選至少一頁');
-    const group = production.createLayoutGroup(layoutState, existingId || `layout-${Date.now()}`, pageIds, paramsFromForm());
+    if (!name) return status('請輸入群組名稱');
+    if (pageIds.length === 0 && !existingGroup) return status('新增群組時請至少勾選一頁');
+    const group = production.createLayoutGroup(layoutState, existingGroup ? existingId : `layout-${Date.now()}`, pageIds, paramsFromForm());
     group.name = name;
     activeLayoutGroupId = group.id;
     if (pageIds.some(id => id.startsWith('announcements:'))) reflowReportPagesForLayout(group.params);

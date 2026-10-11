@@ -349,9 +349,13 @@
 
   function createLayoutGroup(state, groupId, pageIds, params) {
     ensureLayoutState(state);
-    detachPagesFromLayoutGroup(state, pageIds);
     const previous = state.groups[groupId] || { id: groupId, name: groupId, pageIds: [], params: {} };
-    const uniquePageIds = Array.from(new Set([...(previous.pageIds || []), ...(pageIds || [])]));
+    const selectedPageIds = new Set(pageIds || []);
+    Object.entries(state.pageAssignments).forEach(([pageId, assignedGroupId]) => {
+      if (assignedGroupId === groupId && !selectedPageIds.has(pageId)) delete state.pageAssignments[pageId];
+    });
+    const uniquePageIds = Array.from(selectedPageIds);
+    detachPagesFromLayoutGroup(state, uniquePageIds);
     state.groups[groupId] = { ...previous, id: groupId, pageIds: uniquePageIds, params: { ...(params || {}) } };
     uniquePageIds.forEach(pageId => { state.pageAssignments[pageId] = groupId; });
     return state.groups[groupId];
