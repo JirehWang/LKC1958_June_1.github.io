@@ -80,6 +80,9 @@
 
   let textMeasureContext;
   const NATIVE_TEXT_WRAP_SAFETY = 0.92;
+  // Scripture pagination uses extra horizontal margin because the browser can
+  // wrap a CJK line that Canvas estimates just inside the text box.
+  const BIBLE_PAGINATION_WRAP_SAFETY = 0.82;
 
   function fallbackTextWidth(value) {
     return Array.from(String(value || '')).reduce((width, char) => {
@@ -97,8 +100,11 @@
     const boxWidth = Math.max(1, Number(options.boxWidth) || 84);
     const fontFamily = String(options.fontFamily || 'Microsoft JhengHei');
     const bold = options.bold !== false;
-    const browserMaxWidth = 1280 * boxWidth / 100 * NATIVE_TEXT_WRAP_SAFETY;
-    const fallbackMaxWidth = 960 * boxWidth / 100 / fontSize * NATIVE_TEXT_WRAP_SAFETY;
+    const safetyFactor = Number(options.safetyFactor) > 0
+      ? Math.min(NATIVE_TEXT_WRAP_SAFETY, Number(options.safetyFactor))
+      : NATIVE_TEXT_WRAP_SAFETY;
+    const browserMaxWidth = 1280 * boxWidth / 100 * safetyFactor;
+    const fallbackMaxWidth = 960 * boxWidth / 100 / fontSize * safetyFactor;
     if (!textMeasureContext && typeof document !== 'undefined' && document.createElement) {
       const canvas = document.createElement('canvas');
       textMeasureContext = canvas.getContext && canvas.getContext('2d');
@@ -162,7 +168,8 @@
       const wrapped = wrapTextForBox(text, {
         fontSize: layout.contentSize,
         boxWidth: layout.contentW,
-        bold: true
+        bold: true,
+        safetyFactor: BIBLE_PAGINATION_WRAP_SAFETY
       });
       return wrapped ? wrapped.split('\n').length : 0;
     };
@@ -182,7 +189,8 @@
       const wrapped = wrapTextForBox(recordBody(record), {
         fontSize: firstLayout.contentSize,
         boxWidth: firstLayout.contentW,
-        bold: true
+        bold: true,
+        safetyFactor: BIBLE_PAGINATION_WRAP_SAFETY
       }).split('\n');
       let lineIndex = 0;
       let firstChunk = true;
