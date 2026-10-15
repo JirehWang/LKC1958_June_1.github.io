@@ -47,7 +47,7 @@
       .filter(Boolean)
       .filter((value, index, values) => values.indexOf(value) === index)
       .join('\n');
-    return [credits, performer].filter(Boolean).join('\n\n');
+    return [credits, performer].filter(Boolean).join('\n');
   }
 
   function cleanParagraphProperties(xmlString) {

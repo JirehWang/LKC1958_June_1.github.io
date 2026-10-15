@@ -472,7 +472,7 @@
           .filter(Boolean)
           .filter((value, index, values) => values.indexOf(value) === index)
           .join('\n');
-      const details = page.body || [credits, performer].filter(Boolean).join('\n\n');
+      const details = page.body || [credits, performer].filter(Boolean).join('\n');
       const songLines = song ? wrapTextForBox(song, { fontSize: 36, boxWidth: 84, bold: true }).split('\n').filter(line => line.trim()).length : 0;
       const wrappedDetails = details ? wrapTextForBox(details, { fontSize: 24, boxWidth: 84, bold: true }) : '';
       const detailLines = wrappedDetails ? wrappedDetails.split('\n').length : 0;

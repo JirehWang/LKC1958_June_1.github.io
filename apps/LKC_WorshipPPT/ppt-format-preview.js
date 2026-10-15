@@ -49,7 +49,7 @@ function formatPraiseMetadata(item) {
     .filter(Boolean)
     .filter((value, index, values) => values.indexOf(value) === index)
     .join('\n') || '').trim();
-  return [credits.join('\n'), performer].filter(Boolean).join('\n\n');
+  return [credits.join('\n'), performer].filter(Boolean).join('\n');
 }
 function slidePages(item, sectionId) {
   if (Array.isArray(item.pptPages)) return window.TaiwaneseWorshipSlideProduction.composeLibraryPages(item, sectionId || active);
