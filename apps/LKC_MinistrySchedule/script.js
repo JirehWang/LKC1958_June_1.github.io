@@ -758,6 +758,11 @@ function renderTable(data) {
   const memberBtn = document.getElementById('manageMembersBtn');
   const groupRoleBtn = document.getElementById('manageGroupRolesBtn');
   const isGroupOrFellowship = isMeetingTemplate(currentTemplate);
+  const recentThreeMonthsButton = document.getElementById('recentThreeMonthsToggle');
+  if (recentThreeMonthsButton) {
+    recentThreeMonthsButton.textContent = isGroupOrFellowship ? '未來 3 個月' : '近 3 個月';
+  }
+  if (currentDateFilterMode === 'recent-three-months') setRecentThreeMonthsDateRange();
 
   // 聚會型模板的 members 來自小組主名單（核心＋一般同工）；不可被
   // 事工自訂名單覆蓋，否則破冰／敬拜欄位會遺失一般同工。
@@ -1621,12 +1626,11 @@ function setRecentThreeMonthsToggleState(isActive) {
 }
 
 function setRecentThreeMonthsDateRange() {
-  const end = new Date();
-  const start = new Date(end.getFullYear(), end.getMonth(), 1);
-  start.setMonth(start.getMonth() - 3);
-  const lastDayOfStartMonth = new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate();
-  start.setDate(Math.min(end.getDate(), lastDayOfStartMonth));
-
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const isUpcoming = isMeetingTemplate(currentTemplate);
+  const start = isUpcoming ? new Date(today) : _ms_addMonthsClamped(today, -3);
+  const end = isUpcoming ? _ms_addMonthsClamped(today, 3) : new Date(today);
   document.getElementById('startDate').value = formatDateInputValue(start);
   document.getElementById('endDate').value = formatDateInputValue(end);
 }
@@ -2325,25 +2329,42 @@ function _ms_formatLocalDate(date) {
   return `${y}-${m}-${d}`;
 }
 
-function _ms_rollingWindow() {
-  // 預設範圍：往前 1 個月、往後 2 個月
+function _ms_addMonthsClamped(date, months) {
+  const shifted = new Date(
+    date.getFullYear(),
+    date.getMonth() + months,
+    1,
+    date.getHours(),
+    date.getMinutes(),
+    date.getSeconds(),
+    date.getMilliseconds()
+  );
+  const lastDay = new Date(shifted.getFullYear(), shifted.getMonth() + 1, 0).getDate();
+  shifted.setDate(Math.min(date.getDate(), lastDay));
+  return shifted;
+}
+
+function _ms_rollingWindow(windowPreset = 'default') {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const start = new Date(today);
-  start.setMonth(start.getMonth() - 1);
-  const end = new Date(today);
-  end.setMonth(end.getMonth() + 2);
+  if (windowPreset === 'upcoming') {
+    const end = _ms_addMonthsClamped(today, 3);
+    end.setHours(23, 59, 59, 999);
+    return [today, end];
+  }
+  const start = _ms_addMonthsClamped(today, -1);
+  const end = _ms_addMonthsClamped(today, 2);
   end.setHours(23, 59, 59, 999);
   return [start, end];
 }
 
-function _ms_applyDateFilter(matrix, dateColIdx, mode, year, quarter) {
+function _ms_applyDateFilter(matrix, dateColIdx, mode, year, quarter, windowPreset = 'default') {
   if (!matrix || matrix.length < 2) return matrix ? matrix.slice() : [];
   if (dateColIdx < 0) return matrix.slice();
   const headers = matrix[0];
   let predicate;
   if (mode === 'rolling') {
-    const [start, end] = _ms_rollingWindow();
+    const [start, end] = _ms_rollingWindow(windowPreset);
     predicate = d => d >= start && d <= end;
   } else {
     const m1 = (quarter - 1) * 3 + 1;
@@ -2580,11 +2601,12 @@ window._ms_copyCardEvent = _ms_copyCardEvent;
 /**
  * 在指定容器內渲染「年度+季度」篩選器 + 表格或卡片。
  */
-function _ms_renderFilterableTable({ container, fullMatrix, tableMinWidth, renderMode = 'table', onFilteredChange }) {
+function _ms_renderFilterableTable({ container, fullMatrix, tableMinWidth, renderMode = 'table', onFilteredChange, windowPreset = 'default' }) {
   const headers = (fullMatrix && fullMatrix[0]) || [];
   const dateColIdx = _ms_getDateColIdx(headers);
   const noDateCol = dateColIdx < 0;
   const years = _ms_yearsFromMatrix(fullMatrix, dateColIdx);
+  const rollingLabel = windowPreset === 'upcoming' ? '未來 3 個月' : '近 3 個月';
   const today = new Date();
   const state = {
     mode: 'rolling',
@@ -2595,7 +2617,7 @@ function _ms_renderFilterableTable({ container, fullMatrix, tableMinWidth, rende
   const filterBar = noDateCol ? '' : `
     <div class="ms-filter-toolbar d-flex align-items-center gap-2 mb-2 flex-wrap p-2 bg-light rounded border">
       <span class="text-muted small fw-bold">📅 顯示範圍：</span>
-      <button type="button" id="ms-filter-rolling" class="btn btn-sm btn-success rounded-pill px-3" aria-pressed="true">近 3 個月</button>
+      <button type="button" id="ms-filter-rolling" class="btn btn-sm btn-success rounded-pill px-3" aria-pressed="true">${rollingLabel}</button>
       <span class="text-muted">|</span>
       <select id="ms-filter-year" class="form-select form-select-sm" style="width: auto;">
         ${years.map(y => `<option value="${y}" ${y === state.year ? 'selected' : ''}>${y} 年</option>`).join('')}
@@ -2611,7 +2633,7 @@ function _ms_renderFilterableTable({ container, fullMatrix, tableMinWidth, rende
   function rerender() {
     const filtered = noDateCol
       ? fullMatrix.slice()
-      : _ms_applyDateFilter(fullMatrix, dateColIdx, state.mode, state.year, state.quarter);
+      : _ms_applyDateFilter(fullMatrix, dateColIdx, state.mode, state.year, state.quarter, windowPreset);
     
     if (renderMode === 'cards') {
       document.getElementById('ms-filter-table').innerHTML = _ms_buildCardsHtml(filtered);
@@ -2623,7 +2645,7 @@ function _ms_renderFilterableTable({ container, fullMatrix, tableMinWidth, rende
     if (statusEl) {
       const recordCount = Math.max(filtered.length - 1, 0);
       statusEl.innerText = state.mode === 'rolling'
-        ? `共 ${recordCount} 筆（近 3 個月）`
+        ? `共 ${recordCount} 筆（${rollingLabel}）`
         : `共 ${recordCount} 筆（${state.year} Q${state.quarter}）`;
     }
     const rollingBtn = document.getElementById('ms-filter-rolling');
@@ -2676,6 +2698,7 @@ function showBulletinBoard() {
     fullMatrix: matrix,
     tableMinWidth: 800,
     renderMode: 'cards',
+    windowPreset: isMeetingTemplate(currentTemplate) ? 'upcoming' : 'default',
     onFilteredChange: filtered => { _currentBulletinFiltered = filtered; }
   });
 
@@ -3220,6 +3243,7 @@ async function showAggregatedReport(type) {
       container: document.getElementById('aggregatedReportContent'),
       fullMatrix: matrix,
       tableMinWidth: 1200,
+      windowPreset: type === 'smallGroup' ? 'upcoming' : 'default',
       onFilteredChange: filtered => { currentFiltered = filtered; }
     });
 
