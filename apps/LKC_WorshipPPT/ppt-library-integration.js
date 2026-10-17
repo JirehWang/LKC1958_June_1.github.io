@@ -174,6 +174,7 @@
     if (!number) {
       delete item.pptPages;
       delete item.libraryFileId;
+      delete item.libraryEntry;
       item.includeSectionTitle = false;
       item.libraryError = '';
       return { sectionId, state: 'empty' };
@@ -182,6 +183,7 @@
     if (!entry) {
       delete item.pptPages;
       delete item.libraryFileId;
+      delete item.libraryEntry;
       item.includeSectionTitle = false;
       item.libraryError = `資料庫找不到 ${kind === 'hymn' ? '聖詩' : '啟應文'} ${number}`;
       return { sectionId, state: 'missing', message: item.libraryError };
@@ -193,10 +195,14 @@
     let pages;
     try {
       pages = await pagesForEntry(entry);
+      if (!Array.isArray(pages) || !pages.length || pages.some(page => !page)) {
+        throw new Error('PPTX 沒有可載入的投影片頁面');
+      }
     } catch (error) {
       // Never leave stale or unmergeable imported pages in the export deck.
       delete item.pptPages;
       delete item.libraryFileId;
+      delete item.libraryEntry;
       item.includeSectionTitle = false;
       item.libraryError = 'PPTX 載入失敗：' + String(error && error.message || error);
       return { sectionId, state: 'error', message: item.libraryError };

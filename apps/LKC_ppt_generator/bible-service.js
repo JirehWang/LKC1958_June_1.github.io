@@ -253,9 +253,13 @@
         return queries;
     }
 
+    function getFhlBookCode(queryObj) {
+        return queryObj.eng === 'Heb' ? '來' : queryObj.short;
+    }
+
     // 7. FHL API 單次經文網路請求 (自動補全 "來"、處理 "上帝版" 置換，並回傳相容資料格式)
     async function fetchScripture(queryObj, version = 'unv', options = {}) {
-        const fhlBook = queryObj.eng === 'Heb' ? '來' : queryObj.short;
+        const fhlBook = getFhlBookCode(queryObj);
         const qstr = `${fhlBook} ${queryObj.chap}${queryObj.sec ? ':' + queryObj.sec : ''}`;
         const apiVersion = version === 'unv_god' ? 'unv' : version;
         const apiUrl = `https://bible.fhl.net/json/qsb.php?qstr=${encodeURIComponent(qstr)}&version=${apiVersion}&gb=0`;
@@ -324,6 +328,7 @@
         parseChapterAndVerse: parseChapterAndVerse,
         parseScriptureInput: parseScriptureInput,
         parseQuery: parseQuery,
+        getFhlBookCode: getFhlBookCode,
         fetchScripture: fetchScripture,
         query: query
     };

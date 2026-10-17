@@ -41,7 +41,19 @@
   }
   const getCalendarValue = (event, key) => getValue(event, aliases[key] || []);
   function applyCalendarEvent(event, model) {
-    const put = (id, key, value) => { if (value && model[id]) model[id][key] = value; };
+    ['pre-hymn-1', 'pre-hymn-2', 'hymn-1', 'hymn-2', 'doxology', 'response'].forEach(id => {
+      const item = model[id];
+      if (!item) return;
+      delete item.pptPages;
+      delete item.libraryFileId;
+      delete item.libraryEntry;
+      item.includeSectionTitle = false;
+      item.libraryError = '';
+    });
+    const put = (id, key, value) => {
+      if (!model[id]) return;
+      model[id][key] = value == null ? '' : value;
+    };
     put('call', 'sourceValue', getValue(event, aliases.call));
     put('sermon', 'title', getValue(event, aliases.sermonTitle));
     put('sermon', 'kicker', getValue(event, aliases.sermonSpeaker));

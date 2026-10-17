@@ -31,8 +31,31 @@
       ? `此值只作為經文查詢條件；投影片內容由${Array.isArray(profile.bibleVersions) && profile.bibleVersions.length > 1 ? '台語／華語' : '台語'}聖經資料產生器建立。`
       : '此值只作為資料庫索引；按下方按鈕後會從雲端下載並解析原始 PPTX。';
     form.innerHTML = `<div class="inline-note">${note}</div>${field(sourceLabel, 'sourceValue', item.sourceValue || '')}`;
+    let bibleCheckOutput = null;
     if (generatedIds.has(active)) {
       form.insertAdjacentHTML('beforeend', '<button type="button" class="button" id="regenerate-section">依輸入值重新產生</button>');
+      const checkField = document.createElement('div');
+      checkField.className = 'field bible-check-field';
+      const checkLabel = document.createElement('strong');
+      checkLabel.textContent = '經節確認';
+      bibleCheckOutput = document.createElement('div');
+      bibleCheckOutput.className = 'inline-note';
+      bibleCheckOutput.setAttribute('role', 'status');
+      bibleCheckOutput.setAttribute('aria-live', 'polite');
+      bibleCheckOutput.style.whiteSpace = 'pre-line';
+      const checkLabels = {
+        verified: '核對完整',
+        partial: '經節不完整',
+        missing: '沒有查到經節',
+        error: '查詢失敗',
+        unverified: '需要人工確認'
+      };
+      const checks = Array.isArray(item.bibleChecks) ? item.bibleChecks : [];
+      bibleCheckOutput.textContent = checks.length
+        ? checks.map(check => `${check.languageLabel || check.version || '聖經'}｜${check.reference || item.sourceValue || '經文範圍'}：${checkLabels[check.status] || check.status}${check.message ? `；${check.message}` : ''}`).join('\n')
+        : (item.sourceValue ? '尚未執行核對，請依輸入值重新產生。' : '尚未輸入經文範圍。');
+      checkField.append(checkLabel, bibleCheckOutput);
+      form.appendChild(checkField);
     } else {
       const libraryButtonLabel = activeLibraryKind === 'hymn'
         ? '同步聖詩索引並載入'
@@ -42,6 +65,13 @@
     }
     form.querySelector('[data-key="sourceValue"]').addEventListener('input', event => {
       item.sourceValue = event.target.value;
+      if (generatedIds.has(active)) {
+        item.bibleChecks = [];
+        item.bibleErrors = [];
+        item.pptPages = [];
+        if (bibleCheckOutput) bibleCheckOutput.textContent = '輸入值已變更，尚未重新查詢。';
+        if (typeof preview === 'function') preview();
+      }
     });
     const regenerate = document.getElementById('regenerate-section');
     if (regenerate) regenerate.onclick = async () => {
