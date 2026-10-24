@@ -339,6 +339,52 @@ body {
   box-shadow: 0 4px 12px rgba(0,0,0,0.01);
 }
 
+.date-filter-sticky {
+  position: static;
+}
+
+.date-filter-sticky-header {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-bottom: 0;
+  border-radius: 16px 16px 0 0;
+}
+
+.date-filter-header-copy {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.date-filter-sticky-title {
+  color: #334155;
+  font-size: 0.9rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.date-filter-summary {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+.date-filter-sticky-header .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-shrink: 0;
+  min-height: 44px;
+}
+
 .date-filter-label {
   color: #475467;
   font-size: 0.86rem;
@@ -356,6 +402,23 @@ body {
 
 .date-input {
   width: 132px;
+}
+
+.date-filter-range {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.date-range-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+}
+
+.date-range-field > span {
+  display: none;
 }
 
 .field-settings-list {
@@ -593,6 +656,109 @@ body {
 }
 
 @media (max-width: 768px) {
+  body {
+    padding: 12px;
+  }
+
+  .card-custom {
+    padding: 16px;
+  }
+
+  .date-filter-sticky {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    margin-bottom: 12px;
+    padding-top: 8px;
+    background: rgba(248, 250, 252, 0.98);
+    border-radius: 16px;
+  }
+
+  .date-filter-sticky-header {
+    display: flex;
+  }
+
+  .date-filter-sticky .date-filter-toolbar {
+    margin-bottom: 0 !important;
+    border-top: 0;
+    border-radius: 0 0 16px 16px;
+    box-shadow: none;
+  }
+
+  .date-filter-sticky.is-collapsed .date-filter-sticky-header {
+    border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+    border-radius: 16px;
+  }
+
+  .date-filter-toolbar {
+    align-items: stretch;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    padding: 12px;
+  }
+
+  .date-filter-toolbar > * {
+    min-width: 0;
+    width: 100%;
+    margin: 0 !important;
+  }
+
+  .date-filter-toolbar > .date-filter-label,
+  #recentThreeMonthsToggle {
+    grid-column: 1 / -1;
+  }
+
+  .date-filter-toolbar > span:not(.date-filter-label) {
+    display: none;
+  }
+
+  .date-filter-sticky-header {
+    flex-wrap: wrap;
+  }
+
+  .date-filter-header-copy {
+    flex: 1 1 140px;
+  }
+
+  .date-filter-sticky-header .btn {
+    flex: 1 1 auto;
+    padding: 8px 12px;
+  }
+
+  .date-filter-toolbar .form-select,
+  .date-filter-toolbar > .btn,
+  .date-filter-range .date-input {
+    min-height: 44px;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .date-filter-range {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .date-range-field {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .date-range-field > span {
+    color: var(--text-muted);
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 700;
+  }
+
+  .date-filter-range > .date-range-separator {
+    display: none;
+  }
+
   #dynamicFormContainer {
     padding: 12px !important;
     border-radius: 8px;
@@ -633,6 +799,18 @@ body {
 
   .members-only-view small {
     white-space: normal;
+  }
+}
+
+@media (max-width: 360px) {
+  .date-filter-range {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (min-width: 769px) {
+  #dateFilterToolbar.hidden {
+    display: flex !important;
   }
 }
 

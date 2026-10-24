@@ -248,7 +248,7 @@ function syncScheduleModeControls() {
   if (section) section.classList.toggle('hidden', !editable);
   if (select) select.value = currentScheduleMode;
   if (targetSelect) targetSelect.value = currentScheduleTarget || "members";
-  document.querySelector('.date-filter-toolbar')?.classList.toggle('hidden', !requiresSchedule);
+  document.querySelector('.date-filter-sticky')?.classList.toggle('hidden', !requiresSchedule);
   document.querySelector('.ministry-primary-actions')?.classList.toggle('hidden', !requiresSchedule);
   document.getElementById('toggleActionsBtn')?.classList.toggle('hidden', !requiresSchedule);
   document.getElementById('saveScheduleDataBtn')?.classList.toggle('hidden', !requiresSchedule);
@@ -1614,6 +1614,32 @@ function formatDateInputValue(date) {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function toggleDateFilterToolbar() {
+  const toolbar = document.getElementById('dateFilterToolbar');
+  const toggle = document.getElementById('dateFilterToggle');
+  if (!toolbar || !toggle) return;
+
+  const shouldExpand = toggle.getAttribute('aria-expanded') !== 'true';
+  toolbar.classList.toggle('hidden', !shouldExpand);
+  toggle.setAttribute('aria-expanded', String(shouldExpand));
+
+  const label = document.getElementById('dateFilterToggleLabel');
+  const icon = document.getElementById('dateFilterToggleIcon');
+  const summary = document.getElementById('dateFilterSummary');
+  const sticky = document.getElementById('dateFilterSticky');
+
+  if (label) label.textContent = shouldExpand ? '收合日期設定' : '展開日期設定';
+  if (icon) icon.textContent = shouldExpand ? '▴' : '▾';
+  if (summary) {
+    const start = document.getElementById('startDate')?.value;
+    const end = document.getElementById('endDate')?.value;
+    summary.textContent = start && end ? `${start} ~ ${end}` : '未設定日期範圍';
+    summary.hidden = shouldExpand;
+    summary.classList.toggle('hidden', shouldExpand);
+  }
+  if (sticky) sticky.classList.toggle('is-collapsed', !shouldExpand);
 }
 
 function setRecentThreeMonthsToggleState(isActive) {
