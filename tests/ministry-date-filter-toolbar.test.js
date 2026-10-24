@@ -22,7 +22,7 @@ function createClassList() {
   };
 }
 
-test('date filter stays sticky and can collapse while showing its selected range', () => {
+test('bulletin date filter stays sticky and can collapse while showing its selected range', () => {
   assert.match(html, /class="date-filter-sticky"/);
   assert.match(html, /id="dateFilterToggle"[^>]*aria-controls="dateFilterToolbar"/);
   assert.doesNotMatch(html, /id="dateFilterToolbar"[^>]*aria-hidden=/, 'toolbar remains accessible if desktop CSS reopens a mobile-collapsed toolbar');
@@ -30,8 +30,9 @@ test('date filter stays sticky and can collapse while showing its selected range
   assert.ok(baseStickyRule, 'date filter shell has a base style');
   assert.match(baseStickyRule[1], /position:\s*static/);
   assert.ok(/\.date-filter-sticky-header\s*\{[^}]*display:\s*none/s.test(css), 'desktop hides the collapse header');
-  assert.ok(/@media \(max-width: 768px\) \{[\s\S]*?\.date-filter-sticky\s*\{[^}]*position:\s*sticky/s.test(css), 'mobile keeps the filter sticky');
-  assert.ok(/@media \(min-width: 769px\) \{[\s\S]*?#dateFilterToolbar\.hidden\s*\{[^}]*display:\s*flex\s*!important/s.test(css), 'desktop shows the toolbar even if it was collapsed on mobile');
+  assert.ok(/@media \(max-width: 768px\) \{[\s\S]*?#bulletinContent\s*>\s*\.date-filter-sticky\s*\{[^}]*position:\s*sticky/s.test(css), 'only the bulletin board keeps the filter sticky on mobile');
+  assert.ok(/@media \(max-width: 768px\) \{[\s\S]*?#bulletinContent\s+\.date-filter-sticky-header\s*\{[^}]*display:\s*flex/s.test(css), 'only the bulletin board exposes the collapse header on mobile');
+  assert.ok(/@media \(min-width: 769px\) \{[\s\S]*?#bulletinContent\s+#dateFilterToolbar\.hidden\s*\{[^}]*display:\s*flex\s*!important/s.test(css), 'desktop shows the bulletin toolbar even if it was collapsed on mobile');
 
   const functionStart = script.indexOf('function toggleDateFilterToolbar()');
   assert.notEqual(functionStart, -1, 'date filter collapse handler exists');

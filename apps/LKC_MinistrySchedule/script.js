@@ -90,6 +90,7 @@ let availableMinistryTemplates = [];
 
 // 預覽佈告欄 modal 目前的篩選後矩陣（給下載 Excel 用）
 let _currentBulletinFiltered = null;
+let _bulletinDateFilterPlaceholder = null;
 
 const initialFieldTemplates = {
   "聚會型模板": {
@@ -1735,6 +1736,8 @@ function filterByDate(preserveFilterMode = false, silent = false) {
     }
   });
 
+  _ms_refreshBulletinCards();
+
   if (!silent && (start || end)) {
     getNotifier().success(`✅ 已篩選出 ${visibleCount} 筆資料`);
   }
@@ -1747,6 +1750,7 @@ function clearDateFilter() {
   document.getElementById('startDate').value = "";
   document.getElementById('endDate').value = "";
   document.querySelectorAll('.record-row').forEach(rowDiv => rowDiv.classList.remove('hidden'));
+  _ms_refreshBulletinCards();
 }
 
 
@@ -2707,19 +2711,61 @@ function _ms_renderFilterableTable({ container, fullMatrix, tableMinWidth, rende
 // ============================================================
 //  📋 預覽佈告欄
 // ============================================================
+function _ms_getVisibleScheduleMatrix() {
+  const matrix = [currentTableHeaders];
+  document.querySelectorAll('.record-row').forEach(rowDiv => {
+    if (rowDiv.classList.contains('hidden')) return;
+    const row = Array.from(rowDiv.querySelectorAll('.grid-input')).map(input => input.value.trim());
+    if (row.some(value => value !== "")) matrix.push(row);
+  });
+  return matrix;
+}
+
+function _ms_refreshBulletinCards() {
+  const cards = document.querySelector('#bulletinContent #bulletinCards');
+  if (!cards) return;
+  const matrix = _ms_getVisibleScheduleMatrix();
+  _currentBulletinFiltered = matrix;
+  cards.innerHTML = _ms_buildCardsHtml(matrix);
+}
+
+function _ms_moveDateFilterToBulletin() {
+  const bulletinContent = document.getElementById('bulletinContent');
+  const dateFilter = document.getElementById('dateFilterSticky');
+  if (!bulletinContent || !dateFilter || dateFilter.parentNode === bulletinContent) return;
+
+  if (!_bulletinDateFilterPlaceholder && dateFilter.parentNode) {
+    _bulletinDateFilterPlaceholder = document.createComment('date-filter-home');
+    dateFilter.parentNode.insertBefore(_bulletinDateFilterPlaceholder, dateFilter);
+  }
+
+  bulletinContent.insertBefore(dateFilter, bulletinContent.firstChild);
+}
+
+function _ms_restoreDateFilterFromBulletin() {
+  const dateFilter = document.getElementById('dateFilterSticky');
+  const placeholder = _bulletinDateFilterPlaceholder;
+  if (dateFilter && placeholder?.parentNode) {
+    if (dateFilter.classList.contains('is-collapsed')) toggleDateFilterToolbar();
+    placeholder.parentNode.insertBefore(dateFilter, placeholder);
+    placeholder.remove();
+  }
+  _bulletinDateFilterPlaceholder = null;
+}
+
 function showBulletinBoard() {
   if (window.event) window.event.preventDefault();
 
   // 布告欄沿用主表的唯一日期篩選：只呈現目前未被主表隱藏的列。
-  const matrix = [currentTableHeaders];
-  document.querySelectorAll('.record-row').forEach(rowDiv => {
-    if (rowDiv.classList.contains('hidden')) return;
-    const row = Array.from(rowDiv.querySelectorAll('.grid-input')).map(i => i.value.trim());
-    if (row.some(v => v !== "")) matrix.push(row);
-  });
+  if (document.getElementById('dateFilterSticky')?.parentNode === document.getElementById('bulletinContent')) {
+    _ms_restoreDateFilterFromBulletin();
+  }
+  const matrix = _ms_getVisibleScheduleMatrix();
 
   _currentBulletinFiltered = matrix;
-  document.getElementById('bulletinContent').innerHTML = _ms_buildCardsHtml(matrix);
+  const bulletinContent = document.getElementById('bulletinContent');
+  bulletinContent.innerHTML = `<div id="bulletinCards">${_ms_buildCardsHtml(matrix)}</div>`;
+  _ms_moveDateFilterToBulletin();
 
   document.getElementById('bulletinModalLabel').innerText = `📋 ${activeGroupName} - 排班佈告欄`;
 
@@ -2738,6 +2784,10 @@ function showBulletinBoard() {
 
   const modalEl = document.getElementById('bulletinModal');
   if (modalEl) {
+    if (!modalEl._dateFilterRestoreListener) {
+      modalEl._dateFilterRestoreListener = () => _ms_restoreDateFilterFromBulletin();
+      modalEl.addEventListener('hidden.bs.modal', modalEl._dateFilterRestoreListener);
+    }
     if (modalEl._shownListener) {
       modalEl.removeEventListener('shown.bs.modal', modalEl._shownListener);
     }
