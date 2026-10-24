@@ -2684,7 +2684,7 @@ function _ms_renderFilterableTable({ container, fullMatrix, tableMinWidth, rende
 function showBulletinBoard() {
   if (window.event) window.event.preventDefault();
 
-  // 從目前的編輯表單擷取完整 matrix（仍尊重 .hidden 過濾，例如編輯模式的日期區間）
+  // 布告欄沿用主表的唯一日期篩選：只呈現目前未被主表隱藏的列。
   const matrix = [currentTableHeaders];
   document.querySelectorAll('.record-row').forEach(rowDiv => {
     if (rowDiv.classList.contains('hidden')) return;
@@ -2693,14 +2693,7 @@ function showBulletinBoard() {
   });
 
   _currentBulletinFiltered = matrix;
-  _ms_renderFilterableTable({
-    container: document.getElementById('bulletinContent'),
-    fullMatrix: matrix,
-    tableMinWidth: 800,
-    renderMode: 'cards',
-    windowPreset: isMeetingTemplate(currentTemplate) ? 'upcoming' : 'default',
-    onFilteredChange: filtered => { _currentBulletinFiltered = filtered; }
-  });
+  document.getElementById('bulletinContent').innerHTML = _ms_buildCardsHtml(matrix);
 
   document.getElementById('bulletinModalLabel').innerText = `📋 ${activeGroupName} - 排班佈告欄`;
 
