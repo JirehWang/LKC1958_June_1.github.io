@@ -350,6 +350,7 @@
         const oldScript = scripts[i];
         await new Promise((resolve) => {
           const newScript = document.createElement('script');
+          if (oldScript.type) newScript.type = oldScript.type;
           if (oldScript.src) {
             const separator = oldScript.src.includes('?') ? '&' : '?';
             if (!oldScript.src.startsWith('http') || oldScript.src.startsWith(window.location.origin) || oldScript.src.includes('localhost') || oldScript.src.includes('127.0.0.1')) {

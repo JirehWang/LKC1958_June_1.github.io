@@ -1051,6 +1051,56 @@ function executeRevoke(uid, displayName) {
   var scannerLastScanned = '';
   var scannerLastScannedTime = 0;
   var scannerSoundEnabled = true;
+  var scannerModalOpen = false;
+  var scannerLifecycleGeneration = 0;
+  var scannerLifecycleQueue = Promise.resolve();
+
+  function queueScannerLifecycle(operation) {
+    var queuedOperation = scannerLifecycleQueue.then(operation, operation);
+    scannerLifecycleQueue = queuedOperation.then(function() {}, function() {});
+    return queuedOperation;
+  }
+
+  function isScannerRequestCurrent(generation) {
+    return scannerModalOpen && generation === scannerLifecycleGeneration;
+  }
+
+  function setScannerStatus(message, isError) {
+    var tip = document.getElementById('scannerStatusTip');
+    if (!tip) return;
+    tip.innerText = message;
+    tip.style.background = isError ? '#fee2e2' : '#f1f5f9';
+    tip.style.color = isError ? '#dc2626' : '#475569';
+  }
+
+  function describeScannerError(error, stage) {
+    var name = error && error.name ? error.name : '';
+    var message = error && error.message ? error.message : String(error || '');
+    var detail = (name + ' ' + message).toLowerCase();
+
+    if (/cannot clear while scan is ongoing|scanner is already running|scan is ongoing/.test(detail)) {
+      return '相機切換尚未完成，請稍候；若畫面仍未出現，請關閉後重新開啟掃描器。';
+    }
+    if (/notallowederror|permission denied|permission.*denied|not allowed/.test(detail)) {
+      return '瀏覽器未允許使用相機。請在網站權限中允許相機，再重新開啟掃描器。';
+    }
+    if (/notfounderror|devicesnotfound|no camera|camera.*not found/.test(detail)) {
+      return '找不到可用相機，請確認裝置相機已啟用後重試。';
+    }
+    if (/notreadableerror|trackstarterror|could not start video source|device.*busy|camera.*busy/.test(detail)) {
+      return '相機目前無法使用，請關閉其他正在使用相機的應用程式後重試。';
+    }
+    if (/overconstrainederror|constraintnotsatisfied|could not satisfy constraints/.test(detail)) {
+      return '所選鏡頭目前無法啟動，請重新開啟掃描器或切換鏡頭。';
+    }
+    if (/notsupportederror|not supported|navigator\.mediadevices|secure context|https/.test(detail)) {
+      return '目前的瀏覽器或頁面環境無法使用相機，請使用最新版 Chrome 開啟 HTTPS 網址。';
+    }
+    if (stage === 'enumerate') return '目前無法讀取相機清單，請重新開啟掃描器；若持續發生，請檢查相機權限。';
+    if (stage === 'switch') return '切換鏡頭失敗，請關閉掃描器後重新開啟。';
+    if (stage === 'stop') return '相機尚未成功關閉。請再按一次「關閉相機」；若仍失敗，請重新載入頁面。';
+    return '相機啟動失敗，請關閉掃描器後重新開啟。';
+  }
 
   function toggleScanner() {
     openScannerModal();
@@ -1066,18 +1116,35 @@ function executeRevoke(uid, displayName) {
       if (window.syncModalScrollLock) window.syncModalScrollLock();
       else document.body.classList.add('modal-open');
     }
-    startModalScanner();
+    if (!scannerModalOpen) {
+      scannerModalOpen = true;
+      var generation = ++scannerLifecycleGeneration;
+      scannerCameraList = [];
+      var switchBtn = document.getElementById('scannerSwitchCamBtn');
+      if (switchBtn) switchBtn.style.display = 'none';
+      startModalScanner(generation);
+    }
     startAutoSync();
   }
 
   function closeScannerModal() {
-    stopModalScanner();
-    var modal = document.getElementById('qrScannerModal');
-    if (modal) {
-      modal.style.display = 'none';
+    if (!scannerModalOpen) return;
+    scannerModalOpen = false;
+    var closingGeneration = ++scannerLifecycleGeneration;
+    setScannerStatus('正在關閉相機...', false);
+    stopModalScanner().then(function() {
+      if (scannerLifecycleGeneration !== closingGeneration || scannerModalOpen) return;
+      var modal = document.getElementById('qrScannerModal');
+      if (modal) modal.style.display = 'none';
       if (window.syncModalScrollLock) window.syncModalScrollLock();
       else document.body.classList.remove('modal-open');
-    }
+    }).catch(function(err) {
+      console.warn('stop scanner error', err);
+      if (scannerLifecycleGeneration !== closingGeneration || scannerModalOpen) return;
+      scannerModalOpen = true;
+      scannerLifecycleGeneration++;
+      setScannerStatus('❌ ' + describeScannerError(err, 'stop'), true);
+    });
   }
 
   function toggleScannerSound() {
@@ -1087,18 +1154,19 @@ function executeRevoke(uid, displayName) {
   }
 
   function switchScannerCamera() {
-    if (scannerCameraList.length < 2) return;
-    if (scannerHtml5QrCode && scannerHtml5QrCode.isScanning) {
-      scannerHtml5QrCode.stop().then(function() {
-        scannerCurrentCamIndex = (scannerCurrentCamIndex + 1) % scannerCameraList.length;
-        startScannerWithCurrentCamera();
-      }).catch(function(err) {
-        console.warn('Switch camera stop failed', err);
-      });
-    } else {
-      scannerCurrentCamIndex = (scannerCurrentCamIndex + 1) % scannerCameraList.length;
-      startScannerWithCurrentCamera();
-    }
+    if (!scannerModalOpen || scannerCameraList.length < 2) return;
+    scannerCurrentCamIndex = (scannerCurrentCamIndex + 1) % scannerCameraList.length;
+    var generation = ++scannerLifecycleGeneration;
+    queueScannerLifecycle(async function() {
+      await stopScannerInstance();
+      if (!isScannerRequestCurrent(generation)) return;
+      await startScannerWithCurrentCamera(generation);
+    }).catch(function(err) {
+      console.warn('Switch camera failed', err);
+      if (isScannerRequestCurrent(generation)) {
+        setScannerStatus('❌ ' + describeScannerError(err, 'switch'), true);
+      }
+    });
   }
 
   function playScanBeep() {
@@ -1134,82 +1202,89 @@ function executeRevoke(uid, displayName) {
     return text.toUpperCase();
   }
 
-  function startModalScanner() {
-    var tip = document.getElementById('scannerStatusTip');
-    if (tip) {
-      tip.innerText = '正在啟動相機...';
-      tip.style.background = '#f1f5f9';
-      tip.style.color = '#475569';
-    }
-    if (typeof Html5Qrcode === 'undefined') {
-      if (tip) {
-        tip.innerText = '❌ 相機模組尚未載入，請稍候重試';
-        tip.style.background = '#fee2e2';
-        tip.style.color = '#dc2626';
+  function startModalScanner(generation) {
+    return queueScannerLifecycle(async function() {
+      if (!isScannerRequestCurrent(generation)) return;
+      setScannerStatus('正在啟動相機...', false);
+      if (typeof Html5Qrcode === 'undefined') {
+        setScannerStatus('❌ 相機模組尚未載入，請稍候重試', true);
+        return;
       }
-      return;
-    }
-    if (!scannerHtml5QrCode) {
-      scannerHtml5QrCode = new Html5Qrcode('modal-qr-reader');
-    }
-    Html5Qrcode.getCameras().then(function(devices) {
-      if (devices && devices.length > 0) {
-        scannerCameraList = devices;
-        scannerCurrentCamIndex = devices.length > 1 ? devices.length - 1 : 0;
-        var switchBtn = document.getElementById('scannerSwitchCamBtn');
-        if (switchBtn) switchBtn.style.display = devices.length > 1 ? 'inline-block' : 'none';
-        startScannerWithCurrentCamera();
-      } else {
-        if (tip) {
-          tip.innerText = '❌ 找不到相機設備！';
-          tip.style.background = '#fee2e2';
-          tip.style.color = '#dc2626';
+      if (!scannerHtml5QrCode) {
+        scannerHtml5QrCode = new Html5Qrcode('modal-qr-reader');
+      }
+      if (scannerHtml5QrCode.isScanning) await stopScannerInstance();
+      if (!isScannerRequestCurrent(generation)) return;
+
+      var devices;
+      try {
+        devices = await Html5Qrcode.getCameras();
+      } catch (err) {
+        if (isScannerRequestCurrent(generation)) {
+          console.warn('Could not enumerate cameras', err);
+          setScannerStatus('❌ ' + describeScannerError(err, 'enumerate'), true);
+        }
+        return;
+      }
+      if (!isScannerRequestCurrent(generation)) return;
+      if (!devices || devices.length === 0) {
+        setScannerStatus('❌ 找不到相機設備！', true);
+        return;
+      }
+
+      scannerCameraList = devices;
+      scannerCurrentCamIndex = devices.length > 1 ? devices.length - 1 : 0;
+      var switchBtn = document.getElementById('scannerSwitchCamBtn');
+      if (switchBtn) switchBtn.style.display = devices.length > 1 ? 'inline-block' : 'none';
+      try {
+        await startScannerWithCurrentCamera(generation);
+      } catch (err) {
+        if (isScannerRequestCurrent(generation)) {
+          console.warn('Camera start failed', err);
+          setScannerStatus('❌ ' + describeScannerError(err, 'start'), true);
         }
       }
     }).catch(function(err) {
-      if (tip) {
-        tip.innerText = '❌ 無法取得相機權限：' + (err.message || err);
-        tip.style.background = '#fee2e2';
-        tip.style.color = '#dc2626';
+      console.warn('Start scanner failed', err);
+      if (isScannerRequestCurrent(generation)) {
+        setScannerStatus('❌ ' + describeScannerError(err, 'start'), true);
       }
     });
   }
 
-  function startScannerWithCurrentCamera() {
-    if (!scannerCameraList[scannerCurrentCamIndex]) return;
+  async function startScannerWithCurrentCamera(generation) {
+    if (!isScannerRequestCurrent(generation) || !scannerCameraList[scannerCurrentCamIndex]) return;
     var cameraId = scannerCameraList[scannerCurrentCamIndex].id;
-    var tip = document.getElementById('scannerStatusTip');
-    if (tip) {
-      tip.innerText = '請將會友 QR Code 對準鏡頭';
-      tip.style.background = '#f1f5f9';
-      tip.style.color = '#475569';
-    }
+    setScannerStatus('正在啟動相機...', false);
     var config = {
       fps: 15,
       qrbox: function(w, h) { var s = Math.min(w, h) * 0.75; return { width: s, height: s }; }
     };
-    scannerHtml5QrCode.start(cameraId, config, function(decodedText) {
-      onModalQrScanned(decodedText.trim());
-    }).catch(function(err) {
-      console.warn('Fallback scanner config', err);
-      scannerHtml5QrCode.start(cameraId, { fps: 10, qrbox: 250 }, function(decodedText) {
-        onModalQrScanned(decodedText.trim());
-      }).catch(function(err2) {
-        if (tip) {
-          tip.innerText = '❌ 相機啟動失敗：' + (err2.message || err2);
-          tip.style.background = '#fee2e2';
-          tip.style.color = '#dc2626';
-        }
+    try {
+      await scannerHtml5QrCode.start(cameraId, config, function(decodedText) {
+        if (isScannerRequestCurrent(generation)) onModalQrScanned(decodedText.trim());
       });
-    });
+    } catch (err) {
+      try { await stopScannerInstance(); } catch (cleanupError) {
+        console.warn('Failed to clean up scanner after start error', cleanupError);
+      }
+      throw err;
+    }
+    if (isScannerRequestCurrent(generation)) {
+      setScannerStatus('請將會友 QR Code 對準鏡頭', false);
+    } else {
+      await stopScannerInstance();
+    }
   }
 
   function stopModalScanner() {
-    if (scannerHtml5QrCode && scannerHtml5QrCode.isScanning) {
-      scannerHtml5QrCode.stop().then(function() {
-        try { scannerHtml5QrCode.clear(); } catch (e) {}
-      }).catch(function(err) { console.warn('stop scanner error', err); });
-    }
+    return queueScannerLifecycle(stopScannerInstance);
+  }
+
+  async function stopScannerInstance() {
+    if (!scannerHtml5QrCode) return;
+    if (scannerHtml5QrCode.isScanning) await scannerHtml5QrCode.stop();
+    scannerHtml5QrCode.clear();
   }
 
   function onModalQrScanned(scannedText) {
