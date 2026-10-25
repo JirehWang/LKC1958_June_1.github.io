@@ -1051,6 +1051,7 @@ function executeRevoke(uid, displayName) {
   var scannerLastScanned = '';
   var scannerLastScannedTime = 0;
   var scannerSoundEnabled = true;
+  var scannerPreferredCameraStorageKey = 'lkc_sunday_attendance_preferred_camera_id';
   var scannerModalOpen = false;
   var scannerLifecycleGeneration = 0;
   var scannerLifecycleQueue = Promise.resolve();
@@ -1071,6 +1072,27 @@ function executeRevoke(uid, displayName) {
     tip.innerText = message;
     tip.style.background = isError ? '#fee2e2' : '#f1f5f9';
     tip.style.color = isError ? '#dc2626' : '#475569';
+  }
+
+  function getRememberedScannerCameraId() {
+    try {
+      return window.localStorage.getItem(scannerPreferredCameraStorageKey) || '';
+    } catch (e) {
+      return '';
+    }
+  }
+
+  function rememberScannerCameraId(cameraId) {
+    if (!cameraId) return;
+    try {
+      window.localStorage.setItem(scannerPreferredCameraStorageKey, cameraId);
+    } catch (e) {}
+  }
+
+  function forgetScannerCameraId() {
+    try {
+      window.localStorage.removeItem(scannerPreferredCameraStorageKey);
+    } catch (e) {}
   }
 
   function describeScannerError(error, stage) {
@@ -1234,6 +1256,17 @@ function executeRevoke(uid, displayName) {
 
       scannerCameraList = devices;
       scannerCurrentCamIndex = devices.length > 1 ? devices.length - 1 : 0;
+      var rememberedCameraId = getRememberedScannerCameraId();
+      if (rememberedCameraId) {
+        var rememberedCameraIndex = devices.findIndex(function(device) {
+          return device.id === rememberedCameraId;
+        });
+        if (rememberedCameraIndex >= 0) {
+          scannerCurrentCamIndex = rememberedCameraIndex;
+        } else {
+          forgetScannerCameraId();
+        }
+      }
       var switchBtn = document.getElementById('scannerSwitchCamBtn');
       if (switchBtn) switchBtn.style.display = devices.length > 1 ? 'inline-block' : 'none';
       try {
@@ -1271,6 +1304,7 @@ function executeRevoke(uid, displayName) {
       throw err;
     }
     if (isScannerRequestCurrent(generation)) {
+      rememberScannerCameraId(cameraId);
       setScannerStatus('請將會友 QR Code 對準鏡頭', false);
     } else {
       await stopScannerInstance();
