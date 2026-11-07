@@ -68,7 +68,7 @@
         { full: "提多書", short: "多", eng: "Titus", chapters: 3 },
         { full: "腓利門書", short: "門", eng: "Philem", chapters: 1 },
         { full: "希伯來書", short: "希", eng: "Heb", chapters: 13 },
-        { full: "雅格書", short: "雅", eng: "Jas", chapters: 5 }, // Also support 雅各書, but key matching handles both
+        { full: "雅各書", short: "雅", eng: "Jas", chapters: 5 },
         { full: "彼得前書", short: "彼前", eng: "1Pet", chapters: 5 },
         { full: "彼得後書", short: "彼後", eng: "2Pet", chapters: 3 },
         { full: "約翰一書", short: "約一", eng: "1John", chapters: 5 },
@@ -77,13 +77,6 @@
         { full: "猶大書", short: "猶", eng: "Jude", chapters: 1 },
         { full: "啟示錄", short: "啟", eng: "Rev", chapters: 22 }
     ];
-
-    // Ensure "雅各書" works (matching either 雅格書 or 雅各書)
-    BIBLE_BOOKS.forEach(b => {
-        if (b.full === "雅格書") {
-            b.altFull = "雅各書";
-        }
-    });
 
     // 2. 輔助函數：中文數字轉阿拉伯數字
     function chineseToArabic(str) {
