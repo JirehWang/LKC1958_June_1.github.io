@@ -107,6 +107,29 @@
       opacity: 1;
       text-decoration: underline;
     }
+    .praise-paste-import {
+      margin: 0 0 20px;
+      padding: 14px 16px;
+      border: 1px solid #d8e3ee;
+      border-radius: 9px;
+      background: rgba(248, 251, 253, 0.95);
+    }
+    .praise-paste-import textarea.form-input {
+      min-height: 110px;
+      margin-top: 8px;
+    }
+    .praise-paste-actions {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px 14px;
+      margin-top: 10px;
+    }
+    .praise-paste-status {
+      margin: 0;
+      color: #64748b;
+      font-size: 12px;
+    }
     .song-title-lookup {
       margin: 0 0 20px;
       padding: 14px 16px;
@@ -243,14 +266,23 @@
       
       <div class="date-section">
         <div>
-          <label for="bulletinDate">主日日期：</label>
+          <label for="bulletinDate">主日日期（選填）：</label>
           <input type="date" id="bulletinDate" class="form-input" style="width: auto; display: inline-block;">
         </div>
         <div style="font-size: 13px; color: #555;">
-          說明：請填寫歌名、署名與演出者；詞、台語譯詞及歌詞可留白，週報與 PPT 會使用相同格式。
+          說明：歌名和曲必填；主日日期、詞、台語譯詞、編曲、演出者與歌詞皆可留白，週報與 PPT 會使用相同格式。
         </div>
         <div id="praiseDateBindingStatus" role="status" aria-live="polite" style="font-size: 13px; color: #2c5f8a; width: 100%;">
           本日尚未指定歌曲
+        </div>
+      </div>
+
+      <div class="praise-paste-import">
+        <label for="praisePasteText" style="font-weight: bold; color: #1a3f5c;">貼上收到的歌詞／PPT 文字，自動填入欄位：</label>
+        <textarea id="praisePasteText" class="form-input" rows="5" placeholder="貼上後會自動辨識，例如：歌名、詞曲／曲、台語譯詞、編曲、演出者和歌詞..."></textarea>
+        <div class="praise-paste-actions">
+          <button type="button" class="btn btn-primary" id="btnParsePraisePaste">✨ 辨識並填入欄位</button>
+          <p id="praisePasteStatus" class="praise-paste-status" role="status" aria-live="polite">貼上後會自動填入；辨識後不會自動儲存。</p>
         </div>
       </div>
 
@@ -283,7 +315,7 @@
       </div>
 
       <div class="form-group">
-        <label for="songPerformer" style="font-weight: bold;">演出者（必填）：</label>
+        <label for="songPerformer" style="font-weight: bold;">演出者（選填）：</label>
         <textarea id="songPerformer" class="form-input" rows="2" placeholder="例：聖歌隊；可填演唱者或演出團體"></textarea>
       </div>
 
@@ -388,16 +420,132 @@
   function missingPraiseFields() {
     const required = [
       ['title', '歌名'],
-      ['composer', '曲'],
-      ['performer', '演出者']
+      ['composer', '曲']
     ];
     return required.filter(([key]) => !cleanPraiseText(state[key])).map(([, label]) => label);
+  }
+
+  function isPraisePasteHeader(line) {
+    return /^PPT\s*版[\\\/／]*$/i.test(cleanPraiseText(line));
+  }
+
+  function parsePraisePasteCreditLine(line, allowOtherCredit = false) {
+    const match = String(line || '').match(/^\s*([^/／:：]+?)\s*[\/／:：]\s*(.*?)\s*$/);
+    if (!match) return null;
+
+    const labelText = match[1].trim();
+    const label = labelText.replace(/[\s\u3000]+/g, '').toLocaleLowerCase('zh-TW');
+    const value = String(match[2] || '').trim();
+    const combinedLabels = ['詞曲', '曲詞', '詞、曲', '詞與曲', '作詞作曲', '词曲', '曲词', '作词作曲'];
+    if (combinedLabels.includes(label)) return { field: 'both', value };
+    if (['曲', '作曲', '作曲者', 'composer', 'music', 'tune'].includes(label)) {
+      return { field: 'composer', value };
+    }
+    if (['詞', '作詞', '作詞者', 'lyricist', 'lyrics'].includes(label)) {
+      return { field: 'lyricist', value };
+    }
+    if (['台語譯詞', '台語譯詞者', '台語翻譯', '台語譯者', '閩南語譯詞', '譯詞', 'translator'].includes(label)) {
+      return { field: 'taiwaneseTranslator', value };
+    }
+    if (['編曲', '編曲者', 'arrangement', 'arranger'].includes(label)) {
+      return { field: 'arrangement', value };
+    }
+    if (['演出者', '演出', '演唱者', '演唱', '演奏者', '演奏', '主唱', 'performer'].includes(label)) {
+      return { field: 'performer', value };
+    }
+    if (['長笛', '橫笛', '小提琴', '中提琴', '大提琴', '低音提琴', '鋼琴', '電子琴', '管風琴', '吉他', '木吉他', '電吉他', '貝斯', '爵士鼓', '鼓', '口琴', '薩克斯風', '薩克斯', '單簧管', '豎笛', '雙簧管', '小號', '長號', '法國號', '二胡', '古箏', '琵琶', '揚琴'].includes(label)) {
+      return { field: 'performer', value: `${labelText} / ${value}` };
+    }
+    if (allowOtherCredit && value) return { field: 'performer', value: `${labelText} / ${value}` };
+    return null;
+  }
+
+  function applyPraisePasteCredit(parsed, credit) {
+    if (credit.field === 'both') {
+      parsed.composer = credit.value;
+      parsed.lyricist = credit.value;
+      return;
+    }
+    if (credit.field === 'performer' && parsed.performer && parsed.performer !== credit.value) {
+      parsed.performer += '；' + credit.value;
+      return;
+    }
+    parsed[credit.field] = credit.value;
+  }
+
+  function parsePraisePasteText(rawText) {
+    const lines = String(rawText || '')
+      .replace(/^\uFEFF/, '')
+      .replace(/\r\n?/g, '\n')
+      .split('\n');
+    while (lines.length && !lines[0].trim()) lines.shift();
+    if (lines.length && isPraisePasteHeader(lines[0])) lines.shift();
+    while (lines.length && !lines[0].trim()) lines.shift();
+    if (!lines.length) return null;
+
+    let titleBlockEnd = lines.findIndex((line) => !line.trim());
+    if (titleBlockEnd < 0) titleBlockEnd = lines.length;
+
+    const parsed = {
+      title: '',
+      composer: '',
+      lyricist: '',
+      taiwaneseTranslator: '',
+      arrangement: '',
+      performer: '',
+      lyrics: ''
+    };
+    const titleParts = [];
+    let sawCredit = false;
+
+    for (let index = 0; index < titleBlockEnd; index += 1) {
+      const line = lines[index].trim();
+      if (!line) continue;
+      const credit = parsePraisePasteCreditLine(line);
+      if (credit) {
+        applyPraisePasteCredit(parsed, credit);
+        sawCredit = true;
+        continue;
+      }
+      const titlePart = line.replace(/\s*[\/／]\s*$/, '').trim();
+      if (titlePart) titleParts.push(titlePart);
+    }
+
+    parsed.title = titleParts.join('／');
+    if (!parsed.title) return null;
+
+    const lyricLines = [];
+    let lyricsStarted = false;
+    for (let index = titleBlockEnd; index < lines.length; index += 1) {
+      const line = lines[index];
+      const credit = parsePraisePasteCreditLine(line);
+      if (credit) {
+        applyPraisePasteCredit(parsed, credit);
+        sawCredit = true;
+        continue;
+      }
+      if (!line.trim()) {
+        if (lyricsStarted) lyricLines.push('');
+        continue;
+      }
+      const otherCredit = sawCredit ? parsePraisePasteCreditLine(line, true) : null;
+      if (otherCredit) {
+        applyPraisePasteCredit(parsed, otherCredit);
+        continue;
+      }
+      lyricsStarted = true;
+      lyricLines.push(line);
+    }
+
+    parsed.lyrics = lyricLines.join('\n').trim();
+    return parsed;
   }
 
   const praiseHistory = {
     songs: [],
     gasRecords: null,
     gasRecordsPromise: null,
+    loadPromise: null,
     dropdownOpen: false,
     highlightedIndex: -1,
     selectionRequestId: 0
@@ -426,7 +574,13 @@
     });
 
     document.getElementById('btnRefreshSongHistory').addEventListener('click', () => {
-      loadPraiseHistory();
+      trackPraiseHistoryLoad(loadPraiseHistory());
+    });
+
+    const praisePasteInput = document.getElementById('praisePasteText');
+    document.getElementById('btnParsePraisePaste').addEventListener('click', parseAndFillPraisePaste);
+    praisePasteInput.addEventListener('paste', () => {
+      window.setTimeout(parseAndFillPraisePaste, 0);
     });
 
     const songTitleInput = document.getElementById('songTitle');
@@ -475,7 +629,7 @@
     document.getElementById('btnBindPraiseDate').addEventListener('click', bindSelectedPraiseDate);
 
     loadLocalBackup();
-    loadPraiseHistory({ silent: true });
+    trackPraiseHistoryLoad(loadPraiseHistory({ silent: true }));
   });
 
   function collectState() {
@@ -646,6 +800,87 @@
       (cleanSongId && song.songId === cleanSongId)
       || normalizeSongTitle(song.title) === normalizeSongTitle(title)
     ));
+  }
+
+  function trackPraiseHistoryLoad(promise) {
+    praiseHistory.loadPromise = promise;
+    const clearPromise = () => {
+      if (praiseHistory.loadPromise === promise) praiseHistory.loadPromise = null;
+    };
+    promise.then(clearPromise, clearPromise);
+    return promise;
+  }
+
+  async function parseAndFillPraisePaste() {
+    const input = document.getElementById('praisePasteText');
+    const button = document.getElementById('btnParsePraisePaste');
+    const status = document.getElementById('praisePasteStatus');
+    if (!input || !button || button.disabled) return;
+
+    const parsed = parsePraisePasteText(input.value);
+    if (!parsed || !parsed.title) {
+      const message = '辨識不到歌名，請確認貼上的內容包含歌名。';
+      if (status) status.textContent = message;
+      showToast(message, 'error');
+      return;
+    }
+
+    button.disabled = true;
+    if (status) status.textContent = '正在辨識資料並比對既有歌曲...';
+    try {
+      if (praiseHistory.loadPromise) await praiseHistory.loadPromise;
+
+      const matchedSong = findPraiseHistorySong(parsed.title);
+      let existing = null;
+      if (matchedSong) {
+        try {
+          const gasRecord = await findPraiseRecordFromGasByTitle(matchedSong.title, matchedSong.songId);
+          existing = normalizePraiseRecord(gasRecord);
+        } catch (err) {
+          console.warn('[praise.html] 自動填入時載入既有歌曲資料失敗:', err.message);
+          existing = normalizePraiseRecord(matchedSong);
+        }
+      }
+
+      const value = (key) => cleanPraiseText(parsed[key]) || cleanPraiseText(existing && existing[key]);
+      state.songId = matchedSong
+        ? (cleanPraiseText(existing && existing.songId) || cleanPraiseText(matchedSong.songId))
+        : '';
+      state.songOrigin = matchedSong ? 'existing' : 'new';
+      state.sourceTitle = matchedSong
+        ? (cleanPraiseText(existing && existing.title) || cleanPraiseText(matchedSong.title))
+        : '';
+      state.sourceLyrics = matchedSong ? cleanPraiseText(existing && existing.lyrics) : '';
+      state.sourceDate = '';
+      state.title = parsed.title;
+      state.composer = value('composer');
+      state.lyricist = value('lyricist');
+      state.taiwaneseTranslator = value('taiwaneseTranslator');
+      state.arrangement = value('arrangement');
+      state.performer = value('performer');
+      state.lyrics = value('lyrics');
+      state.performanceType = state.lyrics ? 'vocal' : 'instrumental';
+
+      renderState();
+      renderPraiseHistoryOptions(state.title);
+      saveLocalBackup();
+
+      const missingFields = missingPraiseFields();
+      const message = missingFields.length
+        ? '已填入欄位；' + missingFields.join('、') + '仍為必填，請補填後再儲存。'
+        : matchedSong
+          ? '已找到同名歌曲並帶入資料；請確認後儲存／更新。'
+          : '已辨識並填入欄位；請確認後再儲存。';
+      if (status) status.textContent = message;
+      showToast(message, missingFields.length ? 'info' : 'success');
+    } catch (err) {
+      console.error('[praise.html] 貼上資料自動填入失敗:', err);
+      const message = '自動填入失敗，請稍後重試或直接手動輸入。';
+      if (status) status.textContent = message;
+      showToast(message, 'error');
+    } finally {
+      button.disabled = false;
+    }
   }
 
   function renderPraiseHistoryOptions(keyword = '') {
@@ -1229,7 +1464,7 @@
     collectState();
     const missingFields = missingPraiseFields();
     if (missingFields.length) {
-      showToast('尚未填寫：' + missingFields.join('、') + '。目前無法儲存；請補齊後再試。歌詞可留白。', 'error');
+      showToast('請填寫' + missingFields.join('、') + '後再儲存。', 'error');
       return;
     }
 

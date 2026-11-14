@@ -170,10 +170,9 @@ function praiseSaveSong_(data) {
   const performer = praisePerformer_(payload);
   const missing = [
     ['title', '歌名', title],
-    ['composer', '曲', composer],
-    ['performer', '演出者', performer]
+    ['composer', '曲', composer]
   ].filter(([, , value]) => !value).map(([, label]) => label);
-  if (missing.length) throw new Error('尚未填寫：' + missing.join('、') + '。詞、台語譯詞與歌詞可留白。');
+  if (missing.length) throw new Error('尚未填寫：' + missing.join('、') + '。');
 
   const now = new Date().toISOString();
   const existing = payload.songId ? praiseFindSongRow_(payload.songId, true) : null;
